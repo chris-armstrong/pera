@@ -17,6 +17,7 @@ This directory contains coding guidelines for the pera project, organised by con
 | [test-patterns.md](./test-patterns.md) | Alcotest structure, event stream validation, TDD |
 | [abstractions.md](./abstractions.md) | Module design, parameter reduction, functors |
 | [pera-specific.md](./pera-specific.md) | Containers, structural equality, option/result style, Eio |
+| [commit-messages.md](./commit-messages.md) | Conventional commits format, module scope, types |
 
 ## Usage
 
