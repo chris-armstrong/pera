@@ -1,0 +1,3 @@
+(executables
+ (names provider_driver)
+ (libraries pera_provider eio_main))

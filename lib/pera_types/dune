@@ -1,0 +1,4 @@
+(library
+ (name pera_types)
+ (public_name pera-types)
+ (libraries containers yojson))

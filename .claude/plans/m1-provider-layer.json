@@ -20,7 +20,7 @@
         {
           "stage": 1,
           "title": "Project scaffold: dune-project, opam files, CI, formatting",
-          "status": "pending",
+          "status": "committed",
           "description": "Create the dune build system, opam package definitions, GitHub Actions CI workflow, ocamlformat config, and pre-commit hook. Empty libraries that compile to nothing. After this stage dune build succeeds on an empty project.",
           "files_to_create": [
             "dune-project",
