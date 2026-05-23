@@ -357,7 +357,7 @@
         {
           "stage": 7,
           "title": "Event_stream Eio primitive (pera_provider)",
-          "status": "pending",
+          "status": "committed",
           "description": "Implement the generic ('event, 'result) Event_stream.t over Eio.Stream.t + Eio.Promise.t (spec §4 'The event stream primitive'). Used at three levels of the stack; this stage builds the shared primitive.",
           "files_to_create": [
             "lib/pera_provider/event_stream.mli",

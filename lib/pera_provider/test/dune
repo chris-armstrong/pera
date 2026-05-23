@@ -3,3 +3,7 @@
 (test
  (name json_schema_test)
  (libraries pera_provider alcotest containers))
+
+(test
+ (name event_stream_test)
+ (libraries alcotest eio_main pera_provider))
