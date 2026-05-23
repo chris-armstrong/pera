@@ -1,0 +1,5 @@
+(include_subdirs no)
+
+(test
+ (name json_schema_test)
+ (libraries pera_provider alcotest containers))

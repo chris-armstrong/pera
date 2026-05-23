@@ -101,7 +101,7 @@
         {
           "stage": 3,
           "title": "JSON schema validator (pera_provider)",
-          "status": "pending",
+          "status": "committed",
           "description": "Implement the runtime JSON schema type and validator used for tool argument schemas (spec §9). Standalone module, no dependency on pera_types. Tests ported from Pi's validation.test.ts.",
           "files_to_create": [
             "lib/pera_provider/json_schema.mli",
