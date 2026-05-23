@@ -1,0 +1,35 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash /home/deploy/projects/pera/.claude/hooks/check_ml_conventions.sh",
+            "timeout": 15000
+          }
+        ]
+      }
+    ]
+  },
+  "permissions": {
+    "allow": [
+      "Bash(dune build)",
+      "Bash(dune runtest)",
+      "Bash(dune runtest *)",
+      "Bash(dune build *)",
+      "Bash(dune fmt)",
+      "Bash(dune clean)",
+      "Bash(ocamlformat *)",
+      "Bash(opam install *)",
+      "Bash(opam list *)",
+      "Bash(opam show *)",
+      "Bash(git status)",
+      "Bash(git diff *)",
+      "Bash(git log *)",
+      "Bash(git add *)",
+      "Bash(git commit *)"
+    ]
+  }
+}
