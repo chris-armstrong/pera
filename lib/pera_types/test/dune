@@ -1,0 +1,3 @@
+(test
+ (name types_test)
+ (libraries pera_types alcotest containers))

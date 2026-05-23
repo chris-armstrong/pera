@@ -54,7 +54,7 @@
         {
           "stage": 2,
           "title": "Core data model types (pera_types)",
-          "status": "pending",
+          "status": "committed",
           "description": "Define all data model types from spec §3 in the pera_types library. Pure types, no IO. These are the vocabulary everything else is built on. .mli first, then .ml.",
           "files_to_create": [
             "lib/pera_types/types.mli",
