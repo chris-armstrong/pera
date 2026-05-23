@@ -1,0 +1,446 @@
+{
+  "plan_id": "m1-provider-layer",
+  "title": "M1 — Streaming completion (provider layer)",
+  "source": "SPECIFICATION.md §4 (provider layer), §3 (data model), §12 (layer drivers). Milestone M1: can perform a one-shot streamed completion against Anthropic. No agent loop, no tools, no harness.",
+  "baseline": {
+    "build_passes": false,
+    "tests_pass": false,
+    "known_failures": [
+      "No dune-project exists — build cannot run at all"
+    ],
+    "notes": "Reuse audit: nothing exists yet. All modules are new. JSON repair is a port of vendor/pi/packages/ai/src/utils/json-parse.ts repairJson() + parseStreamingJson(). SSE parsing tests are ported from vendor/pi/packages/ai/test/anthropic-sse-parsing.test.ts. JSON schema tests are ported from vendor/pi/packages/ai/test/validation.test.ts. No Pi equivalent exists for the SSE chunk parser (Pi uses the Anthropic SDK internally) or Event_stream (Pi uses JS async generators)."
+  },
+  "epochs": [
+    {
+      "epoch": 1,
+      "title": "M1 — Provider layer",
+      "status": "pending",
+      "description": "Build the provider layer from scratch: data model types, JSON schema validator, JSON repair, SSE chunk parser, Anthropic SSE interpreter, Event_stream Eio primitive, Anthropic HTTP module, and provider_driver. At the end of this epoch the provider_driver binary can stream a completion from Anthropic (run manually with ANTHROPIC_API_KEY). CI validates everything except the live network call.",
+      "stages": [
+        {
+          "stage": 1,
+          "title": "Project scaffold: dune-project, opam files, CI, formatting",
+          "status": "pending",
+          "description": "Create the dune build system, opam package definitions, GitHub Actions CI workflow, ocamlformat config, and pre-commit hook. Empty libraries that compile to nothing. After this stage dune build succeeds on an empty project.",
+          "files_to_create": [
+            "dune-project",
+            "pera-types.opam",
+            "pera-provider.opam",
+            "lib/pera_types/dune",
+            "lib/pera_provider/dune",
+            "bin/drivers/dune",
+            ".ocamlformat",
+            ".github/workflows/ci.yml",
+            "scripts/pre-commit"
+          ],
+          "files_to_modify": [],
+          "depends_on": [],
+          "implementation_notes": "dune-project should declare OCaml >= 5.4 and dune >= 3.16. Library names: pera_types, pera_provider. opam files declare dependencies: pera-types needs containers, yojson; pera-provider needs pera-types, containers, yojson, eio, eio_main, eio_linux, piaf, re. The drivers binary depends on pera-provider, eio_main. CI: ocaml/setup-ocaml@v3, pin OCaml 5.4, opam install --deps-only, dune build, dune runtest. Trigger on PRs only. .ocamlformat: use defaults (empty file is valid). pre-commit: run ocamlformat --check on staged .ml/.mli files; exit 1 if any fail. Install via scripts/pre-commit symlinked to .git/hooks/pre-commit — include a note in the script that this must be installed manually (git hooks are not committed). Note: dune-project and opam files must list all deps even though the libraries are empty — this ensures opam install works from the start.",
+          "coding_guidelines_to_emphasize": [],
+          "test_requirements": {
+            "existing_tests": [],
+            "new_tests": [],
+            "test_command": "dune build",
+            "notes": "No tests yet. Acceptance is dune build succeeding on an empty but valid project."
+          },
+          "acceptance_criteria": [
+            "dune build succeeds",
+            "dune runtest succeeds (no tests = no failures)",
+            "GitHub Actions CI workflow file is syntactically valid (check with actionlint if available)",
+            "ocamlformat --check passes on all .ml/.mli files (none yet, so trivially passes)",
+            "scripts/pre-commit is executable and contains ocamlformat check logic"
+          ]
+        },
+        {
+          "stage": 2,
+          "title": "Core data model types (pera_types)",
+          "status": "pending",
+          "description": "Define all data model types from spec §3 in the pera_types library. Pure types, no IO. These are the vocabulary everything else is built on. .mli first, then .ml.",
+          "files_to_create": [
+            "lib/pera_types/types.mli",
+            "lib/pera_types/types.ml",
+            "lib/pera_types/test/dune",
+            "lib/pera_types/test/types_test.ml"
+          ],
+          "files_to_modify": [
+            "lib/pera_types/dune"
+          ],
+          "depends_on": [1],
+          "implementation_notes": "Define in types.mli (and implement in types.ml): (1) Content variants: user_content = UText of string | UImage of { url: string; media_type: string }; assistant_content = AText of string | AThinking of { text: string; signature: string option } | AToolCall of tool_call; tool_call = { id: string; name: string; arguments: Yojson.Safe.t }; tool_result_content = { tool_call_id: string; content: Yojson.Safe.t; is_error: bool }. (2) Message types: user_message = { role: string (* 'user' *); content: user_content list }; assistant_message = { content: assistant_content list; stop_reason: stop_reason; provenance: provenance; usage: usage }. (3) stop_reason = EndTurn | ToolUse | MaxTokens | StopSequence | Error | Aborted. (4) usage = { input_tokens: int; output_tokens: int; cache_read_tokens: int; cache_write_tokens: int; cost_usd: float option }. (5) provenance = { api: string; provider: string; model: string; error_message: string option }. (6) assistant_message_event (AME): type assistant_message_event = AME_text_start of { partial: assistant_message } | AME_text_delta of { text: string; partial: assistant_message } | AME_thinking_start of { partial: assistant_message } | AME_thinking_delta of { text: string; partial: assistant_message } | AME_tool_call_start of { index: int; id: string; name: string; partial: assistant_message } | AME_tool_call_delta of { index: int; arguments_fragment: string; partial: assistant_message } | AME_tool_call_end of { index: int; partial: assistant_message } | AME_done of { message: assistant_message } | AME_error of { message: string; partial: assistant_message }. The partial field in each event is an immutable snapshot of the assistant_message as it stands — see spec §4 'Partial messages'. (7) Error families: file_error_code = NotFound | PermissionDenied | Timeout | Aborted | Unknown; file_error = { code: file_error_code; path: string; message: string }; execution_error_code = Timeout | Aborted | NonZeroExit | Unknown; execution_error = { code: execution_error_code; message: string }; tool_error = { message: string; is_user_error: bool }. (8) model = { id: string; api: string (* 'anthropic' | 'openai-completions' *) }. All types: open Containers at top of .ml. No structural equality.",
+          "coding_guidelines_to_emphasize": [
+            "module-boundaries.md — .mli first, abstract types where appropriate",
+            "type-safety.md — variants over strings for stop_reason, error codes",
+            "pera-specific.md — open Containers, no structural equality"
+          ],
+          "test_requirements": {
+            "existing_tests": [],
+            "new_tests": [
+              {
+                "file": "lib/pera_types/test/types_test.ml",
+                "test_name": "test_assistant_message_event_carries_partial_snapshot",
+                "description": "Construct an AME_text_delta event and verify the partial field is a well-formed assistant_message. Confirms the snapshot type is usable.",
+                "asserts": "event.partial.stop_reason = EndTurn and event.text = 'hello'"
+              },
+              {
+                "file": "lib/pera_types/test/types_test.ml",
+                "test_name": "test_tool_call_round_trips_arguments",
+                "description": "Construct a tool_call with a JSON object as arguments and verify it can be accessed.",
+                "asserts": "tool_call.arguments is the Yojson value provided at construction"
+              }
+            ],
+            "test_command": "dune runtest lib/pera_types"
+          },
+          "acceptance_criteria": [
+            "dune build succeeds",
+            "All types from spec §3 are defined in types.mli",
+            "assistant_message_event has a partial: assistant_message field in every variant",
+            "Error families use closed-sum codes, not strings",
+            "dune runtest lib/pera_types passes"
+          ]
+        },
+        {
+          "stage": 3,
+          "title": "JSON schema validator (pera_provider)",
+          "status": "pending",
+          "description": "Implement the runtime JSON schema type and validator used for tool argument schemas (spec §9). Standalone module, no dependency on pera_types. Tests ported from Pi's validation.test.ts.",
+          "files_to_create": [
+            "lib/pera_provider/json_schema.mli",
+            "lib/pera_provider/json_schema.ml",
+            "lib/pera_provider/test/dune",
+            "lib/pera_provider/test/json_schema_test.ml"
+          ],
+          "files_to_modify": [
+            "lib/pera_provider/dune"
+          ],
+          "depends_on": [1],
+          "implementation_notes": "Implement the schema DSL from spec §9: constructors object, string, number, integer, boolean, array, optional, enum, const, any_of. Each takes optional metadata (description, constraints). Two functions on schema values: (1) to_json : t -> Yojson.Safe.t — renders to JSON Schema draft-07 for sending to the LLM. (2) validate : t -> Yojson.Safe.t -> (unit, string) result — validates an argument value. Validation must handle type coercion as Pi does (string '42' -> integer 42, 'true' -> boolean, etc.) because Anthropic sometimes sends tool arguments as JSON strings wrapping the actual value. See vendor/pi/packages/ai/test/validation.test.ts for the 14 coercion cases and 4 rejection cases to replicate. Do NOT use GADTs or ppx — schema is a runtime data value (spec §9 explicitly says this). The type t is a variant; keep it simple.",
+          "coding_guidelines_to_emphasize": [
+            "error-handling.md — validate returns Result, never raises",
+            "partial-functions.md — no Yojson.Util.to_string etc, use _opt variants",
+            "type-safety.md — schema type is a closed variant, not strings"
+          ],
+          "test_requirements": {
+            "existing_tests": [],
+            "new_tests": [
+              {
+                "file": "lib/pera_provider/test/json_schema_test.ml",
+                "test_name": "test_validate_coerces_string_to_integer",
+                "description": "Port of Pi validation.test.ts coercion case: string '42' validates against integer schema.",
+                "asserts": "validate (integer ()) (String '42') = Ok ()"
+              },
+              {
+                "file": "lib/pera_provider/test/json_schema_test.ml",
+                "test_name": "test_validate_coerces_string_to_boolean",
+                "description": "Port of Pi coercion case: string 'true' validates against boolean schema.",
+                "asserts": "validate (boolean ()) (String 'true') = Ok ()"
+              },
+              {
+                "file": "lib/pera_provider/test/json_schema_test.ml",
+                "test_name": "test_validate_rejects_invalid_integer_coercion",
+                "description": "Port of Pi rejection case: string '1' does NOT coerce to boolean.",
+                "asserts": "validate (boolean ()) (String '1') = Error _"
+              },
+              {
+                "file": "lib/pera_provider/test/json_schema_test.ml",
+                "test_name": "test_to_json_renders_object_schema",
+                "description": "An object schema with required and optional fields renders to a valid JSON Schema draft-07 fragment.",
+                "asserts": "to_json schema produces a JSON object with 'type': 'object', 'properties', and 'required' keys"
+              },
+              {
+                "file": "lib/pera_provider/test/json_schema_test.ml",
+                "test_name": "test_validate_required_field_missing",
+                "description": "An object with a required field rejects a value that omits that field.",
+                "asserts": "validate schema (empty object) = Error _"
+              }
+            ],
+            "test_command": "dune runtest lib/pera_provider"
+          },
+          "acceptance_criteria": [
+            "dune build succeeds",
+            "All 14 Pi coercion cases pass",
+            "All 4 Pi rejection cases pass",
+            "to_json produces valid JSON Schema draft-07 output for object, string, integer, boolean, array",
+            "dune runtest lib/pera_provider passes"
+          ]
+        },
+        {
+          "stage": 4,
+          "title": "JSON repair (pera_provider)",
+          "status": "pending",
+          "description": "Port Pi's repairJson and parseStreamingJson to OCaml. Handles the malformed JSON that Anthropic sends in tool-input deltas: invalid escape sequences (\\H) and raw control characters (literal tabs). See vendor/pi/packages/ai/src/utils/json-parse.ts. Tests ported from Pi's anthropic-sse-parsing.test.ts.",
+          "files_to_create": [
+            "lib/pera_provider/json_repair.mli",
+            "lib/pera_provider/json_repair.ml",
+            "lib/pera_provider/test/json_repair_test.ml"
+          ],
+          "files_to_modify": [],
+          "depends_on": [1],
+          "implementation_notes": "Two functions. (1) repair : string -> string — scans the string and fixes: (a) raw control characters inside JSON strings (tab 0x09, newline 0x0A, carriage return 0x0D etc.) replaced with their escape sequences (\\t, \\n, \\r); (b) invalid backslash escapes (\\H, \\j, etc. — anything not in the JSON spec set \\\" \\\\ \\/ \\b \\f \\n \\r \\t \\uXXXX) doubled to \\\\ so they become a literal backslash. Handle unicode escapes (\\uXXXX) correctly — do not double those. See Pi's repairJson implementation. (2) parse_streaming : string option -> (Yojson.Safe.t, string) result — attempt Yojson.Safe.from_string; if that fails, try repair then parse again; return Error if both fail. This is simpler than Pi's version (we skip the partial-json tier since OCaml does not have an equivalent library and concatenation-at-block-stop handles the incompleteness case). Reference: vendor/pi/packages/ai/src/utils/json-parse.ts lines 32-124.",
+          "coding_guidelines_to_emphasize": [
+            "error-handling.md — parse_streaming returns Result",
+            "pattern-matching.md — match on Bytes/char ranges for the repair scanner",
+            "pera-specific.md — open Containers"
+          ],
+          "test_requirements": {
+            "existing_tests": [],
+            "new_tests": [
+              {
+                "file": "lib/pera_provider/test/json_repair_test.ml",
+                "test_name": "test_repair_invalid_backslash_escape",
+                "description": "Port of Pi malformed SSE test: JSON containing \\H is repaired to \\\\H.",
+                "asserts": "repair '{\"path\":\"A\\\\H\"}' produces valid JSON parseable by Yojson with path = 'A\\\\H'"
+              },
+              {
+                "file": "lib/pera_provider/test/json_repair_test.ml",
+                "test_name": "test_repair_raw_tab_character",
+                "description": "Port of Pi malformed SSE test: JSON containing a literal tab byte inside a string is repaired to \\t.",
+                "asserts": "repair of string with literal 0x09 byte produces valid JSON with \\t escape"
+              },
+              {
+                "file": "lib/pera_provider/test/json_repair_test.ml",
+                "test_name": "test_repair_does_not_corrupt_valid_json",
+                "description": "Valid JSON with no malformed sequences is returned unchanged.",
+                "asserts": "repair '{\"a\":\"hello world\"}' = '{\"a\":\"hello world\"}'"
+              },
+              {
+                "file": "lib/pera_provider/test/json_repair_test.ml",
+                "test_name": "test_repair_preserves_valid_unicode_escape",
+                "description": "A valid \\uXXXX escape is not doubled.",
+                "asserts": "repair '{\"a\":\"\\u0041\"}' = '{\"a\":\"\\u0041\"}'"
+              },
+              {
+                "file": "lib/pera_provider/test/json_repair_test.ml",
+                "test_name": "test_parse_streaming_returns_ok_on_valid_json",
+                "description": "parse_streaming on a valid complete JSON object returns Ok.",
+                "asserts": "parse_streaming (Some '{\"k\":1}') = Ok (`Assoc [(\"k\", `Int 1)])"
+              },
+              {
+                "file": "lib/pera_provider/test/json_repair_test.ml",
+                "test_name": "test_parse_streaming_repairs_and_returns_ok",
+                "description": "parse_streaming on JSON with invalid escape returns Ok after repair.",
+                "asserts": "parse_streaming on the \\H input returns Ok with the repaired value"
+              }
+            ],
+            "test_command": "dune runtest lib/pera_provider"
+          },
+          "acceptance_criteria": [
+            "dune build succeeds",
+            "All 6 tests pass",
+            "repair handles \\H, raw control chars, and valid \\uXXXX correctly",
+            "parse_streaming returns Ok on valid and repairable JSON, Error on truly malformed input"
+          ]
+        },
+        {
+          "stage": 5,
+          "title": "SSE chunk parser (pera_provider)",
+          "status": "pending",
+          "description": "Implement the provider-agnostic SSE chunk parser (spec §4 'SSE parsing — two layers', Layer A). Byte chunks in, framed events out. Pure function over strings, no Eio. No Pi equivalent — Pi uses the Anthropic SDK for this layer.",
+          "files_to_create": [
+            "lib/pera_provider/sse_parser.mli",
+            "lib/pera_provider/sse_parser.ml",
+            "lib/pera_provider/test/sse_parser_test.ml"
+          ],
+          "files_to_modify": [],
+          "depends_on": [1],
+          "implementation_notes": "Define: type framed_event = { event_type: string; data: string; id: string option }. type state (opaque, holds partial line buffer). val initial_state : state. val feed : state -> string -> state * framed_event list. The feed function processes a chunk: append to buffer, scan for complete events (\\n\\n delimiter between fields). Each event is delimited by a blank line. Fields: 'event:', 'data:', 'id:'. Multi-line data: fields with the same key have their values joined with newlines. 'data:' fields with no value (just 'data:') produce empty string. Incomplete events (chunk ends mid-field) stay in the buffer for the next call. Do not depend on pera_types — this is a pure byte-level parser. Reference: spec §4 'SSE — what's on the wire'. Use QCheck for property tests on chunk boundary splitting.",
+          "coding_guidelines_to_emphasize": [
+            "pattern-matching.md — match on string structure for field parsing",
+            "naming-and-intermediates.md — name intermediate parse steps clearly",
+            "pera-specific.md — open Containers"
+          ],
+          "test_requirements": {
+            "existing_tests": [],
+            "new_tests": [
+              {
+                "file": "lib/pera_provider/test/sse_parser_test.ml",
+                "test_name": "test_single_event_in_one_chunk",
+                "description": "A complete SSE event in a single chunk produces one framed_event.",
+                "asserts": "feed initial_state 'event: message_start\\ndata: {\"type\":\"message_start\"}\\n\\n' produces [{ event_type='message_start'; data='{\"type\":\"message_start\"}'; id=None }]"
+              },
+              {
+                "file": "lib/pera_provider/test/sse_parser_test.ml",
+                "test_name": "test_event_split_across_two_chunks",
+                "description": "An event split at a byte boundary across two feed calls produces one event on the second call.",
+                "asserts": "feeding half a field then the rest + blank line produces the complete event"
+              },
+              {
+                "file": "lib/pera_provider/test/sse_parser_test.ml",
+                "test_name": "test_multiple_events_in_one_chunk",
+                "description": "Two complete SSE events in one chunk produce two framed_events.",
+                "asserts": "feed produces a list of length 2 with correct event_type for each"
+              },
+              {
+                "file": "lib/pera_provider/test/sse_parser_test.ml",
+                "test_name": "test_data_only_event_has_empty_event_type",
+                "description": "An SSE event with only a data field (no event: line) has event_type = ''.",
+                "asserts": "framed_event.event_type = '' when no event: field present"
+              },
+              {
+                "file": "lib/pera_provider/test/sse_parser_test.ml",
+                "test_name": "test_qcheck_chunk_split_preserves_events",
+                "description": "QCheck: for any valid SSE byte sequence, splitting it at a random byte boundary and feeding in two chunks produces the same events as feeding the whole sequence in one chunk.",
+                "asserts": "QCheck property: feed (feed s chunk1) chunk2 produces same events as feed s whole"
+              }
+            ],
+            "test_command": "dune runtest lib/pera_provider"
+          },
+          "acceptance_criteria": [
+            "dune build succeeds",
+            "All 5 tests pass including QCheck property test",
+            "Parser correctly buffers incomplete events across chunk boundaries",
+            "Multi-field events (event:, data:, id:) are parsed correctly"
+          ]
+        },
+        {
+          "stage": 6,
+          "title": "Anthropic SSE interpreter (pera_provider)",
+          "status": "pending",
+          "description": "Implement the Anthropic-specific SSE interpreter (spec §4 'SSE parsing — two layers', Layer B). State machine consuming framed_events, emitting assistant_message_events with immutable partial snapshots. Uses pera_types and json_repair. Tests ported from Pi's anthropic-sse-parsing.test.ts.",
+          "files_to_create": [
+            "lib/pera_provider/anthropic_interpreter.mli",
+            "lib/pera_provider/anthropic_interpreter.ml",
+            "lib/pera_provider/test/sse_interpreter_test.ml"
+          ],
+          "files_to_modify": [],
+          "depends_on": [2, 4, 5],
+          "implementation_notes": "Define: type state (internal; holds in-progress assistant_message builder — completed blocks, active text/thinking buffer, active tool call buffer, accumulated usage). val initial_state : state. val feed : state -> framed_event -> state * assistant_message_event list. The interpreter handles Anthropic's SSE event lifecycle: message_start initialises state; content_block_start begins a text, thinking, or tool_use block; content_block_delta appends to the active block (text_delta for text/thinking, input_json_delta for tool_use — concatenate raw fragment strings, do not parse yet); content_block_stop finalises the block (for tool_use: call json_repair.parse_streaming on the concatenated input_json); message_delta updates stop_reason and usage; message_stop emits AME_done. Each emission carries an immutable assistant_message snapshot built from current builder state — see spec §4 'Partial messages — the snapshot decision'. Unknown event types (e.g. 'done', 'proxy.stats', 'ping') are silently ignored. Reference: vendor/pi/packages/ai/src/providers/anthropic.ts lines 256-353 and vendor/pi/packages/ai/test/anthropic-sse-parsing.test.ts.",
+          "coding_guidelines_to_emphasize": [
+            "pattern-matching.md — exhaustive match on known event types; unknown goes to catch-all (open type — one of the rare legitimate catch-all cases)",
+            "error-handling.md — json_repair failures produce AME_error, never raise",
+            "pera-specific.md — open Containers, immutable snapshots"
+          ],
+          "test_requirements": {
+            "existing_tests": [],
+            "new_tests": [
+              {
+                "file": "lib/pera_provider/test/sse_interpreter_test.ml",
+                "test_name": "test_text_stream_produces_correct_event_sequence",
+                "description": "Feed a complete Anthropic message_start + content_block_start (text) + content_block_delta + content_block_stop + message_stop sequence. Verify the AME event sequence and final AME_done message.",
+                "asserts": "events = [AME_text_start; AME_text_delta { text='hello' }; AME_done { message }]; message.content = [AText 'hello']"
+              },
+              {
+                "file": "lib/pera_provider/test/sse_interpreter_test.ml",
+                "test_name": "test_tool_call_stream_produces_correct_events",
+                "description": "Feed a tool_use block with input_json_delta fragments. Verify AME_tool_call_start, AME_tool_call_delta, AME_tool_call_end, AME_done. Tool call arguments parsed from concatenated fragments at block_stop.",
+                "asserts": "AME_tool_call_end.partial contains a tool call with correctly parsed arguments Yojson value"
+              },
+              {
+                "file": "lib/pera_provider/test/sse_interpreter_test.ml",
+                "test_name": "test_malformed_tool_json_is_repaired",
+                "description": "Port of Pi 'repairs malformed SSE JSON and malformed streamed tool JSON' test. Feed SSE containing a tool input_json_delta with \\H escape and literal tab character.",
+                "asserts": "AME_done message contains tool call with arguments { path: 'A\\\\H', text: 'col1\\tcol2' }"
+              },
+              {
+                "file": "lib/pera_provider/test/sse_interpreter_test.ml",
+                "test_name": "test_unknown_events_after_message_stop_are_ignored",
+                "description": "Port of Pi 'ignores unknown SSE events after message_stop' test. Feed message_stop followed by 'done' and 'proxy.stats' event types.",
+                "asserts": "No AME_error emitted; sequence ends cleanly with AME_done"
+              },
+              {
+                "file": "lib/pera_provider/test/sse_interpreter_test.ml",
+                "test_name": "test_partial_snapshot_is_immutable",
+                "description": "Collect two AME_text_delta events. Verify the partial field of the first event is not modified by the second event's processing (immutability invariant).",
+                "asserts": "first_event.partial.content != second_event.partial.content; first remains as captured"
+              }
+            ],
+            "test_command": "dune runtest lib/pera_provider"
+          },
+          "acceptance_criteria": [
+            "dune build succeeds",
+            "All 5 tests pass",
+            "Pi's two malformed-JSON test scenarios pass",
+            "Unknown event types do not produce errors",
+            "Partial snapshots are structurally distinct values (not shared references)",
+            "dune runtest lib/pera_provider passes"
+          ]
+        },
+        {
+          "stage": 7,
+          "title": "Event_stream Eio primitive (pera_provider)",
+          "status": "pending",
+          "description": "Implement the generic ('event, 'result) Event_stream.t over Eio.Stream.t + Eio.Promise.t (spec §4 'The event stream primitive'). Used at three levels of the stack; this stage builds the shared primitive.",
+          "files_to_create": [
+            "lib/pera_provider/event_stream.mli",
+            "lib/pera_provider/event_stream.ml",
+            "lib/pera_provider/test/event_stream_test.ml"
+          ],
+          "files_to_modify": [],
+          "depends_on": [1],
+          "implementation_notes": "type ('event, 'result) t = { stream: 'event Eio.Stream.t; result: ('result, string) result Eio.Promise.t * ('result, string) result Eio.Promise.u }. Expose: val create : capacity:int -> ('e, 'r) t * (('e, 'r) t -> unit) — returns stream and a push function. val push : ('e, 'r) t -> 'e -> unit. val close : ('e, 'r) t -> 'r -> unit — resolves the promise with Ok. val close_error : ('e, 'r) t -> string -> unit — resolves with Error. val take : ('e, 'r) t -> [ `Event of 'e | `Done of 'r | `Error of string ] — takes one event or the resolved result. val iter : ('e, 'r) t -> f:('e -> unit) -> ('r, string) result — consume all events. val result : ('e, 'r) t -> ('r, string) result — await promise (blocks). Default capacity: 32 (spec says bounded). A stalled consumer will backpressure the producer through Eio.Stream.add which blocks when full. Tests use Eio_main.run and Eio.Fiber.fork_seq.",
+          "coding_guidelines_to_emphasize": [
+            "pera-specific.md §5 — Eio conventions: fibres under switch, Eio.Cancel not flags",
+            "error-handling.md — close_error takes string; callers convert to typed errors at their layer",
+            "module-boundaries.md — .mli hides the internal Eio.Stream.t and Promise.t"
+          ],
+          "test_requirements": {
+            "existing_tests": [],
+            "new_tests": [
+              {
+                "file": "lib/pera_provider/test/event_stream_test.ml",
+                "test_name": "test_producer_consumer_fibre",
+                "description": "One fibre pushes 3 events and closes; the main fibre collects via iter. Verify all 3 events arrive and result is Ok.",
+                "asserts": "iter returns Ok final_value; collected events list = [e1; e2; e3]"
+              },
+              {
+                "file": "lib/pera_provider/test/event_stream_test.ml",
+                "test_name": "test_close_error_propagates",
+                "description": "Producer calls close_error; consumer's iter returns Error.",
+                "asserts": "iter returns Error message matching close_error argument"
+              },
+              {
+                "file": "lib/pera_provider/test/event_stream_test.ml",
+                "test_name": "test_backpressure_bounded_capacity",
+                "description": "Create stream with capacity 1. Producer pushes 2 events without yielding. Verify the second push blocks until the consumer takes the first.",
+                "asserts": "Producer is blocked; after consumer takes first event, second event is deliverable"
+              }
+            ],
+            "test_command": "dune runtest lib/pera_provider"
+          },
+          "acceptance_criteria": [
+            "dune build succeeds",
+            "All 3 tests pass",
+            "Backpressure test confirms bounded capacity blocks producer",
+            "dune runtest lib/pera_provider passes"
+          ]
+        },
+        {
+          "stage": 8,
+          "title": "Anthropic HTTP module + provider_driver (pera_provider + bin/drivers)",
+          "status": "pending",
+          "description": "Wire piaf to the SSE interpreter via Event_stream to produce a working Anthropic provider. Define the Provider.S module type. Build provider_driver as a manual validation binary. This is the M1 acceptance proof — run manually with ANTHROPIC_API_KEY to confirm the milestone.",
+          "files_to_create": [
+            "lib/pera_provider/provider.mli",
+            "lib/pera_provider/anthropic_provider.mli",
+            "lib/pera_provider/anthropic_provider.ml",
+            "bin/drivers/provider_driver.ml"
+          ],
+          "files_to_modify": [
+            "lib/pera_provider/dune",
+            "bin/drivers/dune"
+          ],
+          "depends_on": [2, 3, 5, 6, 7],
+          "implementation_notes": "Define Provider.S in provider.mli (spec §4 'Provider interface'): module type S = sig val name : string; val stream_simple : model:model -> context:context -> options:simple_stream_options -> sw:Eio.Switch.t -> (assistant_message_event, assistant_message) Event_stream.t end. Define context = { system: string; messages: message list; tools: tool_schema list; thinking: bool } and simple_stream_options = { max_tokens: int; temperature: float option }. message = UserMessage of user_message | AssistantMessage of assistant_message. Implement Anthropic_provider satisfying Provider.S: use piaf to POST to https://api.anthropic.com/v1/messages with Accept: text/event-stream. Pipe response body bytes through Sse_parser.feed then Anthropic_interpreter.feed, pushing assistant_message_events into the Event_stream. Close the stream with the final assistant_message from AME_done or AME_error. Auth: read API key from ANTHROPIC_API_KEY env var (or accept as argument). provider_driver.ml: parse argv (model, prompt text). Construct a minimal context. Call Anthropic_provider.stream_simple. Print each event as it arrives (event type + truncated content). Print final message on AME_done. Exit 1 on AME_error. Gracefully skip if ANTHROPIC_API_KEY not set (print 'skipped: no API key' and exit 0). The driver is NOT included in dune runtest — it is a manual tool. Exclude from CI via (enabled_if (env ANTHROPIC_API_KEY)) or by not adding it to any runtest alias.",
+          "coding_guidelines_to_emphasize": [
+            "pera-specific.md §5 — Eio: fibres under switch, sw passed as labelled arg",
+            "pera-specific.md §6 — IO returns Result, never raises",
+            "module-boundaries.md — Provider.S is the public seam; hide piaf internals in anthropic_provider.ml"
+          ],
+          "test_requirements": {
+            "existing_tests": [],
+            "new_tests": [],
+            "test_command": "dune build",
+            "notes": "No automated tests for this stage — the driver requires a live Anthropic API key and is intentionally excluded from dune runtest. The acceptance criterion is the driver binary building and running successfully against the API. The test-reviewer should flag this as an acknowledged exception (network-dependent live API), not a missing test."
+          },
+          "acceptance_criteria": [
+            "dune build succeeds including provider_driver binary",
+            "provider_driver binary exists at _build/default/bin/drivers/provider_driver.exe",
+            "Running provider_driver with a valid ANTHROPIC_API_KEY produces streaming output",
+            "provider_driver exits 0 cleanly with 'skipped: no API key' if key not set",
+            "provider_driver exits 0 on successful completion",
+            "dune runtest still passes (driver excluded from test suite)"
+          ]
+        }
+      ]
+    }
+  ]
+}
