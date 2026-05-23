@@ -59,12 +59,26 @@ State:
 
 ## When Things Don't Build
 
-If a stage cannot build because it structurally depends on something not yet created, do NOT add stubs. State:
-- What cannot build
-- Why it's structural (not a bug)
-- What is needed from which other stage
+OCaml's type system requires that referenced types and modules exist at compile time. Two distinct cases:
 
-This triggers REPLAN, which is correct.
+**Missing type or module interface (OK to stub):** If a stage needs a type from a later stage, define a minimal `.mli` with an abstract type and a stub `.ml` that satisfies the compiler. This is not a REPLAN trigger — it is normal OCaml staging. Mark the stub clearly and note it in your report so the next stage knows to replace it.
+
+```ocaml
+(* event_stream.mli — stub; real implementation in stage N+2 *)
+type ('event, 'result) t
+```
+
+**Missing logic (REPLAN trigger):** If the *behaviour* this stage must implement cannot be written because it depends on something not yet designed — e.g. the state machine needs an event vocabulary that has not been specified yet — that is structural. Do not improvise. State what cannot be implemented, why it is a logic dependency rather than a type dependency, and what is needed from which stage.
+
+## Test Coupling
+
+Write tests at the level of observable behaviour, not internal module structure. A test that reaches into a module's internals breaks on any correct refactor. Prefer:
+
+- Testing at the layer driver level — what does the consumer of this module see?
+- Testing input/output contracts, not internal representation
+- Keeping fine-grained unit tests to genuinely isolated pure functions (parsers, validators)
+
+A well-written test survives renaming an internal type or restructuring a private helper. If your test would break from such a change, it is coupled at the wrong level.
 
 ## Completeness Definition
 
