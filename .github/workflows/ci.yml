@@ -27,6 +27,12 @@ jobs:
             piaf re \
             alcotest qcheck-alcotest qcheck-core
 
+      - name: Install semgrep
+        run: pip install semgrep --quiet
+
+      - name: Semgrep lint
+        run: semgrep --config .semgrep/ocaml-guidelines.yml lib/ bin/ --error
+
       - name: Build
         run: opam exec -- dune build
 

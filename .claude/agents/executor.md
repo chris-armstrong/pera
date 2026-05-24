@@ -76,7 +76,23 @@ For every new domain type appearing in test assertions:
 
 For `Result` assertions: use `Alcotest.(check (result inner_testable string))`.
 
-## Step 6 — Format, Build, Test
+## Step 6 — Semgrep Lint (mandatory gate)
+
+Run the project's semgrep rules against all files you created or modified:
+
+```bash
+semgrep --config .semgrep/ocaml-guidelines.yml <files you changed>
+```
+
+**Any finding is a bug — fix it before proceeding.** The rules cover:
+- Banned partial functions (`List.hd`, `List.tl`, `List.nth`, `int_of_string`, `Option.get`, etc.)
+- Zero-value catch-all sentinels (`| _ -> ""`)
+- `Stdlib.(=)` structural equality
+- Silent Result/Option ignore
+
+If a finding is a false positive for an open-protocol forward-compat pattern, add `(* nosemgrep: <rule-id> *)` on the same line with a brief note. Do not suppress ERROR-severity rules.
+
+## Step 7 — Format, Build, Test
 
 ```bash
 eval $(opam env)          # ensure opam env is initialised

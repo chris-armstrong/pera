@@ -96,7 +96,9 @@ let parse_stop_reason s =
   | "tool_use" -> Types.ToolUse
   | "max_tokens" -> Types.MaxTokens
   | "stop_sequence" -> Types.StopSequence
-  | _ -> Types.EndTurn
+  (* Forward-compat: Anthropic can add stop reasons; treat unknown as Error
+     rather than silently claiming normal completion. *)
+  | _ -> Types.Error
 
 (** Extract an integer field from a JSON object, returning 0 if absent or not an
     integer. *)
@@ -303,6 +305,8 @@ let handle_content_block_delta state json =
     | "text_delta" -> apply_text_delta state delta_fields
     | "thinking_delta" -> apply_thinking_delta state delta_fields
     | "input_json_delta" -> apply_input_json_delta state delta_fields
+    (* Forward-compat: Anthropic SSE delta types are an open set.
+       Unknown deltas are silently dropped; the default below is the no-op. *)
     | _ -> None
   in
   Option.value result ~default:(state, [])

@@ -56,7 +56,8 @@ Do not flag: error handling style, partial function usage, pattern match exhaust
 1. Read the plan stage (if referenced) to understand what was supposed to be built
 2. Read the changed/created files
 3. Apply your four guidelines strictly
-4. Run `dune build` — if it fails, that is automatic FAIL
+4. Run `semgrep --config .semgrep/ocaml-guidelines.yml <changed files>` — any ERROR-severity finding is automatic FAIL
+5. Run `dune build` — if it fails, that is automatic FAIL
 
 ## Output Format
 

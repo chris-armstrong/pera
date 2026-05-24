@@ -62,7 +62,8 @@ Do not flag: module structure, `.mli` presence, naming style, abstraction choice
 1. Read the plan stage (if referenced) to understand what was supposed to be built
 2. Read the changed/created files
 3. Apply your five guidelines strictly
-4. Run `dune build` — if it fails, that is automatic FAIL
+4. Run `semgrep --config .semgrep/ocaml-guidelines.yml <changed files>` — any ERROR-severity finding is automatic FAIL; WARNING findings require you to verify they are intentionally suppressed with `nosemgrep`
+5. Run `dune build` — if it fails, that is automatic FAIL
 
 ## Output Format
 

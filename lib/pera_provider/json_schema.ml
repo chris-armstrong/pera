@@ -193,7 +193,7 @@ let rec validate (schema : t) (value : Yojson.Safe.t) : (unit, string) result =
       let coerced = apply_type_coercion value "string" in
       let open Result.Syntax in
       let* () = check_type coerced "string" in
-      let s = match coerced with `String s -> s | _ -> "" in
+      let s = match coerced with `String s -> s | _ -> assert false in
       if List.mem ~eq:String.equal s values then Ok ()
       else
         Error
