@@ -17,9 +17,15 @@ jobs:
         with:
           ocaml-compiler: "5.4"
           dune-cache: true
+          opam-local-packages: ""
 
       - name: Install dependencies
-        run: opam install --deps-only --with-test -y .
+        run: |
+          opam install -y \
+            containers yojson \
+            eio eio_main eio_linux \
+            piaf re \
+            alcotest qcheck-alcotest qcheck-core
 
       - name: Build
         run: opam exec -- dune build
