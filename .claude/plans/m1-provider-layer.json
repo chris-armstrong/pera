@@ -166,7 +166,7 @@
         {
           "stage": 4,
           "title": "JSON repair (pera_provider)",
-          "status": "pending",
+          "status": "committed",
           "description": "Port Pi's repairJson and parseStreamingJson to OCaml. Handles the malformed JSON that Anthropic sends in tool-input deltas: invalid escape sequences (\\H) and raw control characters (literal tabs). See vendor/pi/packages/ai/src/utils/json-parse.ts. Tests ported from Pi's anthropic-sse-parsing.test.ts.",
           "files_to_create": [
             "lib/pera_provider/json_repair.mli",

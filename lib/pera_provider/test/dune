@@ -5,5 +5,13 @@
  (libraries pera_provider alcotest containers))
 
 (test
+ (name json_repair_test)
+ (libraries pera_provider alcotest containers))
+
+(test
+ (name sse_parser_test)
+ (libraries pera_provider alcotest qcheck-alcotest qcheck-core))
+
+(test
  (name event_stream_test)
  (libraries alcotest eio_main pera_provider))
