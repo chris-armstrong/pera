@@ -49,6 +49,15 @@ let message_to_json = function
       in
       `Assoc [ ("role", `String "assistant"); ("content", `List content_json) ]
 
+(** Render a [Provider.tool_schema] to the Anthropic tools array format. *)
+let tool_to_json (tool : Provider.tool_schema) =
+  `Assoc
+    [
+      ("name", `String tool.name);
+      ("description", `String tool.description);
+      ("input_schema", Json_schema.to_json tool.schema);
+    ]
+
 (** Build the JSON request body for the Anthropic messages API. *)
 let build_request_body ~model ~context ~options =
   let open Provider in
@@ -65,10 +74,15 @@ let build_request_body ~model ~context ~options =
     if String.is_empty context.system then base_fields
     else base_fields @ [ ("system", `String context.system) ]
   in
+  let with_tools =
+    if List.is_empty context.tools then with_system
+    else
+      with_system @ [ ("tools", `List (List.map tool_to_json context.tools)) ]
+  in
   let with_temperature =
     match options.temperature with
-    | None -> with_system
-    | Some t -> with_system @ [ ("temperature", `Float t) ]
+    | None -> with_tools
+    | Some t -> with_tools @ [ ("temperature", `Float t) ]
   in
   `Assoc with_temperature
 
