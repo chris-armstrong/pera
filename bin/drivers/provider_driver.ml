@@ -47,11 +47,22 @@ let () =
       let argv = Sys.argv in
       let default_model = "claude-3-5-haiku-latest" in
       let default_prompt = "Say hello in one word" in
+      let default_max_tokens = 4096 in
       let model_id =
         if Array.length argv > 1 then argv.(1) else default_model
       in
       let prompt_text =
         if Array.length argv > 2 then argv.(2) else default_prompt
+      in
+      let max_tokens =
+        if Array.length argv > 3 then
+          match int_of_string_opt argv.(3) with
+          | Some n -> n
+          | None ->
+              Printf.eprintf "warning: invalid max_tokens %S, using %d\n"
+                argv.(3) default_max_tokens;
+              default_max_tokens
+        else default_max_tokens
       in
       let model = Types.{ id = model_id; api = "anthropic" } in
       let user_msg =
@@ -66,7 +77,7 @@ let () =
             thinking = false;
           }
       in
-      let options = Provider.{ max_tokens = 256; temperature = None } in
+      let options = Provider.{ max_tokens; temperature = None } in
       Printf.printf "model: %s\n" model_id;
       Printf.printf "prompt: %s\n" prompt_text;
       Printf.printf "---\n%!";
