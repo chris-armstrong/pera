@@ -21,8 +21,14 @@ let describe_event = function
   | Types.AME_tool_call_delta { index; arguments_fragment; _ } ->
       Printf.sprintf "[tool_call_delta] index=%d fragment=%s" index
         (truncate 40 arguments_fragment)
-  | Types.AME_tool_call_end { index; _ } ->
-      Printf.sprintf "[tool_call_end] index=%d" index
+  | Types.AME_tool_call_end { index; partial } ->
+      let args =
+        match List.nth_opt partial.Types.content index with
+        | Some (Types.AToolCall { arguments; _ }) ->
+            Yojson.Safe.to_string arguments
+        | _ -> "?"
+      in
+      Printf.sprintf "[tool_call_end] index=%d args=%s" index args
   | Types.AME_done _ -> "[done]"
   | Types.AME_error { message; _ } ->
       Printf.sprintf "[error] %s" (truncate 80 message)
@@ -33,10 +39,34 @@ let summarise_content content =
     | Types.AText text -> Printf.sprintf "text(%d chars)" (String.length text)
     | Types.AThinking { text; _ } ->
         Printf.sprintf "thinking(%d chars)" (String.length text)
-    | Types.AToolCall { name; _ } -> Printf.sprintf "tool_call(%s)" name
+    | Types.AToolCall { name; arguments; _ } ->
+        Printf.sprintf "tool_call(%s, args=%s)" name
+          (Yojson.Safe.to_string arguments)
   in
   let blocks = List.map format_block content in
   if List.is_empty blocks then "(empty)" else String.concat ", " blocks
+
+(** A simple weather-lookup tool used to demonstrate provider-level tool
+    invocation. The driver does not implement the tool; it only exercises the
+    provider's ability to request a call and parse the arguments. *)
+let get_weather_tool =
+  Provider.
+    {
+      name = "get_weather";
+      description = "Get the current weather conditions for a location.";
+      schema =
+        Json_schema.object_
+          ~properties:
+            [
+              ( "location",
+                Json_schema.string ~description:"City name, e.g. \"Sydney, AU\""
+                  () );
+              ( "units",
+                Json_schema.optional
+                  (Json_schema.enum [ "celsius"; "fahrenheit" ]) );
+            ]
+          ~required:[ "location" ] ();
+    }
 
 let () =
   match Sys.getenv_opt "ANTHROPIC_API_KEY" with
@@ -46,7 +76,7 @@ let () =
   | Some _ -> (
       let argv = Sys.argv in
       let default_model = "claude-3-5-haiku-latest" in
-      let default_prompt = "Say hello in one word" in
+      let default_prompt = "What is the weather like in Sydney right now?" in
       let default_max_tokens = 4096 in
       let model_id =
         if Array.length argv > 1 then argv.(1) else default_model
@@ -55,13 +85,13 @@ let () =
         if Array.length argv > 2 then argv.(2) else default_prompt
       in
       let max_tokens =
-        if Array.length argv > 3 then
+        if Array.length argv > 3 then (
           match int_of_string_opt argv.(3) with
           | Some n -> n
           | None ->
               Printf.eprintf "warning: invalid max_tokens %S, using %d\n"
                 argv.(3) default_max_tokens;
-              default_max_tokens
+              default_max_tokens)
         else default_max_tokens
       in
       let model = Types.{ id = model_id; api = "anthropic" } in
@@ -73,7 +103,7 @@ let () =
           {
             system = "You are a helpful assistant.";
             messages = [ Provider.UserMessage user_msg ];
-            tools = [];
+            tools = [ get_weather_tool ];
             thinking = false;
           }
       in
