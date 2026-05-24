@@ -167,15 +167,18 @@ A provider is a module satisfying `Provider.S`:
 module type S = sig
   val name : string
   val stream_simple :
-    model:Model.t ->
-    context:Context.t ->
-    options:Simple_stream_options.t ->
+    env:Eio_unix.Stdenv.base ->
+    model:Types.model ->
+    context:context ->
+    options:simple_stream_options ->
     sw:Eio.Switch.t ->
-    Event_stream.t
+    (Types.assistant_message_event, Types.assistant_message) Event_stream.t
 end
 ```
 
-`Context.t` carries the system prompt, the message list (already in provider-native shape after `convert_to_llm`), the tool list, and reasoning settings. `stream_simple` is the only required entry point: it returns an event stream that yields `assistant_message_event`s and eventually resolves to a final `assistant_message`.
+`context` carries the system prompt, the message list (already in provider-native shape after `convert_to_llm`), the tool list, and reasoning settings. `stream_simple` is the only required entry point: it returns an event stream that yields `assistant_message_event`s and eventually resolves to a final `assistant_message`.
+
+The `~env` parameter carries the Eio environment needed to open network connections. This is a constraint imposed by piaf (the HTTP client library). The environment does not cross the `Provider.S` seam in terms of semantics — providers use it only to initiate HTTP connections. A future `Http_client` abstraction module would wrap piaf behind an interface, shrinking the footprint of `~env` to a narrower type; for now the full Eio base environment is passed through.
 
 Providers are looked up by `model.api`. The registry is built explicitly at startup as a `Provider_registry.t` — no global state, no side-effecting `register-builtins.ts`-style imports. This costs one line at startup and gains testability and predictable construction order.
 
@@ -577,11 +580,23 @@ These describe what coherent system exists at each checkpoint and what property 
 
 ### M1 — Streaming completion
 
-The provider layer in isolation. Can perform a one-shot streamed completion against Anthropic or OpenCode. No agentic behaviour, no tools, no harness.
+The provider layer in isolation. One-shot streamed completion against Anthropic. No agentic behaviour, no tools, no harness.
 
-**Property:** the unified event vocabulary maps correctly to the real wire formats. SSE chunk parsing handles real-world byte boundaries. Anthropic and OpenCode produce structurally equivalent event streams despite different wire formats.
+M1 delivers:
+- `pera_types`: the unified data model (`assistant_message_event`, `assistant_message`, `stop_reason`, `usage`, `provenance`, `tool_call`, content variants)
+- `Json_schema`: runtime schema DSL with Anthropic tool-arg coercions
+- `Json_repair`: port of pi's `repairJson` — fixes malformed JSON in streaming tool-call argument fragments
+- `Sse_parser`: provider-agnostic Layer A — framed event extraction across chunk boundaries (stateful, buffers incomplete lines)
+- `Anthropic_interpreter`: Layer B state machine — framed SSE events → `assistant_message_event` list, immutable partial snapshots per event
+- `Event_stream`: generic `('event, 'result) t` Eio bounded-stream primitive with backpressure
+- `Anthropic_provider`: piaf HTTP client wired through the two-layer SSE pipeline; satisfies `Provider.S`
+- `provider_driver`: manual validation binary; skips with `"skipped: no API key"` when `ANTHROPIC_API_KEY` is unset
 
-**What this validates:** the provider-as-functor design works. The compatibility-record approach to provider variation works. The unified `assistant_message_event` vocabulary is adequate.
+**Property:** the unified event vocabulary maps correctly to the Anthropic wire format. SSE chunk parsing handles real-world byte boundaries. The `assistant_message_event` vocabulary is adequate for the Anthropic API.
+
+**What this validates:** the provider-as-functor design works. The two-layer SSE architecture (chunk parser + provider interpreter) is sound. Immutable partial snapshots are cheap enough to produce per-event.
+
+**Deferred from M1.** The OpenAI-completions provider (targeting OpenCode Zen, OpenCode Go, and compatible endpoints) uses a different SSE wire format and requires its own interpreter; it is not part of this milestone. It will be introduced at M3 when the loop is wired to a real provider and multiple providers need exercising together.
 
 ### M2 — Loop verified
 
@@ -693,9 +708,9 @@ Each architectural milestone in §11 corresponds to one or more drivers passing:
 
 | Milestone | Drivers |
 |---|---|
-| M1 — Streaming completion | `provider_driver` against real LLM |
+| M1 — Streaming completion | `provider_driver` against real Anthropic LLM |
 | M2 — Loop verified | `loop_driver` (uses `Faux_provider`) |
-| M3 — Real conversation | `provider_driver` + `loop_driver` wired against the real provider |
+| M3 — Real conversation | `provider_driver` + `loop_driver` wired against real providers (Anthropic + OpenAI-completions) |
 | M4 — Acting agent | `env_driver` + `tool_driver` + M3 drivers |
 | M5 — Auditable agent | `session_driver` + `harness_driver` (without compaction) |
 | M6 — Survivable agent | `compaction_driver` + `harness_driver` (with compaction enabled) |
@@ -751,6 +766,8 @@ These are design-level. Each affects the architecture's shape and should be sett
 
 10. **The `parent_session` header field.** Records an optional parent session id, supporting "fork this session into a new file." v1 does not implement forking. Question: include the field if unused? Recommend: include; the format is forward-compatible and the cost is one optional field.
 
+11. **The `Http_client` abstraction.** `Anthropic_provider` currently calls piaf directly (`Piaf.Body.fold_string`, `Piaf.Error.to_string`). These calls are confined to the Anthropic provider module and do not leak through `Provider.S`, but swapping HTTP clients would require touching the provider internals. An `Http_client` module type with `type body`, `fold_body_string`, and `error_to_string` would insulate providers from the HTTP library choice. The question is whether this abstraction is worth its weight: there is only one plausible HTTP client for Eio (piaf), and the coupling is well-bounded. Recommend: introduce `Http_client` before M3 when the OpenAI-completions provider is added — two providers sharing one HTTP adapter justifies the abstraction; one provider does not.
+
 ---
 
-*End of architectural specification v0.4.*
+*End of architectural specification v0.5.*
