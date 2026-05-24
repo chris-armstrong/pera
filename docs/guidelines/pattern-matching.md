@@ -98,10 +98,69 @@ If the branches are sequential Result/Option operations, prefer `let*` from `nes
 
 ---
 
+## 7. Never Return a Zero-Value Sentinel from a Catch-All
+
+Returning `""`, `0`, `false`, `None`, `[]`, or any other zero-value from a catch-all arm silently discards unhandled cases. The compiler cannot warn you, and the bug surfaces far from the source.
+
+```ocaml
+(* Bad: non-AText content is silently dropped as "" *)
+let extract_text blocks =
+  List.map (function AText s -> s | _ -> "") blocks
+
+(* Bad: unknown stop_reason mapped to a default that may be wrong *)
+let stop_reason_str = function
+  | EndTurn -> "end_turn"
+  | _ -> ""
+```
+
+If a case genuinely cannot occur, say so explicitly:
+
+```ocaml
+(* Good: impossible cases made loud *)
+let extract_text blocks =
+  List.map (function
+    | AText s -> s
+    | AThinking _ | AToolCall _ ->
+        failwith "extract_text: non-text block in text-only stream") blocks
+```
+
+If a case may occur but has no sensible mapping, return `Result` or `Option`:
+
+```ocaml
+(* Good: caller decides what to do with unexpected variants *)
+let text_of_block = function
+  | AText s -> Some s
+  | AThinking _ | AToolCall _ -> None
+```
+
+If you are mapping an open external value (a string from an API, an integer code) to an internal type, map the unknown case to an explicit error variant — not a default that pretends to be success:
+
+```ocaml
+(* Bad: unknown stop reason silently becomes EndTurn *)
+let parse_stop_reason = function
+  | "end_turn" -> EndTurn
+  | "tool_use" -> ToolUse
+  | _ -> EndTurn  (* wrong: hides API changes *)
+
+(* Good: unknown becomes an explicit Error variant *)
+let parse_stop_reason = function
+  | "end_turn" -> EndTurn
+  | "tool_use" -> ToolUse
+  | "max_tokens" -> MaxTokens
+  | _ -> Error  (* or return (Error "unknown stop_reason") if caller needs the string *)
+```
+
+The test analogue of this rule: `| _ -> ()` in a test assertion is the same smell — it silently passes when it should fail.
+
+---
+
 ## Checklist
 
 - [ ] No catch-all `_` that hides unhandled cases in closed variants
 - [ ] Catch-all only used for intentionally grouped cases or open types
+- [ ] No zero-value sentinel (`""`, `0`, `[]`, `None`, `false`) returned from a catch-all arm
+- [ ] Unknown external values mapped to an explicit error variant, not a silent default
+- [ ] Impossible cases use `failwith` / `assert false`, not a silent zero value
 - [ ] Pattern matching preferred over if-else chains
 - [ ] Fields destructured in pattern, not accessed after
 - [ ] Or-patterns used for shared handling

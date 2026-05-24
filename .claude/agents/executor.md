@@ -57,6 +57,11 @@ Any anonymous `fun x -> <body>` where `<body>` is more than one line must be a n
 ### Pattern match audit
 Any `if String.equal key "a" then ... else if String.equal key "b"` should be `match key with | "a" -> ... | "b" -> ...`. This applies to all string dispatch and to any type with more than two cases.
 
+Scan every catch-all arm (`| _ ->` or `| other ->`) and check what it returns. A zero-value sentinel — `""`, `0`, `false`, `None`, `[]`, `()` — returned from a catch-all is almost always wrong. It silently discards unhandled cases. The correct responses are:
+- **Impossible case:** `failwith "unreachable: ..."` or `assert false`
+- **Possible but unhandled:** return `Option` or `Result` so the caller decides
+- **Open external type mapping to internal variant:** map to an explicit `Error`/`Unknown` variant, not a silent default
+
 ### Opam dependency audit
 Whenever you add a library to a `(libraries ...)` stanza in a `dune` file:
 1. Check if it is already declared in `dune-project` under the relevant package's `(depends ...)` stanza
