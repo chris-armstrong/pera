@@ -14,7 +14,7 @@
     {
       "epoch": 1,
       "title": "M1 — Provider layer",
-      "status": "pending",
+      "status": "committed",
       "description": "Build the provider layer from scratch: data model types, JSON schema validator, JSON repair, SSE chunk parser, Anthropic SSE interpreter, Event_stream Eio primitive, Anthropic HTTP module, and provider_driver. At the end of this epoch the provider_driver binary can stream a completion from Anthropic (run manually with ANTHROPIC_API_KEY). CI validates everything except the live network call.",
       "stages": [
         {
@@ -406,7 +406,7 @@
         {
           "stage": 8,
           "title": "Anthropic HTTP module + provider_driver (pera_provider + bin/drivers)",
-          "status": "pending",
+          "status": "committed",
           "description": "Wire piaf to the SSE interpreter via Event_stream to produce a working Anthropic provider. Define the Provider.S module type. Build provider_driver as a manual validation binary. This is the M1 acceptance proof — run manually with ANTHROPIC_API_KEY to confirm the milestone.",
           "files_to_create": [
             "lib/pera_provider/provider.mli",
