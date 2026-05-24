@@ -15,3 +15,7 @@
 (test
  (name event_stream_test)
  (libraries alcotest eio_main pera_provider))
+
+(test
+ (name sse_interpreter_test)
+ (libraries pera_provider pera_types alcotest))

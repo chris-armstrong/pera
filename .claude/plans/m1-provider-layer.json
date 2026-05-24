@@ -294,7 +294,7 @@
         {
           "stage": 6,
           "title": "Anthropic SSE interpreter (pera_provider)",
-          "status": "pending",
+          "status": "committed",
           "description": "Implement the Anthropic-specific SSE interpreter (spec §4 'SSE parsing — two layers', Layer B). State machine consuming framed_events, emitting assistant_message_events with immutable partial snapshots. Uses pera_types and json_repair. Tests ported from Pi's anthropic-sse-parsing.test.ts.",
           "files_to_create": [
             "lib/pera_provider/anthropic_interpreter.mli",
