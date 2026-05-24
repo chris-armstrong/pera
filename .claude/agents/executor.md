@@ -40,7 +40,38 @@ Pera-specific reminders:
 - IO functions return `Result`, never raise on expected failures
 - Fibres under a switch, not detached
 
-## Step 5 — Format, Build, Test
+## Step 5 — Self-Review (mandatory before formatting)
+
+After writing all code but **before** running ocamlformat or reporting, do a self-review pass over every new `.ml` file you wrote. Check each item mechanically:
+
+### Nesting audit
+For every function, count the levels of nesting (match / if / while / for / fun each count as one level). **Maximum 2 levels.** If you find 3+:
+- Extract inner logic into a named helper function, OR
+- Use `let open Result.Syntax in let* ... in` / `let open Option.Syntax in let* ... in` to flatten chains
+
+This is the single most common review failure. Count levels. Fix before moving on.
+
+### Anonymous function audit
+Any anonymous `fun x -> <body>` where `<body>` is more than one line must be a named `let` binding instead. Multi-line lambdas passed to `List.iter`, `List.map`, `fold_string`, etc. are a guideline violation.
+
+### Pattern match audit
+Any `if String.equal key "a" then ... else if String.equal key "b"` should be `match key with | "a" -> ... | "b" -> ...`. This applies to all string dispatch and to any type with more than two cases.
+
+### Opam dependency audit
+Whenever you add a library to a `(libraries ...)` stanza in a `dune` file:
+1. Check if it is already declared in `dune-project` under the relevant package's `(depends ...)` stanza
+2. If not, add it. Test-only libraries must use `(and (>= <version>) :with-test)`
+3. Run `dune build` to regenerate the `.opam` file and confirm the dep appears there
+
+### Test quality audit
+For every new domain type appearing in test assertions:
+- Define an `Alcotest.testable` value with a real `equal` function (not just tag comparison) and a `pp` printer
+- Use that testable in `Alcotest.(check testable)` calls — do not use bare `if ... then Alcotest.failf`
+- Do not use `_` prefix on testables (that suppresses the unused warning; it means you never wired it up)
+
+For `Result` assertions: use `Alcotest.(check (result inner_testable string))`.
+
+## Step 6 — Format, Build, Test
 
 ```bash
 eval $(opam env)          # ensure opam env is initialised
@@ -49,7 +80,7 @@ dune build                # must succeed
 dune runtest              # must pass (ignoring known_failures)
 ```
 
-## Step 6 — Report
+## Step 8 — Report
 
 State:
 - What was implemented
