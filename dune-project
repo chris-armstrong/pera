@@ -45,4 +45,12 @@
   (piaf
    (>= 0.2))
   (re
-   (>= 1.10))))
+   (>= 1.10))
+  (qcheck-alcotest
+   (and
+    (>= 0.21)
+    :with-test))
+  (qcheck-core
+   (and
+    (>= 0.21)
+    :with-test))))

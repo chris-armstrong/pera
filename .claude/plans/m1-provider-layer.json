@@ -233,7 +233,7 @@
         {
           "stage": 5,
           "title": "SSE chunk parser (pera_provider)",
-          "status": "pending",
+          "status": "committed",
           "description": "Implement the provider-agnostic SSE chunk parser (spec §4 'SSE parsing — two layers', Layer A). Byte chunks in, framed events out. Pure function over strings, no Eio. No Pi equivalent — Pi uses the Anthropic SDK for this layer.",
           "files_to_create": [
             "lib/pera_provider/sse_parser.mli",
