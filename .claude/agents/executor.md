@@ -40,7 +40,59 @@ Pera-specific reminders:
 - IO functions return `Result`, never raise on expected failures
 - Fibres under a switch, not detached
 
-## Step 5 — Format, Build, Test
+## Step 5 — Self-Review (mandatory before formatting)
+
+After writing all code but **before** running ocamlformat or reporting, do a self-review pass over every new `.ml` file you wrote. Check each item mechanically:
+
+### Nesting audit
+For every function, count the levels of nesting (match / if / while / for / fun each count as one level). **Maximum 2 levels.** If you find 3+:
+- Extract inner logic into a named helper function, OR
+- Use `let open Result.Syntax in let* ... in` / `let open Option.Syntax in let* ... in` to flatten chains
+
+This is the single most common review failure. Count levels. Fix before moving on.
+
+### Anonymous function audit
+Any anonymous `fun x -> <body>` where `<body>` is more than one line must be a named `let` binding instead. Multi-line lambdas passed to `List.iter`, `List.map`, `fold_string`, etc. are a guideline violation.
+
+### Pattern match audit
+Any `if String.equal key "a" then ... else if String.equal key "b"` should be `match key with | "a" -> ... | "b" -> ...`. This applies to all string dispatch and to any type with more than two cases.
+
+Scan every catch-all arm (`| _ ->` or `| other ->`) and check what it returns. A zero-value sentinel — `""`, `0`, `false`, `None`, `[]`, `()` — returned from a catch-all is almost always wrong. It silently discards unhandled cases. The correct responses are:
+- **Impossible case:** `failwith "unreachable: ..."` or `assert false`
+- **Possible but unhandled:** return `Option` or `Result` so the caller decides
+- **Open external type mapping to internal variant:** map to an explicit `Error`/`Unknown` variant, not a silent default
+
+### Opam dependency audit
+Whenever you add a library to a `(libraries ...)` stanza in a `dune` file:
+1. Check if it is already declared in `dune-project` under the relevant package's `(depends ...)` stanza
+2. If not, add it. Test-only libraries must use `(and (>= <version>) :with-test)`
+3. Run `dune build` to regenerate the `.opam` file and confirm the dep appears there
+
+### Test quality audit
+For every new domain type appearing in test assertions:
+- Define an `Alcotest.testable` value with a real `equal` function (not just tag comparison) and a `pp` printer
+- Use that testable in `Alcotest.(check testable)` calls — do not use bare `if ... then Alcotest.failf`
+- Do not use `_` prefix on testables (that suppresses the unused warning; it means you never wired it up)
+
+For `Result` assertions: use `Alcotest.(check (result inner_testable string))`.
+
+## Step 6 — Semgrep Lint (mandatory gate)
+
+Run the project's semgrep rules against all files you created or modified:
+
+```bash
+semgrep --config .semgrep/ocaml-guidelines.yml <files you changed>
+```
+
+**Any finding is a bug — fix it before proceeding.** The rules cover:
+- Banned partial functions (`List.hd`, `List.tl`, `List.nth`, `int_of_string`, `Option.get`, etc.)
+- Zero-value catch-all sentinels (`| _ -> ""`)
+- `Stdlib.(=)` structural equality
+- Silent Result/Option ignore
+
+If a finding is a false positive for an open-protocol forward-compat pattern, add `(* nosemgrep: <rule-id> *)` on the same line with a brief note. Do not suppress ERROR-severity rules.
+
+## Step 7 — Format, Build, Test
 
 ```bash
 eval $(opam env)          # ensure opam env is initialised
@@ -49,7 +101,7 @@ dune build                # must succeed
 dune runtest              # must pass (ignoring known_failures)
 ```
 
-## Step 6 — Report
+## Step 8 — Report
 
 State:
 - What was implemented

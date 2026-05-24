@@ -1,0 +1,21 @@
+(include_subdirs no)
+
+(test
+ (name json_schema_test)
+ (libraries pera_provider alcotest containers))
+
+(test
+ (name json_repair_test)
+ (libraries pera_provider alcotest containers))
+
+(test
+ (name sse_parser_test)
+ (libraries pera_provider alcotest qcheck-alcotest qcheck-core))
+
+(test
+ (name event_stream_test)
+ (libraries alcotest eio_main pera_provider))
+
+(test
+ (name sse_interpreter_test)
+ (libraries pera_provider pera_types alcotest))

@@ -1,0 +1,107 @@
+rules:
+  # ── Banned partial functions (partial-functions.md) ────────────────────────
+
+  - id: no-list-hd
+    pattern: List.hd $X
+    message: |
+      List.hd raises Not_found on empty list. Use pattern matching:
+        match $X with [] -> ... | hd :: _ -> ...
+    languages: [ocaml]
+    severity: ERROR
+
+  - id: no-list-tl
+    pattern: List.tl $X
+    message: |
+      List.tl raises Not_found on empty list. Use pattern matching:
+        match $X with [] -> ... | _ :: tl -> ...
+    languages: [ocaml]
+    severity: ERROR
+
+  - id: no-list-nth
+    pattern: List.nth $L $I
+    message: |
+      List.nth raises Not_found / Invalid_argument. Use List.nth_opt and handle None.
+    languages: [ocaml]
+    severity: ERROR
+
+  - id: no-map-find
+    pattern: Map.find $K $M
+    message: |
+      Map.find raises Not_found. Use Map.find_opt and handle None.
+    languages: [ocaml]
+    severity: ERROR
+
+  - id: no-hashtbl-find
+    pattern: Hashtbl.find $T $K
+    message: |
+      Hashtbl.find raises Not_found. Use Hashtbl.find_opt and handle None.
+    languages: [ocaml]
+    severity: ERROR
+
+  - id: no-int-of-string
+    pattern: int_of_string $X
+    message: |
+      int_of_string raises Failure on invalid input. Use int_of_string_opt.
+    languages: [ocaml]
+    severity: ERROR
+
+  - id: no-float-of-string
+    pattern: float_of_string $X
+    message: |
+      float_of_string raises Failure on invalid input. Use float_of_string_opt.
+    languages: [ocaml]
+    severity: ERROR
+
+  - id: no-option-get
+    pattern: Option.get $X
+    message: |
+      Option.get raises Invalid_argument on None. Use Option.value ~default:... or pattern match.
+    languages: [ocaml]
+    severity: ERROR
+
+  # ── Zero-value sentinels in catch-all arms (pattern-matching.md §7) ────────
+  # NOTE: | _ -> None is intentionally excluded — it is idiomatic in let*
+  # bind chains (match x with `Assoc f -> Some f | _ -> None) and produces
+  # too many false positives.
+
+  - id: no-empty-string-catch-all
+    pattern: "| _ -> \"\""
+    message: |
+      Catch-all arm returning "" silently discards the unmatched case.
+      For open external protocols, add a comment explaining the forward-compat
+      intent (and nosemgrep this line). Otherwise return an Error, raise, or
+      use assert false for provably-impossible branches.
+    languages: [ocaml]
+    severity: ERROR
+
+  # ── Structural equality (pera-specific.md) ─────────────────────────────────
+
+  - id: no-stdlib-structural-eq
+    pattern: Stdlib.(=) $A $B
+    message: |
+      Do not use Stdlib.(=). Use type-specific equality (String.equal, Int.equal, etc.).
+    languages: [ocaml]
+    severity: ERROR
+
+  # ── Silent ignore of Result/Option (error-handling.md) ─────────────────────
+
+  - id: no-silent-result-ignore
+    pattern: |
+      match $X with
+      | Ok _ -> ()
+      | Error _ -> ()
+    message: |
+      Both arms are no-ops — the Error is silently dropped. Handle it explicitly.
+    languages: [ocaml]
+    severity: WARNING
+
+  - id: no-silent-none-ignore
+    pattern: |
+      match $X with
+      | Some _ -> ()
+      | None -> ()
+    message: |
+      The None case is silently dropped. If intentional, use Option.iter instead.
+      Otherwise handle None explicitly.
+    languages: [ocaml]
+    severity: WARNING
