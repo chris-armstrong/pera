@@ -1,0 +1,6 @@
+(include_subdirs no)
+
+(test
+ (name agent_types_test)
+ (modules agent_types_test)
+ (libraries pera_core pera_types pera_provider alcotest containers eio_main))

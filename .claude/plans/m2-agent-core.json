@@ -133,7 +133,7 @@
         {
           "stage": 3,
           "title": "pera_core scaffold + agent data model types",
-          "status": "pending",
+          "status": "committed",
           "description": "Create the pera_core library and opam package, and define the agent-core data model: agent_message (superset of Provider.message with a forward-compatible synthetic slot), agent_event vocabulary, the 'ctx tool type, tool_output, and the supporting hook-result types. Pure types plus the type-level shape of the loop config; no loop logic yet.",
           "files_to_create": [
             "lib/pera_core/dune",
