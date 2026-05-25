@@ -1,5 +1,5 @@
 (library
  (name pera_core)
  (public_name pera-core)
- (modules agent_types faux_provider)
+ (modules agent_types faux_provider agent_loop)
  (libraries pera_types pera_provider containers yojson eio eio_main eio_linux alcotest))

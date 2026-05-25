@@ -248,7 +248,7 @@
         {
           "stage": 5,
           "title": "Agent loop control flow (turns, streaming, between-turn hooks)",
-          "status": "pending",
+          "status": "committed",
           "description": "Implement the loop's control flow WITHOUT tool execution yet: the outer/inner loops, streaming an assistant response (consuming the provider Event_stream, replacing partial with final), turn lifecycle events, and the between-turn / per-call hooks (transform_context, get_api_key, should_stop_after_turn, prepare_next_turn, get_steering_messages, get_follow_up_messages). Tool calls in a response are not executed here — scenarios in this stage are text-only and terminate on EndTurn; the tool path lands in Stage 6.",
           "files_to_create": [
             "lib/pera_core/agent_loop.mli",
