@@ -105,3 +105,18 @@ rules:
       Otherwise handle None explicitly.
     languages: [ocaml]
     severity: WARNING
+
+  # ── Eio concurrency (eio.md) ────────────────────────────────────────────────
+
+  - id: eio-condition-prefer-promise
+    pattern: Eio.Condition.$METHOD $...ARGS
+    message: |
+      Eio.Condition signals are NOT sticky. A broadcast/signal is lost if no fibre
+      is awaiting at that exact instant. Because Eio forks head-of-queue, the
+      signalling fibre often completes before the waiting fibre is scheduled,
+      causing the waiter to block forever.
+      For one-shot completion signals, use Eio.Promise instead (see docs/guidelines/eio.md §2).
+      Use Eio.Condition only for multi-waiter predicate loops where the waiter
+      re-checks the condition after waking.
+    languages: [ocaml]
+    severity: WARNING
