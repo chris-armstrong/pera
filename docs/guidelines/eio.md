@@ -61,14 +61,32 @@ Use `Eio.Condition` only for **multi-waiter, reusable** notifications where:
 
 ---
 
-## 3. Producer fibres must close their output stream on every exit path
+## 3. Stream cancellation and explicit cleanup
 
-Any fibre that writes to an `Event_stream` (or other bounded channel) **must**
-close the stream even when the fibre is cancelled or raises an unexpected exception.
-Failure to do so leaves the consumer blocked on `iter` forever, and the enclosing
-`Switch.run` never returns.
+`Eio.Stream.take` is cancellation-aware. When a switch is cancelled, any fibre
+blocked on `take` receives a `Cancelled` exception and unblocks. When a forked
+fibre raises an unhandled exception, Eio cancels the **whole switch**, so
+consumers under the same switch also get `Cancelled`.
 
-### Pattern — exception handler in every fork body that owns a stream
+**If producer and consumer share the same switch** (the normal pattern), there is
+no deadlock on cancellation — the switch cancellation unblocks the consumer
+automatically.
+
+**`Event_stream` does not currently take a `~sw` parameter** and does not
+auto-close when a switch ends (unlike `Eio.Buf_write.create ?sw` which calls
+`abort` via `Switch.on_release`). Adding a `~sw` parameter is a planned
+improvement, but blocked by the fact that `Event_stream.close_error` must call
+`Eio.Stream.add` to push the sentinel — which blocks if the stream is full and
+there is no active consumer.
+
+**Explicit `close_error` in the exception handler is only needed when:**
+- The consumer runs under a **different** switch than the producer, OR
+- You need to emit a specific final event (e.g. `AE_agent_end`) before the stream
+  terminates, OR
+- You want a readable error string on the stream rather than a raw `Cancelled`
+  exception reaching the consumer.
+
+### Pattern — explicit cleanup when one of the above applies
 
 ```ocaml
 Eio.Fiber.fork ~sw (fun () ->
@@ -78,14 +96,13 @@ Eio.Fiber.fork ~sw (fun () ->
   with
   | () -> ()
   | exception exn ->
-      (* Always close so the consumer unblocks. Swallow double-close. *)
+      (* Emit cleanup event + meaningful error message before stream closes. *)
       (try Event_stream.close_error stream (Printexc.to_string exn)
-       with _ -> ()))
+       with _ -> ()))  (* swallow double-close *)
 ```
 
-This pattern applies whenever a fork is the sole writer to a stream. If you fork
-without this guard, a bug or cancellation in the body silently deadlocks the
-consumer.
+In the agent loop this is used because `AE_agent_end` must always be emitted and
+the error should be human-readable — not because the switch topology requires it.
 
 ---
 
