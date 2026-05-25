@@ -23,3 +23,7 @@
 (test
  (name http_client_test)
  (libraries pera_provider alcotest eio_main containers))
+
+(test
+ (name anthropic_request_test)
+ (libraries pera_provider pera_types alcotest containers fmt))

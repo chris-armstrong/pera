@@ -23,6 +23,11 @@ type message =
       *)
   | AssistantMessage of Types.assistant_message
       (** A previously completed assistant turn. *)
+  | ToolResultMessage of Types.tool_result_content
+      (** The result of a tool call, sent back to the model. Consecutive
+          [ToolResultMessage] values in the message list are coalesced into a
+          single provider request message where the provider requires it (e.g.
+          Anthropic). *)
 
 type context = {
   system : string;
