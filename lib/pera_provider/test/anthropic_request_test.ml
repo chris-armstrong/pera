@@ -69,14 +69,22 @@ let test_single_tool_result_renders_as_user_message () =
   let rendered = render_messages messages in
   (* Assert: exactly one rendered message *)
   Alcotest.(check int) "one message" 1 (List.length rendered);
-  let msg_fields = as_assoc "message[0]" (List.nth rendered 0) in
+  let msg_fields =
+    as_assoc "message[0]"
+      (List.nth_opt rendered 0
+      |> Option.get_exn_or "expected rendered message at index 0")
+  in
   (* role = "user" *)
   let role = assoc_exn "role" msg_fields |> as_string "role" in
   Alcotest.(check string) "role is user" "user" role;
   (* content is a list with one tool_result block *)
   let content_list = assoc_exn "content" msg_fields |> as_list "content" in
   Alcotest.(check int) "one content block" 1 (List.length content_list);
-  let block_fields = as_assoc "content[0]" (List.nth content_list 0) in
+  let block_fields =
+    as_assoc "content[0]"
+      (List.nth_opt content_list 0
+      |> Option.get_exn_or "expected content block at index 0")
+  in
   let block_type = assoc_exn "type" block_fields |> as_string "block type" in
   Alcotest.(check string) "block type is tool_result" "tool_result" block_type;
   let tool_use_id =
@@ -102,14 +110,26 @@ let test_consecutive_tool_results_coalesce_into_one_user_message () =
   let rendered = render_messages messages in
   (* Assert: exactly ONE merged user message *)
   Alcotest.(check int) "one merged message" 1 (List.length rendered);
-  let msg_fields = as_assoc "message[0]" (List.nth rendered 0) in
+  let msg_fields =
+    as_assoc "message[0]"
+      (List.nth_opt rendered 0
+      |> Option.get_exn_or "expected rendered message at index 0")
+  in
   let role = assoc_exn "role" msg_fields |> as_string "role" in
   Alcotest.(check string) "role is user" "user" role;
   (* content list has two tool_result blocks in source order *)
   let content_list = assoc_exn "content" msg_fields |> as_list "content" in
   Alcotest.(check int) "two content blocks" 2 (List.length content_list);
-  let first_block = as_assoc "content[0]" (List.nth content_list 0) in
-  let second_block = as_assoc "content[1]" (List.nth content_list 1) in
+  let first_block =
+    as_assoc "content[0]"
+      (List.nth_opt content_list 0
+      |> Option.get_exn_or "expected content block at index 0")
+  in
+  let second_block =
+    as_assoc "content[1]"
+      (List.nth_opt content_list 1
+      |> Option.get_exn_or "expected content block at index 1")
+  in
   let first_id =
     assoc_exn "tool_use_id" first_block |> as_string "first tool_use_id"
   in
@@ -130,9 +150,17 @@ let test_tool_result_is_error_flag_propagates () =
   let rendered = render_messages messages in
   (* Assert: one message with is_error=true in the block *)
   Alcotest.(check int) "one message" 1 (List.length rendered);
-  let msg_fields = as_assoc "message[0]" (List.nth rendered 0) in
+  let msg_fields =
+    as_assoc "message[0]"
+      (List.nth_opt rendered 0
+      |> Option.get_exn_or "expected rendered message at index 0")
+  in
   let content_list = assoc_exn "content" msg_fields |> as_list "content" in
-  let block_fields = as_assoc "content[0]" (List.nth content_list 0) in
+  let block_fields =
+    as_assoc "content[0]"
+      (List.nth_opt content_list 0
+      |> Option.get_exn_or "expected content block at index 0")
+  in
   let is_error = assoc_exn "is_error" block_fields in
   Alcotest.(check bool)
     "is_error is true" true
@@ -183,11 +211,19 @@ let test_tool_results_between_other_messages_do_not_over_merge () =
   (* Assert: exactly three rendered messages [assistant, user(merged), user] *)
   Alcotest.(check int) "three messages" 3 (List.length rendered);
   (* First message: assistant role *)
-  let first_fields = as_assoc "message[0]" (List.nth rendered 0) in
+  let first_fields =
+    as_assoc "message[0]"
+      (List.nth_opt rendered 0
+      |> Option.get_exn_or "expected rendered message at index 0")
+  in
   let first_role = assoc_exn "role" first_fields |> as_string "first role" in
   Alcotest.(check string) "first message is assistant" "assistant" first_role;
   (* Second message: user role with two tool_result blocks (the merged run) *)
-  let second_fields = as_assoc "message[1]" (List.nth rendered 1) in
+  let second_fields =
+    as_assoc "message[1]"
+      (List.nth_opt rendered 1
+      |> Option.get_exn_or "expected rendered message at index 1")
+  in
   let second_role = assoc_exn "role" second_fields |> as_string "second role" in
   Alcotest.(check string) "second message is user" "user" second_role;
   let second_content =
@@ -197,17 +233,25 @@ let test_tool_results_between_other_messages_do_not_over_merge () =
     "second message has two blocks" 2
     (List.length second_content);
   let second_first_block =
-    as_assoc "second content[0]" (List.nth second_content 0)
+    as_assoc "second content[0]"
+      (List.nth_opt second_content 0
+      |> Option.get_exn_or "expected content block at index 0")
   in
   let second_second_block =
-    as_assoc "second content[1]" (List.nth second_content 1)
+    as_assoc "second content[1]"
+      (List.nth_opt second_content 1
+      |> Option.get_exn_or "expected content block at index 1")
   in
   let id_a = assoc_exn "tool_use_id" second_first_block |> as_string "id_a" in
   let id_b = assoc_exn "tool_use_id" second_second_block |> as_string "id_b" in
   Alcotest.(check string) "first merged block is call_a" "call_a" id_a;
   Alcotest.(check string) "second merged block is call_b" "call_b" id_b;
   (* Third message: user role with plain text (the follow-up user message) *)
-  let third_fields = as_assoc "message[2]" (List.nth rendered 2) in
+  let third_fields =
+    as_assoc "message[2]"
+      (List.nth_opt rendered 2
+      |> Option.get_exn_or "expected rendered message at index 2")
+  in
   let third_role = assoc_exn "role" third_fields |> as_string "third role" in
   Alcotest.(check string) "third message is user" "user" third_role;
   let third_content =
@@ -216,7 +260,11 @@ let test_tool_results_between_other_messages_do_not_over_merge () =
   Alcotest.(check int)
     "third message has one block" 1
     (List.length third_content);
-  let third_block = as_assoc "third content[0]" (List.nth third_content 0) in
+  let third_block =
+    as_assoc "third content[0]"
+      (List.nth_opt third_content 0
+      |> Option.get_exn_or "expected content block at index 0")
+  in
   let third_block_type =
     assoc_exn "type" third_block |> as_string "third block type"
   in
