@@ -31,19 +31,21 @@ type 'ctx prepare_ctx = {
 }
 (** Context passed to the [prepare_next_turn] hook. *)
 
-type before_tool_call_ctx = {
+type 'ctx before_tool_call_ctx = {
   message : Agent_types.agent_message;
       (** The assistant message that produced the tool call. *)
   tool_call : Pera_types.Types.tool_call;
       (** The tool call being considered. *)
-  args : Yojson.Safe.t;  (** Validated arguments for the tool call. *)
+  validated_args : Yojson.Safe.t;  (** Validated arguments for the tool call. *)
+  tool_ctx : 'ctx;  (** The tool context from the loop config. *)
 }
 (** Context passed to the [before_tool_call] hook. *)
 
-type after_tool_call_ctx = {
+type 'ctx after_tool_call_ctx = {
   tool_call : Pera_types.Types.tool_call;  (** The tool call that completed. *)
-  result : Yojson.Safe.t;  (** The tool result (as JSON). *)
-  is_error : bool;  (** Whether the tool call produced an error. *)
+  result : Pera_types.Types.tool_result_content;
+      (** The tool result content. *)
+  tool_ctx : 'ctx;  (** The tool context from the loop config. *)
 }
 (** Context passed to the [after_tool_call] hook. *)
 
@@ -79,14 +81,13 @@ type 'ctx agent_loop_config = {
           the loop itself; this callback exists to satisfy provider contracts.
       *)
   before_tool_call :
-    (before_tool_call_ctx -> Agent_types.before_tool_call_result) option;
+    ('ctx before_tool_call_ctx -> Agent_types.before_tool_call_result) option;
       (** Optional hook called before each tool execution. Return [Allow] to
           proceed or [Deny msg] to skip execution and surface [msg] as an error
-          result. Wired in Stage 6; placeholder for Stage 5. *)
-  after_tool_call : (after_tool_call_ctx -> unit) option;
+          result. *)
+  after_tool_call : ('ctx after_tool_call_ctx -> unit) option;
       (** Optional hook called after each tool execution completes (including
-          error results). Side-effect only. Wired in Stage 6; placeholder for
-          Stage 5. *)
+          error results). Side-effect only. *)
   should_stop_after_turn : ('ctx should_stop_ctx -> bool) option;
       (** Optional hook called after each turn. If it returns [true], the inner
           loop exits and the outer loop checks for follow-up messages. *)

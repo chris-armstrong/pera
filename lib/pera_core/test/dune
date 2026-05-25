@@ -14,3 +14,8 @@
  (name agent_loop_test)
  (modules agent_loop_test)
  (libraries pera_core pera_types pera_provider alcotest containers eio_main))
+
+(test
+ (name agent_loop_tools_test)
+ (modules agent_loop_tools_test)
+ (libraries pera_core pera_types pera_provider alcotest containers eio_main))

@@ -334,7 +334,7 @@
         {
           "stage": 6,
           "title": "Tool execution (sequential + parallel, ordering, validation, hooks)",
-          "status": "pending",
+          "status": "committed",
           "description": "Wire tool execution into the loop's inner-loop step 4-5. Implement schema validation before execute, before_tool_call (Allow/Deny) and after_tool_call hooks, sequential and parallel execution modes with the source-order result rule, and tool-error-to-tool-result conversion. This is the heart of the M2 'tool execution ordering is correct' property.",
           "files_to_create": [
             "lib/pera_core/test/agent_loop_tools_test.ml"
