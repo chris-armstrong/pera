@@ -1,0 +1,516 @@
+{
+  "plan_id": "m2-agent-core",
+  "title": "M2 — Loop verified (agent core)",
+  "source": "SPECIFICATION.md §5 (the agent core), §3 (agent_message / agent_event data model), §12 (loop_driver + Faux_provider). Milestone M2: the agent loop wired to a scriptable faux provider; no real network. Exercises the full turn-and-hook surface, tool-execution ordering, and cancellation. The §6 Agent wrapper is explicitly OUT of scope for M2 (deferred to the harness, M5).",
+  "baseline": {
+    "build_passes": true,
+    "tests_pass": true,
+    "known_failures": [],
+    "notes": "M1 (provider layer) is merged to main at 091379d; dune build and dune runtest are green. Libraries present: pera_types (data model), pera_provider (Provider.S, Event_stream, SSE parser/interpreter, Json_schema, Json_repair, Anthropic_provider, anthropic_request, provider_driver). No pera_core library exists yet — it is created in this milestone.\n\nDESIGN DECISIONS settled with the user before planning (do not revisit without asking):\n(1) SCOPE — bare loop only. Build the loop, hooks, tool execution, Faux_provider, and loop_driver. The §6 Agent wrapper (subscription fan-out, single-flight, observable state) is deferred to the harness milestone (M5).\n(2) TOOL RESULTS — add a third ToolResultMessage variant to Provider.message (pi-faithful: Message = UserMessage | AssistantMessage | ToolResultMessage), and teach anthropic_request to render it. Anthropic requires consecutive tool-result messages to be COALESCED into a single user-role message carrying multiple tool_result content blocks (ref vendor/pi/packages/ai/src/providers/anthropic.ts lines 1100-1133). build_request_body's current 1:1 List.map over messages must become a grouping fold.\n(3) HTTP_CLIENT — extract a thin Http_client abstraction in M2 (Stage 1), resolving the noted issue from the PR #2 review on anthropic_provider.ml:119 (piaf body/error types leaking into the provider). Wrap piaf behind: type body, fold_body_string, type error / error_to_string.\n(4) LOOP↔PROVIDER SEAM — the loop config takes a provider-agnostic stream_fn closure (model/context/options/sw -> Event_stream.t), NOT a Provider.S module. This keeps the loop pure-from-IO and free of ~env. Faux_provider satisfies Provider.S AND exposes an adapter that produces a stream_fn; the harness/driver binds ~env into the closure.\n\nREUSE AUDIT (modules this plan creates vs. existing code):\n- Event_stream (pera_provider): REUSE as-is at the agent-core level — spec §4 says the same ('event,'result) t carries (agent_event, agent_message list) inside the loop. No change needed.\n- Provider.message / Provider.context / Provider.simple_stream_options (pera_provider): REUSE; extend message with ToolResultMessage (Stage 2).\n- assistant_message_event, assistant_message, tool_call, tool_result_content, stop_reason, model, tool_error (pera_types): REUSE; the agent core builds history and events from these.\n- Json_schema.validate (pera_provider): REUSE for tool-argument validation before execute (Stage 6).\n- Json_repair: not needed at this layer.\n- agent_message, agent_event, 'ctx tool, tool_output, agent_loop_config, hooks, the run function, Faux_provider, loop_driver: ALL NEW (pera_core).\n- Ported from pi: the loop control flow and tests come from vendor/pi/packages/agent/src/agent-loop.ts and vendor/pi/packages/agent/test/agent-loop.test.ts. Type shapes from vendor/pi/packages/agent/src/types.ts (AgentEvent lines 403-418, AgentLoopConfig lines 135-277). The Agent class (agent.ts) and agent.test.ts are §6 wrapper material — NOT ported in M2.\n\nLAYERING NOTE: agent_message/agent_event reference Provider.message, which lives in pera_provider (not pera_types). Therefore the agent-core data types must live in pera_core (which depends on pera_provider), not in pera_types. The 'ctx tool type references Eio.Switch/Eio.Cancel, so it also belongs in pera_core."
+  },
+  "epochs": [
+    {
+      "epoch": 1,
+      "title": "Provider-layer prerequisites for the loop",
+      "status": "pending",
+      "description": "Two pera_provider changes the loop depends on, both flagged as noted issues. Stage 1 extracts the Http_client abstraction (PR #2 review debt); it is independent of the loop. Stage 2 adds the ToolResultMessage variant and tool-result serialisation (coalescing) so the loop can feed tool results back through convert_to_llm. Both compile and keep the existing provider tests green.",
+      "stages": [
+        {
+          "stage": 1,
+          "title": "Extract Http_client abstraction in pera_provider",
+          "status": "committed",
+          "description": "Introduce a thin Http_client module that wraps piaf, so the Anthropic provider no longer references Piaf.Body / Piaf.Error directly. Resolves the noted refactor hazard from the PR #2 review (anthropic_provider.ml:119) and the spec's Open Question #11. Behaviour-preserving: the provider's observable output does not change.",
+          "files_to_create": [
+            "lib/pera_provider/http_client.mli",
+            "lib/pera_provider/http_client.ml",
+            "lib/pera_provider/test/http_client_test.ml"
+          ],
+          "files_to_modify": [
+            "lib/pera_provider/anthropic_provider.ml",
+            "lib/pera_provider/dune",
+            "lib/pera_provider/test/dune"
+          ],
+          "depends_on": [],
+          "implementation_notes": "Read anthropic_provider.ml first to see exactly which piaf surfaces it uses (look for Piaf.Body.*, Piaf.Error.*, the request/post call, the streaming body fold). Define Http_client.mli to expose only what the provider needs, hiding piaf: at minimum (a) a way to issue a streaming POST that yields response body chunks to a callback under a switch, and (b) error normalisation. Suggested surface: `type error`; `val error_to_string : error -> string`; a `post_stream` (or `stream_response`) function taking ~env ~sw, url, headers, and body string, plus an ~on_chunk:(string -> unit) callback, returning (unit, error) result; it folds the response body string-by-string into on_chunk (this is where the current Piaf.Body.fold_string / Piaf.Error.to_string usage moves). Keep the signature minimal — do not expose Piaf types in the .mli. Move the piaf-specific code from anthropic_provider.ml into http_client.ml and rewrite the provider to call Http_client. Do NOT change the provider's external behaviour, the SSE pipeline, or Provider.S. open Containers at the top of the .ml. IO returns Result, never raises (guideline pera-specific §6). This is the abstraction the OpenAI-completions provider will share at M3.",
+          "coding_guidelines_to_emphasize": [
+            "module-boundaries.md — .mli hides piaf entirely; the provider sees only Http_client's interface",
+            "abstractions.md — one narrow seam over the HTTP library; parameter reduction",
+            "error-handling.md — error_to_string maps transport failures to strings; never raise on network errors",
+            "pera-specific.md §5 — ~sw labelled arg; structured concurrency"
+          ],
+          "test_requirements": {
+            "existing_tests": [
+              "lib/pera_provider/test/* (all M1 provider tests must remain green — this is a behaviour-preserving refactor)"
+            ],
+            "new_tests": [
+              {
+                "file": "lib/pera_provider/test/http_client_test.ml",
+                "test_name": "test_error_to_string_is_total_and_nonempty",
+                "description": "Construct each representable Http_client.error value (or the one wrapping a piaf error if error is abstract, via a helper that exercises a failed connection to an unroutable address) and confirm error_to_string returns a non-empty string. If error is opaque with no public constructor, this test instead drives post_stream against an invalid URL (e.g. http://127.0.0.1:1/ ) under Eio_main.run and asserts the result is Error with a non-empty error_to_string.",
+                "asserts": "error_to_string never raises and returns a non-empty string for a real transport failure"
+              }
+            ],
+            "test_command": "dune runtest lib/pera_provider",
+            "notes": "This is primarily a behaviour-preserving refactor; its main safety net is the existing M1 provider test suite plus `dune build` of provider_driver. The one new unit test pins the error-normalisation seam. The test-reviewer should treat the live-network path (post_stream success) as the same acknowledged exception M1 stage 8 carries — it is exercised manually via provider_driver, not in CI."
+          },
+          "acceptance_criteria": [
+            "dune build succeeds, including provider_driver",
+            "anthropic_provider.ml contains no reference to Piaf.* — all piaf usage is confined to http_client.ml",
+            "http_client.mli exposes no piaf types",
+            "All existing pera_provider tests still pass",
+            "provider_driver still builds and (run manually with ANTHROPIC_API_KEY) still streams a completion"
+          ]
+        },
+        {
+          "stage": 2,
+          "title": "ToolResultMessage variant + Anthropic tool-result serialisation",
+          "status": "pending",
+          "description": "Add the third message variant so tool results can live in conversation history and be sent back to the provider. Extend the Anthropic request builder to render tool-result messages, coalescing consecutive ones into a single user-role message with multiple tool_result blocks (Anthropic's required shape).",
+          "files_to_create": [],
+          "files_to_modify": [
+            "lib/pera_provider/provider.mli",
+            "lib/pera_provider/anthropic_request.ml",
+            "lib/pera_provider/anthropic_request.mli",
+            "lib/pera_provider/test/anthropic_request_test.ml"
+          ],
+          "depends_on": [],
+          "implementation_notes": "In provider.mli, extend the message variant to: UserMessage of Types.user_message | AssistantMessage of Types.assistant_message | ToolResultMessage of Types.tool_result_content. (Types.tool_result_content already exists: { tool_call_id; content: Yojson.Safe.t; is_error: bool }.) This makes every existing match on Provider.message non-exhaustive — fix them (notably anthropic_request.message_to_json) so the build stays green. In anthropic_request.ml: a single ToolResultMessage renders to an Anthropic user message whose content is a list of one tool_result block: { type: 'tool_result', tool_use_id: <tool_call_id>, content: <content>, is_error: <bool> }. CRITICAL: consecutive ToolResultMessages must coalesce into ONE user message carrying all their tool_result blocks (Anthropic rejects tool_result blocks split across separate user messages when they answer one assistant turn's parallel calls). The current build_request_body does `List.map message_to_json context.messages` — a 1:1 map cannot coalesce. Replace that with a grouping pass over the message list (a fold that, when it hits a run of ToolResultMessages, emits a single user message with the collected blocks). Reference vendor/pi/packages/ai/src/providers/anthropic.ts lines 1100-1133 for the exact algorithm (collect current + look ahead while role is toolResult, emit one user message, skip consumed). The content field of tool_result: if Types.tool_result_content.content is already a JSON string value use it directly; otherwise wrap per Anthropic (a JSON value is acceptable as the content of a tool_result block). Update anthropic_request.mli only if a new public function is introduced (e.g. if you expose `messages_to_json : Provider.message list -> Yojson.Safe.t list` for the coalescing pass — preferred over keeping it private if it aids testing). open Containers; no structural equality (match on the variant).",
+          "coding_guidelines_to_emphasize": [
+            "pattern-matching.md — exhaustive match on the now-3-way message variant; no catch-all",
+            "type-safety.md — ToolResultMessage carries the typed tool_result_content, not a stringly blob",
+            "naming-and-intermediates.md — name the coalescing/grouping step clearly",
+            "pera-specific.md — open Containers, no (=) on variants"
+          ],
+          "test_requirements": {
+            "existing_tests": [
+              "lib/pera_provider/test/anthropic_request_test.ml (existing user/assistant/tools/thinking cases must still pass)"
+            ],
+            "new_tests": [
+              {
+                "file": "lib/pera_provider/test/anthropic_request_test.ml",
+                "test_name": "test_single_tool_result_renders_as_user_message",
+                "description": "A ToolResultMessage renders to a user-role message containing one tool_result block with tool_use_id, content, and is_error.",
+                "asserts": "message_to_json (ToolResultMessage {...}) is `Assoc with role='user' and content = [ {type='tool_result'; tool_use_id=...; is_error=false} ]"
+              },
+              {
+                "file": "lib/pera_provider/test/anthropic_request_test.ml",
+                "test_name": "test_consecutive_tool_results_coalesce_into_one_user_message",
+                "description": "Two consecutive ToolResultMessages in the message list produce ONE user message in the request body with two tool_result blocks, in source order.",
+                "asserts": "build_request_body messages-array length reflects one merged user message; its content list has length 2 with tool_use_ids in original order"
+              },
+              {
+                "file": "lib/pera_provider/test/anthropic_request_test.ml",
+                "test_name": "test_tool_result_is_error_flag_propagates",
+                "description": "A ToolResultMessage with is_error=true renders is_error:true in the tool_result block.",
+                "asserts": "rendered tool_result block has is_error = `Bool true"
+              },
+              {
+                "file": "lib/pera_provider/test/anthropic_request_test.ml",
+                "test_name": "test_tool_results_between_other_messages_do_not_over_merge",
+                "description": "A tool-result run bounded by an assistant message on one side and a user message on the other coalesces only the contiguous tool results, leaving the surrounding messages intact and in order.",
+                "asserts": "the messages array preserves [assistant; user(merged tool_results); user] order with correct boundaries"
+              }
+            ],
+            "test_command": "dune runtest lib/pera_provider"
+          },
+          "acceptance_criteria": [
+            "dune build succeeds",
+            "Provider.message has three variants and all matches on it are exhaustive",
+            "A single tool result renders as a user message with a tool_result block",
+            "Consecutive tool results coalesce into one user message preserving source order",
+            "is_error propagates",
+            "All existing anthropic_request tests still pass"
+          ]
+        }
+      ]
+    },
+    {
+      "epoch": 2,
+      "title": "Agent core loop (pera_core)",
+      "status": "pending",
+      "description": "Build the pera_core library: the agent data model (agent_message, agent_event, tool, tool_output, loop config + hooks), the Faux_provider test double, the loop control flow (outer/inner loops, streaming consumption, hook contract), tool execution (sequential + parallel with source-ordered results, schema validation, error and deny handling), cancellation, and the loop_driver. At the end of this epoch the loop runs deterministically against scripted scenarios with no network or filesystem, proving the M2 property: turn semantics, hook contract, tool-execution ordering, and cancellation are correct independent of any provider.",
+      "stages": [
+        {
+          "stage": 3,
+          "title": "pera_core scaffold + agent data model types",
+          "status": "pending",
+          "description": "Create the pera_core library and opam package, and define the agent-core data model: agent_message (superset of Provider.message with a forward-compatible synthetic slot), agent_event vocabulary, the 'ctx tool type, tool_output, and the supporting hook-result types. Pure types plus the type-level shape of the loop config; no loop logic yet.",
+          "files_to_create": [
+            "lib/pera_core/dune",
+            "lib/pera_core/agent_types.mli",
+            "lib/pera_core/agent_types.ml",
+            "lib/pera_core/test/dune",
+            "lib/pera_core/test/agent_types_test.ml"
+          ],
+          "files_to_modify": [
+            "dune-project"
+          ],
+          "depends_on": [2],
+          "implementation_notes": "dune-project: add a (package (name pera-core) ...) stanza with depends ocaml (>= 5.4), pera-types (= :version), pera-provider (= :version), containers (>= 3.0), yojson (>= 2.0), eio/eio_main/eio_linux (>= 1.0), and with-test qcheck-core/qcheck-alcotest + alcotest. generate_opam_files is already on, so pera-core.opam is produced by dune — do not hand-write it. lib/pera_core/dune: (library (name pera_core) (public_name pera-core) (libraries pera_types pera_provider containers yojson eio eio_main eio_linux)).\n\nDefine in agent_types.mli (open Pera_types and Pera_provider where needed in the .ml):\n(1) agent_message — the §3 superset. Recommended shape that realises 'permits synthetic messages, none in v1, but the shape exists':\n    type synthetic = |   (* no synthetic message kinds in v1; compaction summaries / model-change markers added at M6 *)\n    type agent_message = Real of Provider.message | Synthetic of synthetic\n  The empty `synthetic` makes the Synthetic case uninhabited now, so convert_to_llm can match `Real m -> [m] | Synthetic _ -> .` (refutation). THIS ENCODING IS SETTLED (user decision) — do NOT substitute a plain `type agent_message = Provider.message` alias or an independent mirror type. Rationale: it honours spec §3 ('superset… permits synthetic messages', 'not the same type') and the closed-sum discipline of §3 Events, and makes the M6 compaction change additive (add a `synthetic` constructor + render it as a framed user message per §8) rather than an alias→variant refactor. The wrap/unwrap boilerplate is the accepted cost. This wrapping of Provider.message is also what places these types in pera_core (it references pera_provider), consistent with §2 layering.\n(2) tool_output: type tool_output = Tool_text of string | Tool_json of Yojson.Safe.t. (The loop converts this to Types.tool_result_content: Tool_text s -> content = `String s; Tool_json j -> content = j.)\n(3) 'ctx tool (spec §3): { name: string; description: string; schema: Json_schema.t; mode: [ `Sequential | `Parallel ]; execute: ctx:'ctx -> args:Yojson.Safe.t -> sw:Eio.Switch.t -> cancel:Eio.Cancel.t -> (tool_output, Types.tool_error) result }. mode is the per-tool default execution mode (spec §9): read/grep Parallel, write/bash Sequential.\n(4) agent_event (port of vendor/pi/packages/agent/src/types.ts AgentEvent lines 403-418):\n    type agent_event =\n      | AE_agent_start\n      | AE_agent_end of { messages : agent_message list }\n      | AE_turn_start\n      | AE_turn_end of { message : agent_message; tool_results : Types.tool_result_content list }\n      | AE_message_start of { message : agent_message }\n      | AE_message_update of { message : agent_message; event : Types.assistant_message_event }\n      | AE_message_end of { message : agent_message }\n      | AE_tool_execution_start of { tool_call_id : string; tool_name : string; args : Yojson.Safe.t }\n      | AE_tool_execution_update of { tool_call_id : string; tool_name : string; partial : Yojson.Safe.t }\n      | AE_tool_execution_end of { tool_call_id : string; tool_name : string; result : Yojson.Safe.t; is_error : bool }\n(5) before_tool_call_result: type before_tool_call_result = Allow | Deny of string.\n(6) turn_update (port of AgentLoopTurnUpdate): { messages : agent_message list option; model : Types.model option; thinking : bool option } — any field None means leave unchanged.\nProvide helper(s): convert tool_output -> Types.tool_result_content given a tool_call_id and is_error. Keep these types in .mli; .ml just realises them. open Containers in the .ml. No structural equality; if tests need equality on events, expose an `equal`/`pp` for agent_event (Alcotest testable) — see test-patterns §2.",
+          "coding_guidelines_to_emphasize": [
+            "module-boundaries.md — .mli first; agent_types is the vocabulary the loop is written against",
+            "type-safety.md — closed variants for events and hook results; no stringly-typed event kinds",
+            "pattern-matching.md — empty synthetic type enables refutation in convert_to_llm",
+            "pera-specific.md — open Containers, no (=)"
+          ],
+          "test_requirements": {
+            "existing_tests": [],
+            "new_tests": [
+              {
+                "file": "lib/pera_core/test/agent_types_test.ml",
+                "test_name": "test_tool_output_text_converts_to_tool_result_content",
+                "description": "Tool_text 'ok' for a given tool_call_id and is_error=false converts to a tool_result_content with content = `String 'ok'.",
+                "asserts": "the helper produces { tool_call_id; content = `String \"ok\"; is_error = false }"
+              },
+              {
+                "file": "lib/pera_core/test/agent_types_test.ml",
+                "test_name": "test_tool_output_json_converts_preserving_value",
+                "description": "Tool_json (`Assoc [...]) converts to tool_result_content whose content is the same JSON value.",
+                "asserts": "content field equals the supplied Yojson value"
+              },
+              {
+                "file": "lib/pera_core/test/agent_types_test.ml",
+                "test_name": "test_agent_event_testable_distinguishes_variants",
+                "description": "The Alcotest testable for agent_event treats two different variants (e.g. AE_turn_start vs AE_agent_start) as unequal and identical variants as equal — confirms the equal/pp used by later loop tests works.",
+                "asserts": "equal AE_turn_start AE_agent_start = false; equal AE_turn_start AE_turn_start = true"
+              }
+            ],
+            "test_command": "dune runtest lib/pera_core"
+          },
+          "acceptance_criteria": [
+            "dune build succeeds and pera-core.opam is generated",
+            "agent_message, agent_event, 'ctx tool, tool_output, before_tool_call_result, turn_update are defined in agent_types.mli",
+            "agent_event has all 10 variants from the spec/pi vocabulary",
+            "An Alcotest testable (equal + pp) for agent_event is available for later stages",
+            "dune runtest lib/pera_core passes"
+          ]
+        },
+        {
+          "stage": 4,
+          "title": "Faux_provider test double",
+          "status": "pending",
+          "description": "Implement Faux_provider: the load-bearing driver/test infrastructure (spec §12). It emits a programmed sequence of assistant_message_events and resolves to a scripted final assistant_message, with no network. It satisfies Provider.S and also exposes a stream_fn adapter (the form the loop consumes). It records the contexts it was called with, so tests can assert on convert_to_llm output and steering/follow-up injection.",
+          "files_to_create": [
+            "lib/pera_core/faux_provider.mli",
+            "lib/pera_core/faux_provider.ml",
+            "lib/pera_core/test/faux_provider_test.ml"
+          ],
+          "files_to_modify": [
+            "lib/pera_core/dune"
+          ],
+          "depends_on": [3],
+          "implementation_notes": "Faux_provider drives a deterministic Event_stream of Types.assistant_message_event values then closes with a final Types.assistant_message (spec §12 'Faux_provider'). Public surface:\n- A script value: e.g. `type turn_script = { events : Types.assistant_message_event list; final : Types.assistant_message }`.\n- `val stream_fn_of_scripts : turn_script list -> stream_fn` where stream_fn has the loop's seam type: model:Types.model -> context:Provider.context -> options:Provider.simple_stream_options -> sw:Eio.Switch.t -> (Types.assistant_message_event, Types.assistant_message) Event_stream.t. Each successive loop call (turn) consumes the next turn_script; this is what lets one scenario script a multi-turn conversation (turn 1 issues tool calls, turn 2 ends). Use a ref/queue captured in the closure to advance through the scripts.\n- The stream_fn forks a producer fibre under ~sw that pushes the script's events into an Event_stream (capacity 32) with Event_stream.push, then closes with Event_stream.close final (or close_error for an error script). This mirrors Anthropic_provider's structure — read anthropic_provider.ml for the fork/close pattern.\n- Recording: capture each received Provider.context (system, messages, tools, thinking) into a list accessible to tests, so a test can assert what convert_to_llm produced and that steering/follow-up messages were injected.\n- Also provide `val as_provider : turn_script list -> (module Provider.S)` satisfying Provider.S (stream_simple takes ~env and ignores it) to demonstrate the Provider.S adapter relationship from §12. The loop itself only ever uses stream_fn; as_provider exists to prove Faux_provider IS a Provider.S and that the adapter from Provider.S to stream_fn is trivial.\n- For cancellation tests (stage 7), support a script whose producer blocks before emitting AME_done (e.g. an optional `on_event` hook or a `blocking_after : int` index that makes the producer wait on a never-resolved promise / a condition the test controls) so the test can cancel mid-stream. Keep this minimal; a `~pause:(unit -> unit)` callback invoked between events is sufficient.\nopen Containers. Fibres under ~sw (pera-specific §5). Define the stream_fn type alias here or in agent_types (wherever the loop config will reference it — keep it in one place; agent_types is a reasonable home).",
+          "coding_guidelines_to_emphasize": [
+            "test-patterns.md §4 — scripted Faux_provider scenarios, named clearly",
+            "pera-specific.md §5 — producer fibre under the switch; bounded Event_stream",
+            "module-boundaries.md — .mli exposes script construction + stream_fn + as_provider + the recording accessor, hides internals",
+            "abstractions.md — one clear construction function; avoid an over-parameterised builder"
+          ],
+          "test_requirements": {
+            "existing_tests": [],
+            "new_tests": [
+              {
+                "file": "lib/pera_core/test/faux_provider_test.ml",
+                "test_name": "test_script_emits_events_then_resolves_final",
+                "description": "A single-turn script with a text_start + text_delta + done is consumed via the stream_fn's Event_stream: the emitted events match the script and the result resolves to the scripted final message.",
+                "asserts": "collected events equal the script events; Event_stream.result = Ok final"
+              },
+              {
+                "file": "lib/pera_core/test/faux_provider_test.ml",
+                "test_name": "test_multi_turn_scripts_advance_per_call",
+                "description": "A two-script stream_fn returns turn 1's events on the first call and turn 2's on the second call.",
+                "asserts": "first stream_fn call yields script[0]'s final; second call yields script[1]'s final"
+              },
+              {
+                "file": "lib/pera_core/test/faux_provider_test.ml",
+                "test_name": "test_recorded_context_is_observable",
+                "description": "After a stream_fn call, the recorded context for that call is retrievable and contains the messages/tools passed in.",
+                "asserts": "the recording accessor returns a context whose messages match what was passed"
+              },
+              {
+                "file": "lib/pera_core/test/faux_provider_test.ml",
+                "test_name": "test_error_script_closes_stream_with_error",
+                "description": "A script that ends in an error closes the Event_stream with close_error.",
+                "asserts": "Event_stream.result = Error _"
+              }
+            ],
+            "test_command": "dune runtest lib/pera_core"
+          },
+          "acceptance_criteria": [
+            "dune build succeeds",
+            "stream_fn_of_scripts produces a stream_fn matching the loop's seam type",
+            "Multi-turn scripts advance one turn per stream_fn call",
+            "as_provider yields a value satisfying Provider.S",
+            "Received contexts are recorded and observable",
+            "dune runtest lib/pera_core passes"
+          ]
+        },
+        {
+          "stage": 5,
+          "title": "Agent loop control flow (turns, streaming, between-turn hooks)",
+          "status": "pending",
+          "description": "Implement the loop's control flow WITHOUT tool execution yet: the outer/inner loops, streaming an assistant response (consuming the provider Event_stream, replacing partial with final), turn lifecycle events, and the between-turn / per-call hooks (transform_context, get_api_key, should_stop_after_turn, prepare_next_turn, get_steering_messages, get_follow_up_messages). Tool calls in a response are not executed here — scenarios in this stage are text-only and terminate on EndTurn; the tool path lands in Stage 6.",
+          "files_to_create": [
+            "lib/pera_core/agent_loop.mli",
+            "lib/pera_core/agent_loop.ml",
+            "lib/pera_core/test/agent_loop_test.ml"
+          ],
+          "files_to_modify": [
+            "lib/pera_core/dune"
+          ],
+          "depends_on": [4],
+          "implementation_notes": "Port vendor/pi/packages/agent/src/agent-loop.ts (outer loop 169-266, inner loop 174-254) and config from types.ts (AgentLoopConfig 135-277). Define in agent_loop.mli:\n\ntype 'ctx agent_loop_config = {\n  model : Types.model;\n  system : string;\n  options : Provider.simple_stream_options;\n  stream_fn : <the seam type from Stage 4>;\n  convert_to_llm : agent_message list -> Provider.message list;\n  tool_ctx : 'ctx;\n  tools : 'ctx Agent_types.tool list;\n  tool_execution : [ `Sequential | `Parallel ];   (* default `Parallel *)\n  transform_context : (agent_message list -> agent_message list) option;\n  get_api_key : (provider:string -> string option) option;\n  before_tool_call : (* see Stage 6 *) ... option;\n  after_tool_call : (* see Stage 6 *) ... option;\n  should_stop_after_turn : (should_stop_ctx -> bool) option;\n  prepare_next_turn : (prepare_ctx -> Agent_types.turn_update option) option;\n  get_steering_messages : (unit -> agent_message list) option;\n  get_follow_up_messages : (unit -> agent_message list) option;\n}\n(Declare the before_/after_tool_call hook field TYPES now even though execution is wired in Stage 6, so the config type is stable across stages; their context record types can be defined here. should_stop_ctx / prepare_ctx carry at least: the latest assistant message, the tool_results of the turn, and the current message list — mirror pi's ShouldStopAfterTurnContext / PrepareNextTurnContext.)\n\nval run : 'ctx agent_loop_config -> messages:agent_message list -> sw:Eio.Switch.t -> (agent_event, agent_message list) Event_stream.t\nrun forks a fibre under ~sw that drives the loop and pushes agent_events into the returned Event_stream; the stream resolves (close) with the final agent_message list on agent_end. (Same fork-and-return shape as Anthropic_provider.stream_simple / Faux_provider.) The caller consumes events and reads the final messages via Event_stream.result.\n\nControl flow (spec §5 'Control flow — outer and inner loops'):\n- Emit AE_agent_start once.\n- OUTER loop: run the INNER loop; when it exits, call get_follow_up_messages; if it returns messages, they become the next pending messages and the inner loop restarts; else emit AE_agent_end {messages} and close the stream.\n- INNER loop iterates while there are tool calls to chase OR pending steering/initial messages:\n  1. If there are pending messages (initial prompt, steering, or follow-up), append them to context.messages as Real (Provider.UserMessage ...).\n  2. Emit AE_turn_start. Build the provider context: apply transform_context (if set) to the agent_message list, run convert_to_llm to get Provider.message list, set context = { system; messages; tools = schemas-from-config-tools; thinking = options-driven }. Resolve get_api_key (if set) — for M2 with Faux it is unused but must be CALLED (the contract). Call stream_fn ~model ~context ~options ~sw.\n  3. Consume the provider Event_stream: append a placeholder partial assistant message as the last entry of context.messages; for each AME_* event, replace that last entry with AME's partial snapshot and emit AE_message_update {message; event}. Emit AE_message_start at the first event and AE_message_end at the terminal event. On AME_done, swap in the final message; on AME_error, treat as a terminal assistant message with stop_reason Error/Aborted.\n  4. If stop_reason is Error or Aborted: emit AE_turn_end {message; tool_results=[]} and terminate the whole run (emit AE_agent_end, close).\n  5. (Stage 6 inserts tool execution here.) For THIS stage: if the assistant message has no tool calls (text-only / EndTurn), tool_results = []. Emit AE_turn_end {message; tool_results}.\n  6. Call should_stop_after_turn (if set); if true, exit inner loop (-> outer loop will check follow-ups; note pi semantics: should_stop true terminates the run unless follow-ups exist).\n  7. Call prepare_next_turn (if set); apply any turn_update (swap messages/model/thinking).\n  8. Call get_steering_messages (if set); captured messages become pending for the next inner iteration.\n  9. Inner loop continues only if there are pending steering messages or pending tool calls; text-only EndTurn with no steering exits the inner loop.\n\nKEEP THE LOOP PURE-FROM-IO: it never touches piaf, files, or a clock; everything external is a config callback. Hooks may not raise (raising propagates out of run — programmer error, per spec §5). Use let*/Result combinators and library functions over match on option/result (pera-specific §3). Mutation is confined to the one context value for the run's duration (spec 'State ownership').\n\nThis stage's tests use text-only Faux scripts.",
+          "coding_guidelines_to_emphasize": [
+            "nesting-and-control-flow.md — the two loops will nest; extract helpers (stream_one_turn, run_inner) to keep nesting shallow",
+            "module-boundaries.md — agent_loop.mli exposes only the config type, run, and the hook context types",
+            "pera-specific.md §5 — run forks under ~sw; consume the provider Event_stream via take/iter",
+            "pattern-matching.md — match on stop_reason exhaustively; no zero-value sentinel fallbacks",
+            "naming-and-intermediates.md — name turn phases (pending, partial, final) clearly"
+          ],
+          "test_requirements": {
+            "existing_tests": [],
+            "new_tests": [
+              {
+                "file": "lib/pera_core/test/agent_loop_test.ml",
+                "test_name": "test_single_text_turn_emits_lifecycle_and_final_messages",
+                "description": "Faux script: one turn, text deltas, EndTurn. Run the loop with an initial user message. Verify the agent_event sequence (agent_start, turn_start, message_start, message_update*, message_end, turn_end, agent_end) and that the final messages list contains the user message and the assistant message.",
+                "asserts": "event sequence matches expected order; Event_stream.result = Ok [user; assistant] with assistant.content = [AText ...]"
+              },
+              {
+                "file": "lib/pera_core/test/agent_loop_test.ml",
+                "test_name": "test_transform_context_applied_before_convert_to_llm",
+                "description": "Port of pi 'transformContext before convertToLlm' (agent-loop.test.ts 186-237). transform_context drops/prunes a message; assert via Faux_provider's recorded context that the provider saw the transformed list.",
+                "asserts": "recorded context.messages reflects the transform (e.g. pruned message absent)"
+              },
+              {
+                "file": "lib/pera_core/test/agent_loop_test.ml",
+                "test_name": "test_get_api_key_called_before_each_llm_call",
+                "description": "get_api_key set with a counter; assert it is invoked once per turn even though Faux ignores the value.",
+                "asserts": "counter equals the number of turns"
+              },
+              {
+                "file": "lib/pera_core/test/agent_loop_test.ml",
+                "test_name": "test_should_stop_after_turn_true_terminates_run",
+                "description": "Port of pi shouldStopAfterTurn (agent-loop.test.ts ~970-1050). A multi-turn-capable script, but should_stop_after_turn returns true after turn 1 and no follow-ups; the run ends after one turn.",
+                "asserts": "exactly one turn_end before agent_end"
+              },
+              {
+                "file": "lib/pera_core/test/agent_loop_test.ml",
+                "test_name": "test_prepare_next_turn_swaps_model",
+                "description": "Port of pi prepareNextTurn (agent-loop.test.ts 1052-1182). prepare_next_turn returns a turn_update changing the model; assert the next turn's recorded call used the new model.",
+                "asserts": "second recorded provider call used the swapped model id"
+              },
+              {
+                "file": "lib/pera_core/test/agent_loop_test.ml",
+                "test_name": "test_steering_message_injected_on_next_iteration",
+                "description": "Port of pi steering (agent-loop.test.ts 581-626). get_steering_messages returns a message once; assert it appears as a user message in the next turn's recorded context.",
+                "asserts": "the steering message is present in the next recorded context.messages"
+              },
+              {
+                "file": "lib/pera_core/test/agent_loop_test.ml",
+                "test_name": "test_follow_up_message_restarts_inner_loop",
+                "description": "Port of pi getFollowUpMessages (agent-loop.test.ts ~1000-1047). After the inner loop would stop, get_follow_up_messages supplies one message once; assert a second turn runs then the run ends.",
+                "asserts": "two turn_start events; agent_end after the second"
+              },
+              {
+                "file": "lib/pera_core/test/agent_loop_test.ml",
+                "test_name": "test_error_stop_reason_terminates_run",
+                "description": "Faux script whose final message has stop_reason Error. Assert the run emits turn_end with empty tool_results then agent_end, and does not start another turn.",
+                "asserts": "no second turn_start; agent_end present; final assistant message stop_reason = Error"
+              }
+            ],
+            "test_command": "dune runtest lib/pera_core"
+          },
+          "acceptance_criteria": [
+            "dune build succeeds",
+            "run returns an (agent_event, agent_message list) Event_stream and forks under ~sw",
+            "Text-turn lifecycle events fire in the specified order",
+            "transform_context, get_api_key, should_stop_after_turn, prepare_next_turn, get_steering_messages, get_follow_up_messages each behave per their ported pi test",
+            "Error/Aborted stop_reason terminates the run",
+            "The loop references no piaf/file/clock APIs (purity-from-IO)",
+            "dune runtest lib/pera_core passes"
+          ]
+        },
+        {
+          "stage": 6,
+          "title": "Tool execution (sequential + parallel, ordering, validation, hooks)",
+          "status": "pending",
+          "description": "Wire tool execution into the loop's inner-loop step 4-5. Implement schema validation before execute, before_tool_call (Allow/Deny) and after_tool_call hooks, sequential and parallel execution modes with the source-order result rule, and tool-error-to-tool-result conversion. This is the heart of the M2 'tool execution ordering is correct' property.",
+          "files_to_create": [
+            "lib/pera_core/test/agent_loop_tools_test.ml"
+          ],
+          "files_to_modify": [
+            "lib/pera_core/agent_loop.ml",
+            "lib/pera_core/agent_loop.mli"
+          ],
+          "depends_on": [5],
+          "implementation_notes": "Port vendor/pi/packages/agent/src/agent-loop.ts executeToolCalls (373-388), executeToolCallsSequential (395-449), executeToolCallsParallel (451-516), prepareToolCall (562-626), executePreparedToolCall (628-663). In the inner loop, when the final assistant message contains AToolCall blocks (stop_reason ToolUse), execute them:\n\nMODE SELECTION (pi 373-388): use config.tool_execution as the default; if ANY called tool has mode `Sequential, force the whole batch sequential. Otherwise parallel.\n\nPER TOOL (prepare then execute):\n1. Look up the tool by name in config.tools. Unknown tool -> synthesise an error tool_result (is_error=true, is_user_error=true) and skip execute.\n2. Validate args against the tool's Json_schema (Json_schema.validate from pera_provider). On Error -> synthesise an error tool_result (is_error=true, is_user_error=true); do NOT call execute (spec §9, §5 'Schema validation failures do the same').\n3. Call before_tool_call (if set) with the call context. Deny msg -> synthesise an error tool_result carrying msg, skip execute (spec §5). Allow -> proceed.\n4. Emit AE_tool_execution_start {tool_call_id; tool_name; args}.\n5. Call tool.execute ~ctx:config.tool_ctx ~args ~sw ~cancel. Catch ANY exception from execute and convert to an error tool_result (is_error=true, is_user_error=false) — a tool raising is caught and surfaced to the LLM (spec §5 'Tool errors are caught'). (Note: an unhandled exception in a tool fibre that is NOT from execute's contract is a programmer error and may propagate — but execute returning a result or raising a normal exception is handled.)\n6. Convert (tool_output, tool_error) result to Types.tool_result_content via the Stage 3 helper.\n7. Call after_tool_call (if set) — side-effect only (unit).\n8. Emit AE_tool_execution_end {tool_call_id; tool_name; result; is_error}.\n\nSEQUENTIAL (pi 395-449): prepare+execute+finalise each call in source order; emit tool_execution_end immediately after each; results appended in call order.\n\nPARALLEL (pi 451-516): run each allowed call in its own fibre under a SUB-SWITCH (Eio.Switch.run / Fiber.fork). Emit tool_execution_start/end in REAL completion order (as fibres finish). BUT the tool_result_content list appended to history MUST be sorted by the original tool-call index, NOT completion order (spec §5 'ordering matters' — this is the load-bearing rule). Use Fiber.all or fork+promise per call, collect results into an array indexed by source position, then read out in source order.\n\nAfter execution: append the ordered tool_result_content list to context.messages as Real (Provider.ToolResultMessage ...) entries (one per result, in source order — the anthropic_request coalescing from Stage 2 handles wire merging). Emit AE_turn_end {message; tool_results}. The inner loop then continues (there were tool calls), looping back to stream the next assistant turn with the results in context.\n\nDefine the before_tool_call / after_tool_call context record types in agent_loop.mli (or agent_types): before_tool_call_ctx carries the assistant message, the tool_call (id/name/arguments), and the validated args; returns Agent_types.before_tool_call_result. after_tool_call_ctx carries the result and is_error.\n\nTo make parallel-vs-sequential OBSERVABLE in tests (pi uses a parallelObserved flag, agent-loop.test.ts 452-545): tools' execute can record start/end timestamps or use an Eio condition so the test can detect concurrent execution. Provide test tools that block on a shared signal to force interleaving.\n\nopen Containers; library functions over match; fibres under switches (pera-specific §5).",
+          "coding_guidelines_to_emphasize": [
+            "pera-specific.md §5 — sub-switch for parallel tool fibres; Eio.Cancel not flags",
+            "nesting-and-control-flow.md — extract prepare_tool_call / execute_one / collect_ordered helpers",
+            "error-handling.md — execute returns Result; exceptions caught and converted to error tool_results, never escape (except true programmer errors)",
+            "pattern-matching.md — match Allow/Deny and tool_output variants exhaustively",
+            "type-safety.md — results indexed by source order via a typed structure, not implicit ordering"
+          ],
+          "test_requirements": {
+            "existing_tests": [
+              "lib/pera_core/test/agent_loop_test.ml (text-turn tests from Stage 5 must still pass)"
+            ],
+            "new_tests": [
+              {
+                "file": "lib/pera_core/test/agent_loop_tools_test.ml",
+                "test_name": "test_single_tool_call_executes_and_feeds_result_back",
+                "description": "Turn 1 issues one tool call (ToolUse); the tool returns Tool_text; turn 2 ends (EndTurn). Assert tool_execution_start/end fire, a tool_result_content is appended, and turn 2's recorded context contains the tool result.",
+                "asserts": "AE_tool_execution_end is_error=false; turn 2 recorded context includes the ToolResultMessage"
+              },
+              {
+                "file": "lib/pera_core/test/agent_loop_tools_test.ml",
+                "test_name": "test_parallel_tool_results_appended_in_source_order",
+                "description": "Port of pi parallel ordering (agent-loop.test.ts 452-545). Two parallel tool calls where the SECOND completes first (forced via blocking signals). Assert tool_execution_end events fire in completion order but the tool_result_content list (and the messages appended) are in SOURCE order.",
+                "asserts": "tool_execution_end order = [call2; call1]; appended tool_results order = [call1; call2]"
+              },
+              {
+                "file": "lib/pera_core/test/agent_loop_tools_test.ml",
+                "test_name": "test_sequential_mode_runs_in_source_order",
+                "description": "Port of pi sequential vs parallel (agent-loop.test.ts 547-651). tool_execution = `Sequential; two calls; assert both execution and result order are source order and no interleaving occurs.",
+                "asserts": "tool_execution_start/end and results all in source order; no concurrent overlap observed"
+              },
+              {
+                "file": "lib/pera_core/test/agent_loop_tools_test.ml",
+                "test_name": "test_per_tool_sequential_forces_batch_sequential",
+                "description": "Port of pi per-tool executionMode override (agent-loop.test.ts 653+). Config default Parallel, but one called tool has mode `Sequential; assert the whole batch runs sequentially.",
+                "asserts": "no concurrent overlap observed despite Parallel default"
+              },
+              {
+                "file": "lib/pera_core/test/agent_loop_tools_test.ml",
+                "test_name": "test_schema_validation_failure_becomes_error_result_without_execute",
+                "description": "Port of pi schema validation (agent-loop.test.ts 310-370). A tool call with args violating the tool schema; assert execute is NOT called and an error tool_result (is_error=true) is produced.",
+                "asserts": "execute call count = 0; tool_result is_error = true"
+              },
+              {
+                "file": "lib/pera_core/test/agent_loop_tools_test.ml",
+                "test_name": "test_before_tool_call_deny_short_circuits_with_error_result",
+                "description": "Port of pi beforeToolCall blocking (agent-loop.test.ts 372-449). before_tool_call returns Deny 'nope'; assert execute is skipped and the error tool_result carries 'nope'.",
+                "asserts": "execute not called; tool_result is_error=true and content mentions 'nope'"
+              },
+              {
+                "file": "lib/pera_core/test/agent_loop_tools_test.ml",
+                "test_name": "test_tool_raising_is_caught_as_error_result",
+                "description": "A tool whose execute raises; assert the exception is caught and converted to an is_error tool_result, and the run continues to the next turn.",
+                "asserts": "tool_result is_error=true; run reaches agent_end without raising out of run"
+              },
+              {
+                "file": "lib/pera_core/test/agent_loop_tools_test.ml",
+                "test_name": "test_after_tool_call_hook_invoked_per_result",
+                "description": "Port of pi afterToolCall (agent-loop.test.ts 1184-1270). after_tool_call increments a counter; assert it is called once per executed tool.",
+                "asserts": "after_tool_call count = number of executed tools"
+              }
+            ],
+            "test_command": "dune runtest lib/pera_core"
+          },
+          "acceptance_criteria": [
+            "dune build succeeds",
+            "Parallel mode: tool_execution_end in completion order, results appended in source order",
+            "Sequential mode and per-tool sequential override run without interleaving",
+            "Schema validation failure and before_tool_call Deny skip execute and produce error results",
+            "Tool exceptions are caught and surfaced as error tool_results; run does not crash",
+            "after_tool_call fires once per executed tool",
+            "Stage 5 text-turn tests still pass",
+            "dune runtest lib/pera_core passes"
+          ]
+        },
+        {
+          "stage": 7,
+          "title": "Cancellation propagation",
+          "status": "pending",
+          "description": "Implement and verify cancellation per spec §5 'Cancellation': during an LLM stream, during tool execution, and between turns. Cancellation is observed at the next async point; there is no mid-event cancellation.",
+          "files_to_create": [
+            "lib/pera_core/test/agent_loop_cancel_test.ml"
+          ],
+          "files_to_modify": [
+            "lib/pera_core/agent_loop.ml",
+            "lib/pera_core/agent_loop.mli"
+          ],
+          "depends_on": [6],
+          "implementation_notes": "Spec §5 'Cancellation'. The run already executes under ~sw; cancellation is driven by cancelling that switch's context (Eio.Cancel). Decide and document the cancellation entry point: either run takes an extra ?cancel:Eio.Cancel.t (preferred — explicit, matches spec 'The run takes an Eio.Cancel.t') or cancellation is via cancelling ~sw. If adding ?cancel, run wraps its loop body in Eio.Cancel.sub or checks Eio.Cancel.get_error at the documented boundaries.\n\nBehaviours to implement:\n- DURING an LLM stream: cancelling causes the provider stream to abort. With Faux_provider, simulate by cancelling while the producer is paused mid-script (use the Stage 4 ~pause hook). The loop should observe the cancellation (the provider closes the stream with an error / AME_error Aborted), emit AE_turn_end with empty tool_results, then AE_agent_end, then return. The final assistant message carries stop_reason Aborted.\n- DURING tool execution: the parallel sub-switch is cancelled; running tool fibres receive cancellation at their next async point. Whatever results completed BEFORE cancellation are still appended in source order, then the run terminates as above (spec §5).\n- BETWEEN turns: cancellation is observed at the next hook-call boundary; the loop stops before starting a new turn.\n\nThe model is 'cancellation is eventually observed at the next async point' — tests must drive an async point (a fibre yield / a blocked tool) and then cancel. Use Eio.Switch.run with a fibre that cancels after the loop reaches a known point (coordinate via an Eio condition or promise the test controls). Do NOT busy-wait. Foreground sleeps are unavailable; use Eio.Condition or Promise to synchronise the cancel with the loop's progress.\n\nUpdate agent_loop.mli if run's signature gains ?cancel. open Containers; Eio.Cancel not custom flags (pera-specific §5).",
+          "coding_guidelines_to_emphasize": [
+            "pera-specific.md §5 — Eio.Cancel, structured concurrency; no custom cancellation flags",
+            "error-handling.md — Aborted is a typed stop_reason, surfaced cleanly, not an exception out of run",
+            "test-patterns.md — synchronise cancel with loop progress via Eio.Condition/Promise, not sleeps",
+            "nesting-and-control-flow.md — keep the cancellation checks at documented boundaries, not scattered"
+          ],
+          "test_requirements": {
+            "existing_tests": [
+              "lib/pera_core/test/agent_loop_test.ml and agent_loop_tools_test.ml must still pass"
+            ],
+            "new_tests": [
+              {
+                "file": "lib/pera_core/test/agent_loop_cancel_test.ml",
+                "test_name": "test_cancellation_during_stream_emits_aborted_and_ends",
+                "description": "Cancel while the Faux provider is paused mid-stream. Assert the run emits turn_end (empty tool_results) and agent_end, and the assistant message stop_reason is Aborted.",
+                "asserts": "final assistant stop_reason = Aborted; agent_end emitted; no further turns"
+              },
+              {
+                "file": "lib/pera_core/test/agent_loop_cancel_test.ml",
+                "test_name": "test_cancellation_during_parallel_tools_appends_completed_in_source_order",
+                "description": "Two parallel tools; one completes, the other is blocked; cancel mid-execution. Assert completed results are appended in source order and the run terminates.",
+                "asserts": "completed tool_result present and source-ordered; run reaches agent_end; no crash"
+              },
+              {
+                "file": "lib/pera_core/test/agent_loop_cancel_test.ml",
+                "test_name": "test_cancellation_between_turns_stops_before_next_turn",
+                "description": "Cancel after a turn_end but before the next turn's stream begins (at the hook boundary). Assert no new turn_start is emitted after the cancel.",
+                "asserts": "no turn_start after the cancellation point; agent_end emitted"
+              }
+            ],
+            "test_command": "dune runtest lib/pera_core"
+          },
+          "acceptance_criteria": [
+            "dune build succeeds",
+            "Cancel during stream yields stop_reason Aborted, turn_end (empty), agent_end",
+            "Cancel during parallel tools appends completed results in source order then terminates",
+            "Cancel between turns stops before the next turn",
+            "No cancellation path raises out of run",
+            "dune runtest lib/pera_core passes"
+          ]
+        },
+        {
+          "stage": 8,
+          "title": "loop_driver — M2 acceptance proof",
+          "status": "pending",
+          "description": "Build the loop_driver binary (spec §12): drives the loop with Faux_provider through named scenarios and prints the agent_event sequence and final messages, with meaningful exit codes. This is the artifact that demonstrates the M2 property (turn semantics, hook contract, tool ordering, cancellation) observably, with no network or filesystem.",
+          "files_to_create": [
+            "bin/drivers/loop_driver.ml"
+          ],
+          "files_to_modify": [
+            "bin/drivers/dune"
+          ],
+          "depends_on": [7],
+          "implementation_notes": "Mirror provider_driver's shape (bin/drivers/provider_driver.ml) and the test-patterns §7 driver pattern. loop_driver selects a scenario by argv (default: run all). Each scenario constructs a Faux_provider script + an agent_loop_config (with simple in-driver tools, e.g. an echo tool and a counter tool, ctx = a small record or unit), calls Agent_loop.run under Eio_main.run + Eio.Switch.run, consumes the (agent_event, agent_message list) Event_stream via Event_stream.iter printing each event as a structured line (use a to_string/pp for agent_event), and on result prints the final messages. Scenarios to include (each maps to a documented expected outcome, spec §12 Faux_provider list): single text turn; parallel tool calls (show completion-order events vs source-order results); sequential tool calls; tool returning an error; mid-stream cancellation; steering-message injection; follow-up-message handling. Exit 0 if all selected scenarios produced their expected event shapes; exit 1 otherwise (the driver can assert lightly and report mismatches). Add loop_driver to bin/drivers/dune ((libraries pera_core pera_provider pera_types eio_main containers)). The driver is a MANUAL tool and is NOT added to any dune runtest alias (same policy as provider_driver). open Containers.",
+          "coding_guidelines_to_emphasize": [
+            "test-patterns.md §7 — driver exercises the public interface; structured human-readable output; meaningful exit code",
+            "naming-and-intermediates.md — name each scenario and its expected outcome",
+            "pera-specific.md §5 — Eio_main.run + Switch.run entry; consume the Event_stream under the switch",
+            "module-boundaries.md — the driver uses only pera_core's public API (run, config, Faux_provider) — a hard-to-write driver signals a leaky seam"
+          ],
+          "test_requirements": {
+            "existing_tests": [
+              "All lib/pera_core tests remain green; loop_driver is excluded from runtest"
+            ],
+            "new_tests": [],
+            "test_command": "dune build",
+            "notes": "No automated test for the driver itself — like provider_driver (M1 stage 8), it is a manual acceptance artifact and is intentionally excluded from dune runtest. Its scenarios are already covered automatically by the Stage 5-7 unit tests; the driver's value is as a runnable, inspectable demonstration of the milestone. The test-reviewer should treat this as the same acknowledged exception M1 stage 8 carries. (Optional follow-up: a thin test that runs loop_driver and asserts exit 0 + expected stdout lines, mirroring how drivers 'can be wrapped by automated tests' per §12.)"
+          },
+          "acceptance_criteria": [
+            "dune build succeeds, including loop_driver",
+            "loop_driver binary exists at _build/default/bin/drivers/loop_driver.exe",
+            "Running loop_driver prints the agent_event sequence and final messages for each scenario and exits 0 when scenarios match expectations",
+            "loop_driver uses only pera_core's public interface (no internal modules)",
+            "dune runtest still passes (driver excluded from the test suite)",
+            "M2 PROPERTY observable: the parallel-tools scenario shows tool_execution_end in completion order and tool_results in source order; the cancellation scenario shows a clean Aborted termination"
+          ]
+        }
+      ]
+    }
+  ]
+}

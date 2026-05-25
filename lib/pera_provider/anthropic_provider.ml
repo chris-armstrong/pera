@@ -109,27 +109,24 @@ let process_chunk sse_state interp_state stream done_message chunk =
   sse_state := new_sse_state;
   List.iter (handle_framed interp_state stream done_message) framed_events
 
-(** Process the response body: feed each chunk through the SSE parser and
-    Anthropic interpreter, pushing events into the stream. *)
-let process_body body stream =
+(** Process the response body by feeding each chunk through the SSE/interpreter
+    pipeline. Called by [on_chunk] from [Http_client.post_stream]. *)
+let process_chunks stream =
   let sse_state = ref Sse_parser.initial_state in
   let interp_state = ref Anthropic_interpreter.initial_state in
   let done_message = ref None in
-  let fold_result =
-    Piaf.Body.fold_string ~init:() body ~f:(fun () chunk ->
-        process_chunk sse_state interp_state stream done_message chunk)
+  let on_chunk chunk =
+    process_chunk sse_state interp_state stream done_message chunk
   in
-  match fold_result with
-  | Error piaf_err ->
-      let msg = Piaf.Error.to_string piaf_err in
-      Event_stream.close_error stream msg
-  | Ok () -> (
-      match !done_message with
-      | Some (Ok message) -> Event_stream.close stream message
-      | Some (Error msg) -> Event_stream.close_error stream msg
-      | None ->
-          Event_stream.close_error stream
-            "stream ended without a final message_stop event")
+  let finalise () =
+    match !done_message with
+    | Some (Ok message) -> Event_stream.close stream message
+    | Some (Error msg) -> Event_stream.close_error stream msg
+    | None ->
+        Event_stream.close_error stream
+          "stream ended without a final message_stop event"
+  in
+  (on_chunk, finalise)
 
 (** Build the HTTP request headers for the Anthropic API. *)
 let build_headers api_key =
@@ -139,18 +136,6 @@ let build_headers api_key =
     ("content-type", "application/json");
     ("accept", "text/event-stream");
   ]
-
-(** Validate that the HTTP response status indicates success; return an error
-    string with the response body if not. *)
-let check_response_status (response : Piaf.Response.t) =
-  if Piaf.Status.is_successful response.status then Ok ()
-  else
-    let status_code = Piaf.Status.to_code response.status in
-    let body_str =
-      Piaf.Body.to_string response.body
-      |> Result.value ~default:"<unreadable body>"
-    in
-    Error (Printf.sprintf "Anthropic API error %d: %s" status_code body_str)
 
 (** Run the HTTP request and process the streaming response body. Returns
     [Ok ()] on success or [Error msg] on any failure. *)
@@ -163,15 +148,13 @@ let do_request ~env ~model ~context ~options ~sw stream =
   let request_body = build_request_body ~model ~context ~options in
   let request_body_str = Yojson.Safe.to_string request_body in
   let headers = build_headers api_key in
-  let uri = Uri.of_string anthropic_api_url in
-  let body = Piaf.Body.of_string request_body_str in
-  let* response =
-    Piaf.Client.Oneshot.post ~headers ~body ~sw env uri
-    |> Result.map_error (fun piaf_err ->
-        Printf.sprintf "HTTP request failed: %s" (Piaf.Error.to_string piaf_err))
+  let on_chunk, finalise = process_chunks stream in
+  let* () =
+    Http_client.post_stream ~env ~sw ~headers ~body:request_body_str ~on_chunk
+      anthropic_api_url
+    |> Result.map_error Http_client.error_to_string
   in
-  let* () = check_response_status response in
-  Ok (process_body response.body stream)
+  Ok (finalise ())
 
 let stream_simple ~env ~model ~context ~options ~sw =
   let stream :

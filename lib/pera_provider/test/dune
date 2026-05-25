@@ -19,3 +19,7 @@
 (test
  (name sse_interpreter_test)
  (libraries pera_provider pera_types alcotest))
+
+(test
+ (name http_client_test)
+ (libraries pera_provider alcotest eio_main containers))

@@ -1,0 +1,7 @@
+_build/
+*.install
+*.opam
+.merlin
+*.byte
+*.native
+.DS_Store
