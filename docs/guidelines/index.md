@@ -16,7 +16,8 @@ This directory contains coding guidelines for the pera project, organised by con
 | [code-reuse.md](./code-reuse.md) | Record updates, deduplication, labelled args |
 | [test-patterns.md](./test-patterns.md) | Alcotest structure, event stream validation, TDD |
 | [abstractions.md](./abstractions.md) | Module design, parameter reduction, functors |
-| [pera-specific.md](./pera-specific.md) | Containers, structural equality, option/result style, Eio |
+| [pera-specific.md](./pera-specific.md) | Containers, structural equality, option/result style, Eio basics |
+| [eio.md](./eio.md) | Eio scheduling, Promise vs Condition, fork cleanup, Cancel.protect |
 | [commit-messages.md](./commit-messages.md) | Conventional commits format, module scope, types |
 
 ## Usage
