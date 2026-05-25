@@ -60,6 +60,15 @@ type turn_update = {
   thinking : bool option;
 }
 
+type stream_fn =
+  model:Pera_types.Types.model ->
+  context:Pera_provider.Provider.context ->
+  options:Pera_provider.Provider.simple_stream_options ->
+  sw:Eio.Switch.t ->
+  ( Pera_types.Types.assistant_message_event,
+    Pera_types.Types.assistant_message )
+  Pera_provider.Event_stream.t
+
 let tool_output_to_result_content ~tool_call_id ~is_error output =
   let content =
     match output with Tool_text s -> `String s | Tool_json j -> j

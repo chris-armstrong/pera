@@ -4,3 +4,8 @@
  (name agent_types_test)
  (modules agent_types_test)
  (libraries pera_core pera_types pera_provider alcotest containers eio_main))
+
+(test
+ (name faux_provider_test)
+ (modules faux_provider_test)
+ (libraries pera_core pera_types pera_provider alcotest containers eio_main))

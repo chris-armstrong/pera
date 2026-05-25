@@ -136,7 +136,41 @@ val tool_output_to_result_content :
     - [Tool_text s] becomes [content = `String s].
     - [Tool_json j] becomes [content = j]. *)
 
+(** {1 Loop seam type} *)
+
+type stream_fn =
+  model:Pera_types.Types.model ->
+  context:Pera_provider.Provider.context ->
+  options:Pera_provider.Provider.simple_stream_options ->
+  sw:Eio.Switch.t ->
+  ( Pera_types.Types.assistant_message_event,
+    Pera_types.Types.assistant_message )
+  Pera_provider.Event_stream.t
+(** The function type the agent loop uses to call a provider for one turn.
+
+    This is the loop's provider-agnostic seam: any value satisfying this type
+    can be used as the provider backend. The [Faux_provider] test double and the
+    adapter from [Provider.S] both produce values of this type.
+
+    The [~env] parameter is absent by design — the loop itself is pure-from-IO.
+    Callers that wrap a real [Provider.S] bind [~env] into the closure before
+    passing it here. *)
+
 (** {1 Alcotest support} *)
+
+val assistant_message_equal :
+  Pera_types.Types.assistant_message ->
+  Pera_types.Types.assistant_message ->
+  bool
+(** Structural equality for {!Pera_types.Types.assistant_message}. Uses
+    type-specific equality for all fields; does not use polymorphic [(=)]. *)
+
+val assistant_message_event_equal :
+  Pera_types.Types.assistant_message_event ->
+  Pera_types.Types.assistant_message_event ->
+  bool
+(** Structural equality for {!Pera_types.Types.assistant_message_event}. Uses
+    type-specific equality for all fields; does not use polymorphic [(=)]. *)
 
 val agent_event_equal : agent_event -> agent_event -> bool
 (** Structural equality for {!agent_event}. Does not use polymorphic [(=)]; uses

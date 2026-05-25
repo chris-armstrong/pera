@@ -188,7 +188,7 @@
         {
           "stage": 4,
           "title": "Faux_provider test double",
-          "status": "pending",
+          "status": "committed",
           "description": "Implement Faux_provider: the load-bearing driver/test infrastructure (spec §12). It emits a programmed sequence of assistant_message_events and resolves to a scripted final assistant_message, with no network. It satisfies Provider.S and also exposes a stream_fn adapter (the form the loop consumes). It records the contexts it was called with, so tests can assert on convert_to_llm output and steering/follow-up injection.",
           "files_to_create": [
             "lib/pera_core/faux_provider.mli",
