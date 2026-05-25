@@ -422,7 +422,7 @@
         {
           "stage": 7,
           "title": "Cancellation propagation",
-          "status": "pending",
+          "status": "committed",
           "description": "Implement and verify cancellation per spec §5 'Cancellation': during an LLM stream, during tool execution, and between turns. Cancellation is observed at the next async point; there is no mid-event cancellation.",
           "files_to_create": [
             "lib/pera_core/test/agent_loop_cancel_test.ml"

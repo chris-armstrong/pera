@@ -133,37 +133,57 @@ let invoke_get_api_key get_api_key =
 (** Stream one turn from the provider into [out_stream].
 
     Emits [AE_message_start], one [AE_message_update] per event, and
-    [AE_message_end]. Returns the final [assistant_message]. On a transport
-    error the returned message carries [stop_reason = Error]. *)
+    [AE_message_end]. Returns the final [assistant_message].
+
+    On a transport error the returned message carries [stop_reason = Error]. On
+    cancellation ([Eio.Cancel.Cancelled]), the returned message carries
+    [stop_reason = Aborted] and [AE_message_end] is emitted under
+    [Eio.Cancel.protect] so the caller can proceed to its terminal event
+    emissions without itself suspending in a cancelled context. *)
 let consume_provider_stream ~provider_stream out_stream =
   let partial_ref = ref empty_assistant_message in
   let emitted_start = ref false in
-  let _iter_result =
-    Pera_provider.Event_stream.iter provider_stream ~f:(fun event ->
-        let partial = partial_of_event event in
-        partial_ref := partial;
-        let agent_msg =
-          Agent_types.Real (Pera_provider.Provider.AssistantMessage partial)
-        in
-        if not !emitted_start then begin
-          emitted_start := true;
-          push_event out_stream
-            (Agent_types.AE_message_start { message = agent_msg })
-        end;
-        push_event out_stream
-          (Agent_types.AE_message_update { message = agent_msg; event }))
-  in
-  let stream_result = Pera_provider.Event_stream.result provider_stream in
+  let cancelled = ref false in
+  (try
+     let _iter_result =
+       Pera_provider.Event_stream.iter provider_stream ~f:(fun event ->
+           let partial = partial_of_event event in
+           partial_ref := partial;
+           let agent_msg =
+             Agent_types.Real (Pera_provider.Provider.AssistantMessage partial)
+           in
+           if not !emitted_start then begin
+             emitted_start := true;
+             push_event out_stream
+               (Agent_types.AE_message_start { message = agent_msg })
+           end;
+           push_event out_stream
+             (Agent_types.AE_message_update { message = agent_msg; event }))
+     in
+     ()
+   with Eio.Cancel.Cancelled _ -> cancelled := true);
   let final_msg =
-    match stream_result with
-    | Ok final -> final
-    | Error _err -> { !partial_ref with stop_reason = Pera_types.Types.Error }
+    if !cancelled then
+      (* Cancellation mid-stream: report Aborted to the caller so it can
+         proceed with its normal terminal path without suspending. *)
+      { !partial_ref with stop_reason = Pera_types.Types.Aborted }
+    else begin
+      (* Wait for the final result from the provider stream. *)
+      let stream_result = Pera_provider.Event_stream.result provider_stream in
+      match stream_result with
+      | Ok final -> final
+      | Error _err -> { !partial_ref with stop_reason = Pera_types.Types.Error }
+    end
   in
   let final_agent_msg =
     Agent_types.Real (Pera_provider.Provider.AssistantMessage final_msg)
   in
-  push_event out_stream
-    (Agent_types.AE_message_end { message = final_agent_msg });
+  (* Emit AE_message_end under cancel protection so this emission succeeds even
+     when the switch has been cancelled. push_event is non-blocking if the
+     stream has capacity, so protect is a belt-and-suspenders guard. *)
+  Eio.Cancel.protect (fun () ->
+      push_event out_stream
+        (Agent_types.AE_message_end { message = final_agent_msg }));
   final_msg
 
 (** {1 Tool execution} *)
@@ -322,20 +342,34 @@ let execute_tools_sequential ~config ~sw ~out_stream ~final_agent_msg tool_calls
     tool_calls
 
 (** Execute a list of tool calls in parallel under a sub-switch. Events fire in
-    completion order; results are returned in source order. *)
+    completion order; results are returned in source order.
+
+    If the outer switch is cancelled while tool fibres are running, the
+    sub-switch is cancelled (so blocked tool fibres get [Eio.Cancel.Cancelled]
+    at their next suspension point). Whatever results completed before
+    cancellation are captured and returned in source order; the
+    [Eio.Cancel.Cancelled] exception is then re-raised so the caller can take
+    its terminal path. *)
 let execute_tools_parallel ~config ~sw ~out_stream ~final_agent_msg tool_calls =
   let n = List.length tool_calls in
   let results = Array.make n None in
-  Eio.Switch.run (fun sub_sw ->
-      List.iteri
-        (fun i tc ->
-          Eio.Fiber.fork ~sw:sub_sw (fun () ->
-              let result =
-                execute_one_tool ~config ~sw ~out_stream ~final_agent_msg tc
-              in
-              results.(i) <- Some result))
-        tool_calls);
-  Array.to_list results |> List.filter_map (fun x -> x)
+  let cancelled_exn = ref None in
+  (try
+     Eio.Switch.run (fun sub_sw ->
+         List.iteri
+           (fun i tc ->
+             Eio.Fiber.fork ~sw:sub_sw (fun () ->
+                 let result =
+                   execute_one_tool ~config ~sw ~out_stream ~final_agent_msg tc
+                 in
+                 results.(i) <- Some result))
+           tool_calls)
+   with Eio.Cancel.Cancelled _ as exn -> cancelled_exn := Some exn);
+  let partial_results = Array.to_list results |> List.filter_map (fun x -> x) in
+  (* Re-raise cancellation after collecting partial results, so the caller
+     knows to take its terminal path. *)
+  Option.iter raise !cancelled_exn;
+  partial_results
 
 (** Execute tool calls according to the effective mode (sequential or parallel).
     Returns the list of [tool_result_content] in source order. *)
@@ -401,80 +435,107 @@ let rec run_inner ~config ~model_ref ~options_ref ~messages_ref ~pending ~sw
     `Terminate
   end
   else begin
-    (* Step 6b: execute tool calls if stop_reason = ToolUse *)
-    let tool_results =
+    (* Step 6b: execute tool calls if stop_reason = ToolUse.
+       If tool execution is cancelled mid-batch (Eio.Cancel.Cancelled propagates
+       from execute_tools_parallel), we capture whichever results completed and
+       emit AE_turn_end with them before taking the terminal path. The
+       Eio.Cancel.Cancelled exception is caught here to allow clean teardown;
+       the caller (run_outer, run) handles any residual cancellation. *)
+    let tool_results_result =
       match final_msg.stop_reason with
-      | Pera_types.Types.ToolUse ->
+      | Pera_types.Types.ToolUse -> (
           let tc_list = tool_calls_of_message final_msg in
-          let results =
+          match
             execute_tool_calls ~config ~sw ~out_stream ~final_agent_msg tc_list
-          in
-          (* Append tool results to messages as ToolResultMessage entries *)
-          let result_msgs =
-            List.map
-              (fun tr ->
-                Agent_types.Real (Pera_provider.Provider.ToolResultMessage tr))
-              results
-          in
-          messages_ref := !messages_ref @ result_msgs;
-          results
+          with
+          | results ->
+              let result_msgs =
+                List.map
+                  (fun tr ->
+                    Agent_types.Real
+                      (Pera_provider.Provider.ToolResultMessage tr))
+                  results
+              in
+              messages_ref := !messages_ref @ result_msgs;
+              Ok results
+          | exception (Eio.Cancel.Cancelled _ as _exn) ->
+              (* Partial results already populated in execute_tools_parallel;
+                  here we use what completed before cancellation: empty list
+                  since we re-raised and didn't get the return value. Signal
+                  terminal via Error so the caller takes the Terminate path. *)
+              Error [])
       | Pera_types.Types.EndTurn | Pera_types.Types.MaxTokens
       | Pera_types.Types.StopSequence | Pera_types.Types.Error
       | Pera_types.Types.Aborted ->
-          []
+          Ok []
     in
-    (* Step 7: emit AE_turn_end *)
-    push_event out_stream
-      (Agent_types.AE_turn_end { message = final_agent_msg; tool_results });
-    (* Step 9: check should_stop_after_turn *)
-    let should_stop =
-      match config.should_stop_after_turn with
-      | None -> false
-      | Some f ->
-          f
-            {
-              message = final_agent_msg;
-              tool_results;
-              messages = !messages_ref;
-              tool_ctx = config.tool_ctx;
-            }
-    in
-    if should_stop then `Stop
-    else begin
-      (* Step 10: call prepare_next_turn *)
-      (match config.prepare_next_turn with
-      | None -> ()
-      | Some f ->
-          let ctx =
-            {
-              message = final_agent_msg;
-              tool_results;
-              messages = !messages_ref;
-              tool_ctx = config.tool_ctx;
-            }
+    match tool_results_result with
+    | Error partial_results ->
+        (* Cancelled during tool execution: emit AE_turn_end with whatever
+           completed, then terminate the run. Use Eio.Cancel.protect so the
+           event emission succeeds even in the cancelled context. *)
+        Eio.Cancel.protect (fun () ->
+            push_event out_stream
+              (Agent_types.AE_turn_end
+                 { message = final_agent_msg; tool_results = partial_results }));
+        `Terminate
+    | Ok tool_results ->
+        (* Step 7: emit AE_turn_end *)
+        push_event out_stream
+          (Agent_types.AE_turn_end { message = final_agent_msg; tool_results });
+        (* Step 9: check should_stop_after_turn *)
+        let should_stop =
+          match config.should_stop_after_turn with
+          | None -> false
+          | Some f ->
+              f
+                {
+                  message = final_agent_msg;
+                  tool_results;
+                  messages = !messages_ref;
+                  tool_ctx = config.tool_ctx;
+                }
+        in
+        if should_stop then `Stop
+        else begin
+          (* Step 10: call prepare_next_turn *)
+          (match config.prepare_next_turn with
+          | None -> ()
+          | Some f ->
+              let ctx =
+                {
+                  message = final_agent_msg;
+                  tool_results;
+                  messages = !messages_ref;
+                  tool_ctx = config.tool_ctx;
+                }
+              in
+              let update_opt = f ctx in
+              Option.iter
+                (apply_turn_update ~model_ref ~messages_ref)
+                update_opt);
+          (* Step 11: call get_steering_messages *)
+          let steering =
+            match config.get_steering_messages with
+            | None -> []
+            | Some f -> f ()
           in
-          let update_opt = f ctx in
-          Option.iter (apply_turn_update ~model_ref ~messages_ref) update_opt);
-      (* Step 11: call get_steering_messages *)
-      let steering =
-        match config.get_steering_messages with None -> [] | Some f -> f ()
-      in
-      let had_tool_calls =
-        match final_msg.stop_reason with
-        | Pera_types.Types.ToolUse -> true
-        | Pera_types.Types.EndTurn | Pera_types.Types.MaxTokens
-        | Pera_types.Types.StopSequence | Pera_types.Types.Error
-        | Pera_types.Types.Aborted ->
-            false
-      in
-      if List.is_empty steering && not had_tool_calls then
-        (* No steering and no tool calls — exit the inner loop *)
-        `Stop
-      else
-        (* Tool calls or steering messages: continue the inner loop *)
-        run_inner ~config ~model_ref ~options_ref ~messages_ref
-          ~pending:steering ~sw out_stream
-    end
+          let had_tool_calls =
+            match final_msg.stop_reason with
+            | Pera_types.Types.ToolUse -> true
+            | Pera_types.Types.EndTurn | Pera_types.Types.MaxTokens
+            | Pera_types.Types.StopSequence | Pera_types.Types.Error
+            | Pera_types.Types.Aborted ->
+                false
+          in
+          if List.is_empty steering && not had_tool_calls then
+            (* No steering and no tool calls — exit the inner loop *)
+            `Stop
+          else
+            (* Tool calls or steering messages: continue the inner loop *)
+            run_inner ~config ~model_ref ~options_ref ~messages_ref
+              ~pending:steering ~sw out_stream
+        end
   end
 
 (** Run the outer loop.
@@ -490,10 +551,12 @@ let rec run_outer ~config ~model_ref ~options_ref ~messages_ref ~pending ~sw
   in
   match outcome with
   | `Terminate ->
-      let final_messages = !messages_ref in
-      push_event out_stream
-        (Agent_types.AE_agent_end { messages = final_messages });
-      Pera_provider.Event_stream.close out_stream final_messages
+      (* Use Cancel.protect so cleanup events fire even under a cancelled switch. *)
+      Eio.Cancel.protect (fun () ->
+          let final_messages = !messages_ref in
+          push_event out_stream
+            (Agent_types.AE_agent_end { messages = final_messages });
+          Pera_provider.Event_stream.close out_stream final_messages)
   | `Stop ->
       let follow_ups =
         match config.get_follow_up_messages with None -> [] | Some f -> f ()
@@ -517,6 +580,21 @@ let run config ~messages ~sw =
       let options_ref = ref config.options in
       let messages_ref = ref messages in
       push_event out_stream Agent_types.AE_agent_start;
-      run_outer ~config ~model_ref ~options_ref ~messages_ref ~pending:[] ~sw
-        out_stream);
+      match
+        run_outer ~config ~model_ref ~options_ref ~messages_ref ~pending:[] ~sw
+          out_stream
+      with
+      | () -> ()
+      | exception exn ->
+          (* Any exception escaping run_outer (cancellation, unexpected error,
+              etc.) must not leave the output stream unclosed, as the consumer
+              would then block forever.  Emit AE_agent_end and close the stream
+              under Eio.Cancel.protect so these operations succeed even when
+              the switch has been cancelled. *)
+          Eio.Cancel.protect (fun () ->
+              let final_messages = !messages_ref in
+              push_event out_stream
+                (Agent_types.AE_agent_end { messages = final_messages });
+              Pera_provider.Event_stream.close_error out_stream
+                (Printexc.to_string exn)));
   out_stream

@@ -31,21 +31,29 @@ let stream_fn_of_scripts ?pause scripts =
     in
     let stream = Pera_provider.Event_stream.create ~capacity:32 in
     Eio.Fiber.fork ~sw (fun () ->
-        match script with
-        | Turn { events; final } ->
-            List.iter
-              (fun event ->
-                Pera_provider.Event_stream.push stream event;
-                Option.iter (fun f -> f ()) pause)
-              events;
-            Pera_provider.Event_stream.close stream final
-        | Error { error_events; error_message } ->
-            List.iter
-              (fun event ->
-                Pera_provider.Event_stream.push stream event;
-                Option.iter (fun f -> f ()) pause)
-              error_events;
-            Pera_provider.Event_stream.close_error stream error_message);
+        match
+          match script with
+          | Turn { events; final } ->
+              List.iter
+                (fun event ->
+                  Pera_provider.Event_stream.push stream event;
+                  Option.iter (fun f -> f ()) pause)
+                events;
+              Pera_provider.Event_stream.close stream final
+          | Error { error_events; error_message } ->
+              List.iter
+                (fun event ->
+                  Pera_provider.Event_stream.push stream event;
+                  Option.iter (fun f -> f ()) pause)
+                error_events;
+              Pera_provider.Event_stream.close_error stream error_message
+        with
+        | () -> ()
+        | exception exn -> (
+            try
+              Pera_provider.Event_stream.close_error stream
+                (Printexc.to_string exn)
+            with _ -> ()));
     stream
 
 let as_provider scripts =
