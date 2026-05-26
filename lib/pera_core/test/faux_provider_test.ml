@@ -59,7 +59,7 @@ let ame_testable =
         | Pera_types.Types.AME_tool_call_end _ -> "AME_tool_call_end"
         | Pera_types.Types.AME_done _ -> "AME_done"
         | Pera_types.Types.AME_error _ -> "AME_error"))
-    Agent_types.assistant_message_event_equal
+    Pera_types.Types.equal_assistant_message_event
 
 (** Alcotest testable for [(assistant_message_event list, string) result]. *)
 let result_testable =
@@ -74,7 +74,7 @@ let result_testable =
       | Error msg -> Format.fprintf ppf "Error(%s)" msg)
     (fun r1 r2 ->
       match (r1, r2) with
-      | Ok m1, Ok m2 -> Agent_types.assistant_message_equal m1 m2
+      | Ok m1, Ok m2 -> Pera_types.Types.equal_assistant_message m1 m2
       | Error e1, Error e2 -> String.equal e1 e2
       | _, _ -> false)
 

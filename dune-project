@@ -21,7 +21,9 @@
   (containers
    (>= 3.0))
   (yojson
-   (>= 2.0))))
+   (>= 2.0))
+  (ppx_deriving
+   (>= 1.6))))
 
 (package
  (name pera-provider)
@@ -46,6 +48,8 @@
    (>= 0.2))
   (re
    (>= 1.10))
+  (ppx_deriving
+   (>= 1.6))
   (qcheck-alcotest
    (and
     (>= 0.21)
@@ -79,6 +83,8 @@
    (>= 1.0))
   (alcotest
    (>= 1.7))
+  (ppx_deriving
+   (>= 1.6))
   (qcheck-core
    (and
     (>= 0.21)

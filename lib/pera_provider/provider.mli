@@ -16,6 +16,10 @@ type tool_schema = {
 }
 (** A tool schema describes one tool that the model may call. *)
 
+val equal_tool_schema : tool_schema -> tool_schema -> bool
+val pp_tool_schema : Format.formatter -> tool_schema -> unit
+val show_tool_schema : tool_schema -> string
+
 (** A message in the conversation history. *)
 type message =
   | UserMessage of Types.user_message
@@ -29,6 +33,10 @@ type message =
           single provider request message where the provider requires it (e.g.
           Anthropic). *)
 
+val equal_message : message -> message -> bool
+val pp_message : Format.formatter -> message -> unit
+val show_message : message -> string
+
 type context = {
   system : string;
       (** System prompt. Empty string if no system prompt is needed. *)
@@ -41,6 +49,10 @@ type context = {
 }
 (** The full context passed to a provider for a single completion request. *)
 
+val equal_context : context -> context -> bool
+val pp_context : Format.formatter -> context -> unit
+val show_context : context -> string
+
 type simple_stream_options = {
   max_tokens : int;
       (** Maximum number of tokens to generate. Provider-imposed minimum is 1.
@@ -49,6 +61,12 @@ type simple_stream_options = {
       (** Sampling temperature; [None] uses the provider default. *)
 }
 (** Options for a simple (non-agentic) streaming completion. *)
+
+val equal_simple_stream_options :
+  simple_stream_options -> simple_stream_options -> bool
+
+val pp_simple_stream_options : Format.formatter -> simple_stream_options -> unit
+val show_simple_stream_options : simple_stream_options -> string
 
 (** The module type that every concrete provider must satisfy. *)
 module type S = sig

@@ -27,6 +27,10 @@ type tool_output =
   | Tool_text of string  (** Plain-text tool output. *)
   | Tool_json of Yojson.Safe.t  (** Structured JSON tool output. *)
 
+val equal_tool_output : tool_output -> tool_output -> bool
+val pp_tool_output : Format.formatter -> tool_output -> unit
+val show_tool_output : tool_output -> string
+
 type 'ctx tool = {
   name : string;  (** Tool name as presented to the model. *)
   description : string;  (** Short description of what the tool does. *)
@@ -100,6 +104,17 @@ type agent_event =
       (** A tool execution has completed. [is_error] is [true] when the tool
           returned an error or raised an exception. *)
 
+val equal_agent_event : agent_event -> agent_event -> bool
+(** Derived structural equality for {!agent_event}. Uses [agent_message_equal]
+    for [agent_message] fields and [Yojson.Safe.equal] for JSON fields. *)
+
+val pp_agent_event : Format.formatter -> agent_event -> unit
+(** Pretty-printer for {!agent_event}. Produces human-readable structured
+    output, e.g. [AE_agent_end \{messages=[4]}]. *)
+
+val show_agent_event : agent_event -> string
+(** [show_agent_event e] is [Format.asprintf "%a" pp_agent_event e]. *)
+
 (** {1 Hook result types} *)
 
 (** Result returned by the [before_tool_call] hook. *)
@@ -108,6 +123,14 @@ type before_tool_call_result =
   | Deny of string
       (** Deny the tool call with the given message; the message is surfaced to
           the model as an error tool result. *)
+
+val equal_before_tool_call_result :
+  before_tool_call_result -> before_tool_call_result -> bool
+
+val pp_before_tool_call_result :
+  Format.formatter -> before_tool_call_result -> unit
+
+val show_before_tool_call_result : before_tool_call_result -> string
 
 type turn_update = {
   messages : agent_message list option;
@@ -121,6 +144,10 @@ type turn_update = {
 }
 (** A requested update to the turn state, returned by the [prepare_next_turn]
     hook. Each field is [None] to leave the current value unchanged. *)
+
+val equal_turn_update : turn_update -> turn_update -> bool
+val pp_turn_update : Format.formatter -> turn_update -> unit
+val show_turn_update : turn_update -> string
 
 (** {1 Helper functions} *)
 
@@ -156,29 +183,15 @@ type stream_fn =
     Callers that wrap a real [Provider.S] bind [~env] into the closure before
     passing it here. *)
 
+(** {1 Equality helpers} *)
+
+val agent_message_equal : agent_message -> agent_message -> bool
+(** Structural equality for {!agent_message}. The [Synthetic] case is
+    uninhabited; only [Real] messages are compared. Uses
+    [Provider.equal_message]. *)
+
 (** {1 Alcotest support} *)
 
-val assistant_message_equal :
-  Pera_types.Types.assistant_message ->
-  Pera_types.Types.assistant_message ->
-  bool
-(** Structural equality for {!Pera_types.Types.assistant_message}. Uses
-    type-specific equality for all fields; does not use polymorphic [(=)]. *)
-
-val assistant_message_event_equal :
-  Pera_types.Types.assistant_message_event ->
-  Pera_types.Types.assistant_message_event ->
-  bool
-(** Structural equality for {!Pera_types.Types.assistant_message_event}. Uses
-    type-specific equality for all fields; does not use polymorphic [(=)]. *)
-
-val agent_event_equal : agent_event -> agent_event -> bool
-(** Structural equality for {!agent_event}. Does not use polymorphic [(=)]; uses
-    pattern matching on each constructor. *)
-
-val pp_agent_event : Format.formatter -> agent_event -> unit
-(** Pretty-printer for {!agent_event}. Sufficient for test output. *)
-
 val agent_event_testable : agent_event Alcotest.testable
-(** Alcotest testable for {!agent_event}. Use with
-    [Alcotest.testable pp_agent_event agent_event_equal]. *)
+(** Alcotest testable for {!agent_event}. Uses [pp_agent_event] and
+    [equal_agent_event]. *)

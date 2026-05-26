@@ -11,6 +11,10 @@ type user_content =
   | UImage of { url : string; media_type : string }
       (** An image content block identified by URL and MIME media type. *)
 
+val equal_user_content : user_content -> user_content -> bool
+val pp_user_content : Format.formatter -> user_content -> unit
+val show_user_content : user_content -> string
+
 (** Content variants for assistant messages. *)
 type assistant_content =
   | AText of string  (** A plain-text block produced by the model. *)
@@ -28,6 +32,13 @@ and tool_call = {
 }
 (** A single tool invocation in an assistant message. *)
 
+val equal_assistant_content : assistant_content -> assistant_content -> bool
+val pp_assistant_content : Format.formatter -> assistant_content -> unit
+val show_assistant_content : assistant_content -> string
+val equal_tool_call : tool_call -> tool_call -> bool
+val pp_tool_call : Format.formatter -> tool_call -> unit
+val show_tool_call : tool_call -> string
+
 type tool_result_content = {
   tool_call_id : string;
       (** Matches the [id] field of the [tool_call] this result answers. *)
@@ -40,6 +51,12 @@ type tool_result_content = {
 (** The content of a tool result message (sent back to the model after executing
     a tool call). *)
 
+val equal_tool_result_content :
+  tool_result_content -> tool_result_content -> bool
+
+val pp_tool_result_content : Format.formatter -> tool_result_content -> unit
+val show_tool_result_content : tool_result_content -> string
+
 (** {1 Message types} *)
 
 type user_message = {
@@ -49,6 +66,10 @@ type user_message = {
 }
 (** A user message in the conversation history. *)
 
+val equal_user_message : user_message -> user_message -> bool
+val pp_user_message : Format.formatter -> user_message -> unit
+val show_user_message : user_message -> string
+
 (** Why the model stopped generating. *)
 type stop_reason =
   | EndTurn  (** The model finished normally. *)
@@ -57,6 +78,10 @@ type stop_reason =
   | StopSequence  (** A configured stop sequence was encountered. *)
   | Error  (** The provider returned an error during generation. *)
   | Aborted  (** The in-progress stream was cancelled by the caller. *)
+
+val equal_stop_reason : stop_reason -> stop_reason -> bool
+val pp_stop_reason : Format.formatter -> stop_reason -> unit
+val show_stop_reason : stop_reason -> string
 
 type usage = {
   input_tokens : int;
@@ -69,6 +94,10 @@ type usage = {
 }
 (** Token usage and cost for a single LLM call. *)
 
+val equal_usage : usage -> usage -> bool
+val pp_usage : Format.formatter -> usage -> unit
+val show_usage : usage -> string
+
 type provenance = {
   api : string;
       (** Provider API identifier, e.g. ["anthropic"] or ["openai-completions"].
@@ -80,6 +109,10 @@ type provenance = {
 }
 (** Identifies which provider and model produced a message. *)
 
+val equal_provenance : provenance -> provenance -> bool
+val pp_provenance : Format.formatter -> provenance -> unit
+val show_provenance : provenance -> string
+
 type assistant_message = {
   content : assistant_content list;
   stop_reason : stop_reason;
@@ -89,6 +122,10 @@ type assistant_message = {
 (** A complete assistant message, including all content blocks and metadata.
     This is both the terminal result of a stream and the snapshot type carried
     in each [assistant_message_event]. *)
+
+val equal_assistant_message : assistant_message -> assistant_message -> bool
+val pp_assistant_message : Format.formatter -> assistant_message -> unit
+val show_assistant_message : assistant_message -> string
 
 (** {1 Streaming events} *)
 
@@ -132,6 +169,14 @@ type assistant_message_event =
       (** The stream ended with an error. [message] describes the failure;
           [partial] is the last available snapshot. *)
 
+val equal_assistant_message_event :
+  assistant_message_event -> assistant_message_event -> bool
+
+val pp_assistant_message_event :
+  Format.formatter -> assistant_message_event -> unit
+
+val show_assistant_message_event : assistant_message_event -> string
+
 (** {1 Error types} *)
 
 (** Failure codes for filesystem operations. *)
@@ -142,14 +187,32 @@ type file_error_code =
   | Aborted
   | Unknown
 
+val equal_file_error_code : file_error_code -> file_error_code -> bool
+val pp_file_error_code : Format.formatter -> file_error_code -> unit
+val show_file_error_code : file_error_code -> string
+
 type file_error = { code : file_error_code; path : string; message : string }
 (** A filesystem operation error. *)
+
+val equal_file_error : file_error -> file_error -> bool
+val pp_file_error : Format.formatter -> file_error -> unit
+val show_file_error : file_error -> string
 
 (** Failure codes for shell execution. *)
 type execution_error_code = Timeout | Aborted | NonZeroExit | Unknown
 
+val equal_execution_error_code :
+  execution_error_code -> execution_error_code -> bool
+
+val pp_execution_error_code : Format.formatter -> execution_error_code -> unit
+val show_execution_error_code : execution_error_code -> string
+
 type execution_error = { code : execution_error_code; message : string }
 (** A shell execution error. *)
+
+val equal_execution_error : execution_error -> execution_error -> bool
+val pp_execution_error : Format.formatter -> execution_error -> unit
+val show_execution_error : execution_error -> string
 
 type tool_error = {
   message : string;
@@ -161,6 +224,10 @@ type tool_error = {
 (** An error returned by a tool execution (runtime failure or schema violation).
 *)
 
+val equal_tool_error : tool_error -> tool_error -> bool
+val pp_tool_error : Format.formatter -> tool_error -> unit
+val show_tool_error : tool_error -> string
+
 (** {1 Model} *)
 
 type model = {
@@ -169,3 +236,7 @@ type model = {
   api : string;  (** API family, e.g. ["anthropic"] or ["openai-completions"]. *)
 }
 (** Identifies an LLM model and the API used to reach it. *)
+
+val equal_model : model -> model -> bool
+val pp_model : Format.formatter -> model -> unit
+val show_model : model -> string

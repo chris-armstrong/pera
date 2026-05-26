@@ -35,10 +35,10 @@ let test_tool_output_json_converts_preserving_value () =
 let test_agent_event_testable_distinguishes_variants () =
   Alcotest.(check bool)
     "different variants are unequal" false
-    (agent_event_equal AE_turn_start AE_agent_start);
+    (equal_agent_event AE_turn_start AE_agent_start);
   Alcotest.(check bool)
     "same variant is equal" true
-    (agent_event_equal AE_turn_start AE_turn_start)
+    (equal_agent_event AE_turn_start AE_turn_start)
 
 let () =
   Alcotest.run "agent_types"

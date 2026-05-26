@@ -18,6 +18,7 @@ depends: [
   "eio_linux" {>= "1.0"}
   "piaf" {>= "0.2"}
   "re" {>= "1.10"}
+  "ppx_deriving" {>= "1.6"}
   "qcheck-alcotest" {>= "0.21" & with-test}
   "qcheck-core" {>= "0.21" & with-test}
   "odoc" {with-doc}
