@@ -112,7 +112,7 @@
     {
       "stage": 4,
       "title": "Refactor agent_loop.ml: flatten execute_one_tool and extract run_inner helpers",
-      "status": "pending",
+      "status": "committed",
       "description": "Two readability fixes in agent_loop.ml: (1) flatten the nested option+result matching in execute_one_tool (comment on line 222) using let* or helper functions; (2) extract named helpers for the hook callbacks and tool-result collection in run_inner to reduce its length (comment on line 392).",
       "files_to_modify": [
         "lib/pera_core/agent_loop.ml"

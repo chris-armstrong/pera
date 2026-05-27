@@ -223,116 +223,97 @@ let execute_one_tool ~config ~sw ~out_stream ~final_agent_msg
     (tc : Pera_types.Types.tool_call) =
   let tool_call_id = tc.id in
   let tool_name = tc.name in
-  (* Step 1: look up tool by name *)
-  let tool_opt =
-    List.find_opt
-      (fun (t : 'ctx Agent_types.tool) -> String.equal t.name tool_name)
-      config.tools
+  (* [fail_tool msg] emits an error execution-end event and returns the error
+     result.  Used as the early-exit payload in the [let*] chain below.
+     Note: [AE_tool_execution_start] is intentionally NOT emitted on this path —
+     the start event fires only when all checks pass (Step 4). *)
+  let fail_tool msg =
+    let content = `String msg in
+    let result = Pera_types.Types.{ tool_call_id; content; is_error = true } in
+    push_event out_stream
+      (Agent_types.AE_tool_execution_end
+         { tool_call_id; tool_name; result = content; is_error = true });
+    result
   in
-  match tool_opt with
-  | None ->
-      let content = `String (Printf.sprintf "Unknown tool: %s" tool_name) in
-      let result =
-        Pera_types.Types.{ tool_call_id; content; is_error = true }
-      in
-      push_event out_stream
-        (Agent_types.AE_tool_execution_end
-           { tool_call_id; tool_name; result = content; is_error = true });
-      result
-  | Some tool -> (
-      (* Step 2: validate args *)
-      let validated_args_result =
-        Pera_provider.Json_schema.validate tool.schema tc.arguments
-      in
-      match validated_args_result with
-      | Error err ->
+  (* Each step either short-circuits via [Error early_result] (using [fail_tool])
+     or continues via [Ok ...].  Both branches carry [tool_result_content], so
+     the outcome is resolved at the end with the or-pattern
+     [match r with Ok r | Error r -> r].  This eliminates three levels of nested
+     [match] while keeping the side-effect order unchanged. *)
+  let outcome =
+    let open Result.Syntax in
+    (* Step 1: look up tool by name *)
+    let* tool =
+      match
+        List.find_opt
+          (fun (t : 'ctx Agent_types.tool) -> String.equal t.name tool_name)
+          config.tools
+      with
+      | Some t -> Ok t
+      | None -> Error (fail_tool (Printf.sprintf "Unknown tool: %s" tool_name))
+    in
+    (* Step 2: validate args *)
+    let* () =
+      Pera_provider.Json_schema.validate tool.schema tc.arguments
+      |> Result.map_err (fun err ->
+             fail_tool (Printf.sprintf "Schema validation failed: %s" err))
+    in
+    (* Step 3: call before_tool_call if set *)
+    let before_result =
+      match config.before_tool_call with
+      | None -> Agent_types.Allow
+      | Some f ->
+          f
+            {
+              message = final_agent_msg;
+              tool_call = tc;
+              validated_args = tc.arguments;
+              tool_ctx = config.tool_ctx;
+            }
+    in
+    let* () =
+      match before_result with
+      | Agent_types.Allow -> Ok ()
+      | Agent_types.Deny msg -> Error (fail_tool msg)
+    in
+    (* Step 4: emit execution start — only reached after all checks pass *)
+    push_event out_stream
+      (Agent_types.AE_tool_execution_start
+         { tool_call_id; tool_name; args = tc.arguments });
+    (* Step 5: execute the tool, catching exceptions *)
+    let execute_result =
+      match
+        Eio.Cancel.sub (fun cancel ->
+            tool.execute ~ctx:config.tool_ctx ~args:tc.arguments ~sw ~cancel)
+      with
+      | Ok output ->
+          Agent_types.tool_output_to_result_content ~tool_call_id
+            ~is_error:false output
+      | Error { message; _ } ->
+          let content = `String message in
+          Pera_types.Types.{ tool_call_id; content; is_error = true }
+      | exception (Eio.Cancel.Cancelled _ as exn) -> raise exn
+      | exception exn ->
           let content =
-            `String (Printf.sprintf "Schema validation failed: %s" err)
+            `String
+              (Printf.sprintf "Tool raised exception: %s"
+                 (Printexc.to_string exn))
           in
-          let result =
-            Pera_types.Types.{ tool_call_id; content; is_error = true }
-          in
-          push_event out_stream
-            (Agent_types.AE_tool_execution_end
-               { tool_call_id; tool_name; result = content; is_error = true });
-          result
-      | Ok () -> (
-          (* Step 3: call before_tool_call if set *)
-          let before_result =
-            match config.before_tool_call with
-            | None -> Agent_types.Allow
-            | Some f ->
-                f
-                  {
-                    message = final_agent_msg;
-                    tool_call = tc;
-                    validated_args = tc.arguments;
-                    tool_ctx = config.tool_ctx;
-                  }
-          in
-          match before_result with
-          | Agent_types.Deny msg ->
-              let content = `String msg in
-              let result =
-                Pera_types.Types.{ tool_call_id; content; is_error = true }
-              in
-              push_event out_stream
-                (Agent_types.AE_tool_execution_end
-                   {
-                     tool_call_id;
-                     tool_name;
-                     result = content;
-                     is_error = true;
-                   });
-              result
-          | Agent_types.Allow ->
-              (* Step 4: emit execution start *)
-              push_event out_stream
-                (Agent_types.AE_tool_execution_start
-                   { tool_call_id; tool_name; args = tc.arguments });
-              (* Step 5: execute the tool, catching exceptions *)
-              let execute_result =
-                match
-                  Eio.Cancel.sub (fun cancel ->
-                      tool.execute ~ctx:config.tool_ctx ~args:tc.arguments ~sw
-                        ~cancel)
-                with
-                | Ok output ->
-                    Agent_types.tool_output_to_result_content ~tool_call_id
-                      ~is_error:false output
-                | Error { message; _ } ->
-                    let content = `String message in
-                    Pera_types.Types.{ tool_call_id; content; is_error = true }
-                | exception (Eio.Cancel.Cancelled _ as exn) -> raise exn
-                | exception exn ->
-                    let content =
-                      `String
-                        (Printf.sprintf "Tool raised exception: %s"
-                           (Printexc.to_string exn))
-                    in
-                    Pera_types.Types.{ tool_call_id; content; is_error = true }
-              in
-              let is_error = execute_result.Pera_types.Types.is_error in
-              (* Step 7: call after_tool_call if set *)
-              Option.iter
-                (fun f ->
-                  f
-                    {
-                      tool_call = tc;
-                      result = execute_result;
-                      tool_ctx = config.tool_ctx;
-                    })
-                config.after_tool_call;
-              (* Step 8: emit execution end *)
-              push_event out_stream
-                (Agent_types.AE_tool_execution_end
-                   {
-                     tool_call_id;
-                     tool_name;
-                     result = execute_result.content;
-                     is_error;
-                   });
-              execute_result))
+          Pera_types.Types.{ tool_call_id; content; is_error = true }
+    in
+    let is_error = execute_result.Pera_types.Types.is_error in
+    (* Step 6: call after_tool_call if set *)
+    Option.iter
+      (fun f ->
+        f { tool_call = tc; result = execute_result; tool_ctx = config.tool_ctx })
+      config.after_tool_call;
+    (* Step 7: emit execution end *)
+    push_event out_stream
+      (Agent_types.AE_tool_execution_end
+         { tool_call_id; tool_name; result = execute_result.content; is_error });
+    Ok execute_result
+  in
+  match outcome with Ok result | Error result -> result
 
 (** Execute a list of tool calls sequentially, in source order. *)
 let execute_tools_sequential ~config ~sw ~out_stream ~final_agent_msg tool_calls
@@ -391,6 +372,40 @@ let execute_tool_calls ~config ~sw ~out_stream ~final_agent_msg tool_calls =
     for subsequent calls they are steering messages. *)
 let rec run_inner ~config ~model_ref ~options_ref ~messages_ref ~pending ~sw
     out_stream =
+  (* Hook helpers — defined once, called in the [Ok tool_results] branch below.
+     Each captures [config], [model_ref], [messages_ref], and [options_ref] by
+     closure so call sites stay concise. *)
+  let invoke_should_stop ~final_agent_msg ~tool_results =
+    match config.should_stop_after_turn with
+    | None -> false
+    | Some f ->
+        f
+          {
+            message = final_agent_msg;
+            tool_results;
+            messages = !messages_ref;
+            tool_ctx = config.tool_ctx;
+          }
+  in
+  let invoke_prepare_next_turn ~final_agent_msg ~tool_results =
+    match config.prepare_next_turn with
+    | None -> ()
+    | Some f ->
+        let ctx =
+          {
+            message = final_agent_msg;
+            tool_results;
+            messages = !messages_ref;
+            tool_ctx = config.tool_ctx;
+          }
+        in
+        Option.iter (apply_turn_update ~model_ref ~messages_ref) (f ctx)
+  in
+  let get_steering_messages () =
+    match config.get_steering_messages with
+    | None -> []
+    | Some f -> f ()
+  in
   (* Step 1: append pending messages to the history *)
   let appended_messages =
     if List.is_empty pending then !messages_ref else !messages_ref @ pending
@@ -484,42 +499,12 @@ let rec run_inner ~config ~model_ref ~options_ref ~messages_ref ~pending ~sw
         push_event out_stream
           (Agent_types.AE_turn_end { message = final_agent_msg; tool_results });
         (* Step 9: check should_stop_after_turn *)
-        let should_stop =
-          match config.should_stop_after_turn with
-          | None -> false
-          | Some f ->
-              f
-                {
-                  message = final_agent_msg;
-                  tool_results;
-                  messages = !messages_ref;
-                  tool_ctx = config.tool_ctx;
-                }
-        in
-        if should_stop then `Stop
+        if invoke_should_stop ~final_agent_msg ~tool_results then `Stop
         else begin
           (* Step 10: call prepare_next_turn *)
-          (match config.prepare_next_turn with
-          | None -> ()
-          | Some f ->
-              let ctx =
-                {
-                  message = final_agent_msg;
-                  tool_results;
-                  messages = !messages_ref;
-                  tool_ctx = config.tool_ctx;
-                }
-              in
-              let update_opt = f ctx in
-              Option.iter
-                (apply_turn_update ~model_ref ~messages_ref)
-                update_opt);
-          (* Step 11: call get_steering_messages *)
-          let steering =
-            match config.get_steering_messages with
-            | None -> []
-            | Some f -> f ()
-          in
+          invoke_prepare_next_turn ~final_agent_msg ~tool_results;
+          (* Step 11: get steering messages *)
+          let steering = get_steering_messages () in
           let had_tool_calls =
             match final_msg.stop_reason with
             | Pera_types.Types.ToolUse -> true
