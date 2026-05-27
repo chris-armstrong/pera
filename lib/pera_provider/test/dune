@@ -19,3 +19,12 @@
 (test
  (name sse_interpreter_test)
  (libraries pera_provider pera_types alcotest))
+
+(test
+ (name http_client_test)
+ (libraries pera_provider alcotest eio_main containers))
+
+(test
+ (name anthropic_request_test)
+ (modules anthropic_request_test provider_test_helpers)
+ (libraries pera_provider pera_types alcotest containers fmt))

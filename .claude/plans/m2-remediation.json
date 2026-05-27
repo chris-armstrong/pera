@@ -1,0 +1,219 @@
+{
+  "plan_id": "m2-remediation",
+  "title": "M2 PR #3 — Remediation of review feedback",
+  "source": "GitHub PR #3 review by chris-armstrong, 2026-05-26",
+  "decisions": {
+    "ppx": "ppx_deriving.eq + ppx_deriving.show; [@equal Yojson.Safe.equal] shim on Yojson fields; agent_message_equal kept by hand because synthetic = | (empty type) may confuse the deriver",
+    "test_helpers_location": "Private module lib/pera_core/test/agent_loop_helpers.ml — listed in (modules ...) for each test; not a library",
+    "event_formatting": "Enhance pp_agent_event in agent_types.ml to include all field details; loop_driver drops describe_agent_event and calls Format.asprintf \"%a\" Agent_types.pp_agent_event",
+    "http_client_pool": "Full pool: Http_client.t wraps Piaf.Client.t; Http_client.create ~env ~sw ~base_url; Provider.S gains type t + create; stream_simple takes t instead of ~env; stream_fn closure captures t so its type is unchanged"
+  },
+  "stages": [
+    {
+      "stage": 1,
+      "title": "ppx_deriving across pera_types, pera_provider, pera_core",
+      "status": "committed",
+      "description": "Add ppx_deriving as a dependency and annotate all suitable types with [@deriving eq, show]. This eliminates the hand-written equality functions in agent_types.ml and adds pretty-printers to pera_types (addressing the 'helper for pretty printing Pera_types.Types values' comment). Types with Yojson.Safe.t fields get [@equal Yojson.Safe.equal] and [@printer ...] overrides.",
+      "files_to_modify": [
+        "dune-project",
+        "lib/pera_types/dune",
+        "lib/pera_types/types.ml",
+        "lib/pera_types/types.mli",
+        "lib/pera_provider/dune",
+        "lib/pera_provider/provider.ml",
+        "lib/pera_provider/provider.mli",
+        "lib/pera_core/dune",
+        "lib/pera_core/agent_types.ml",
+        "lib/pera_core/agent_types.mli"
+      ],
+      "implementation_notes": [
+        "Add (depends (ppx_deriving (>= 1.6))) to dune-project. Add (preprocess (pps ppx_deriving.eq ppx_deriving.show)) to each affected dune library stanza.",
+        "pera_types/types.ml: add [@deriving eq, show] to: stop_reason, file_error_code, execution_error_code, tool_error, model, provenance, usage. For types containing Yojson.Safe.t (tool_call, tool_result_content, assistant_content, assistant_message, assistant_message_event), add [@deriving eq, show] with inline overrides: arguments: (Yojson.Safe.t [@equal Yojson.Safe.equal] [@printer (fun fmt v -> Format.pp_print_string fmt (Yojson.Safe.to_string v))]). user_content and user_message can be fully derived.",
+        "pera_provider/provider.ml: add [@deriving eq, show] to message (UserMessage / AssistantMessage / ToolResultMessage), context, tool_schema, simple_stream_options. These depend on pera_types equality which is now derived.",
+        "pera_core/agent_types.ml: add [@deriving eq, show] to tool_output, before_tool_call_result, turn_update. For agent_event, derive eq and show — each constructor field that contains agent_message or Yojson.Safe.t will need [@equal ...] overrides. For agent_message itself: Real contains Provider.message (now derived); Synthetic contains synthetic (= |, empty type) — keep agent_message_equal hand-written with | Real m1, Real m2 -> Provider.equal_message m1 m2 | Synthetic _, _ | _, Synthetic _ -> . since ppx_deriving may not handle empty variants cleanly.",
+        "Remove all hand-written equality functions from agent_types.ml that are now replaced by derived ones: stop_reason_equal, provenance_equal, usage_equal, assistant_content_equal, assistant_message_equal (keep only agent_message_equal as above), tool_result_content_equal. The agent_event_equal and assistant_message_event_equal can be replaced by the derived equal_agent_event and equal_assistant_message_event.",
+        "Update agent_types.mli: remove declarations for functions replaced by derived ones; keep agent_message_equal (still hand-written); pp_agent_event is now the derived show_agent_event or an alias — stage 3 will enhance it, so for now just expose the derived pp.",
+        "Update agent_event_testable to use the derived equal_agent_event."
+      ],
+      "test_requirements": {
+        "existing_tests": ["All tests must remain green after the equality replacements — the derived eq must match the hand-written behaviour"],
+        "new_tests": [],
+        "test_command": "dune build --root <worktree> && semgrep --config .semgrep/ --severity ERROR lib/ bin/ && dune runtest --root <worktree>"
+      },
+      "coding_guidelines_to_emphasize": [
+        "type-safety.md — ppx attributes are type-safe; no loss of structural equality protection",
+        "pera-specific.md §2 — no Stdlib.(=) on complex types; derived eq functions are the approved replacement"
+      ],
+      "depends_on": []
+    },
+    {
+      "stage": 2,
+      "title": "Shared test helpers module + dune (tests) stanza",
+      "status": "committed",
+      "description": "Extract the duplicated helpers (make_assistant_message, make_user_agent_message, make_tool_use_assistant_message, make_tool_call, default_convert_to_llm, test_model, test_options, empty_schema, int_field_schema, make_config, make_text_turn_script, make_tool_use_turn_script, collect_agent_events, count_events) into lib/pera_core/test/agent_loop_helpers.ml. Add a check_before ordering-assertion helper (comment on agent_loop_test.ml line 166). Convert the 5 separate (test ...) stanzas in lib/pera_core/test/dune to a single (tests ...) stanza.",
+      "files_to_create": [
+        "lib/pera_core/test/agent_loop_helpers.ml",
+        "lib/pera_core/test/agent_loop_helpers.mli"
+      ],
+      "files_to_modify": [
+        "lib/pera_core/test/dune",
+        "lib/pera_core/test/agent_types_test.ml",
+        "lib/pera_core/test/faux_provider_test.ml",
+        "lib/pera_core/test/agent_loop_test.ml",
+        "lib/pera_core/test/agent_loop_tools_test.ml",
+        "lib/pera_core/test/agent_loop_cancel_test.ml"
+      ],
+      "implementation_notes": [
+        "Create agent_loop_helpers.ml with all shared helpers. Open Containers at the top. Each helper must have a doc comment.",
+        "Include check_before : message:('a -> bool) -> before:('a -> bool) -> events:'a list -> string -> unit that asserts the first index matching [message] is less than the first index matching [before]. Used to replace the inline ordering assertions in agent_loop_test.ml.",
+        "Include a check_event_order helper that takes a list of (label, predicate) pairs and asserts they appear in that order in the event list.",
+        "dune change: replace the five (test ...) stanzas with (tests (names agent_types_test faux_provider_test agent_loop_test agent_loop_tools_test agent_loop_cancel_test) (modules agent_types_test faux_provider_test agent_loop_test agent_loop_tools_test agent_loop_cancel_test agent_loop_helpers) (libraries pera_core pera_types pera_provider alcotest containers eio_main)). NOTE: agent_loop_helpers must appear in (modules) but has no test entry in (names).",
+        "Each test file: remove the duplicated helper definitions, add (open Agent_loop_helpers) or prefix helpers as Agent_loop_helpers.make_assistant_message etc. — choose whichever is less disruptive to the existing code.",
+        "loop_driver.ml: the driver has its own copy of these helpers because it cannot access the test directory. It should keep its local copies but they can reference the same logic. Note: the driver is a binary; its helpers are already correct and relatively compact. Do not remove them from the driver in this stage."
+      ],
+      "test_requirements": {
+        "existing_tests": ["All 19 existing tests must remain green after the refactor"],
+        "new_tests": [],
+        "test_command": "dune build --root <worktree> && semgrep --config .semgrep/ --severity ERROR lib/ bin/ && dune runtest --root <worktree>"
+      },
+      "coding_guidelines_to_emphasize": [
+        "code-reuse.md — extract shared helpers; avoid copy-paste",
+        "test-patterns.md — Alcotest structure; helpers belong in support modules"
+      ],
+      "depends_on": [1]
+    },
+    {
+      "stage": 3,
+      "title": "Enhance pp_agent_event; loop_driver uses it",
+      "status": "committed",
+      "description": "Enhance pp_agent_event in agent_types.ml to include all field details: message counts for AE_agent_end, tool result counts for AE_turn_end, event kind for AE_message_update, tool name/id for AE_tool_execution_*. Remove describe_agent_event from loop_driver.ml and replace with Format.asprintf \"%a\" Agent_types.pp_agent_event event. This resolves the 'formatting code belongs in common code' comment on loop_driver.ml line 108.",
+      "files_to_modify": [
+        "lib/pera_core/agent_types.ml",
+        "lib/pera_core/agent_types.mli",
+        "bin/drivers/loop_driver.ml"
+      ],
+      "implementation_notes": [
+        "In agent_types.ml, write pp_agent_event as a proper Format.formatter function that prints all useful fields. The derived show_agent_event (from Stage 1) is OCaml-syntax — pp_agent_event should produce the human-readable structured output the driver currently shows (e.g. '[AE_agent_end] messages=4').",
+        "pp_agent_event should handle: AE_agent_end with message count; AE_turn_end with tool_results count; AE_message_update with the assistant_message_event kind (text_start, text_delta(text), tool_call_start(name/id), etc.); AE_tool_execution_start/end/update with tool_call_id, tool_name, and for _end the is_error flag.",
+        "In loop_driver.ml: replace describe_agent_event with a local let describe e = Format.asprintf \"%a\" Agent_types.pp_agent_event e, or inline it directly in the print call.",
+        "make_config and other non-formatting helpers in loop_driver.ml stay as they are (driver binary cannot access the test helpers module)."
+      ],
+      "test_requirements": {
+        "existing_tests": ["All tests remain green; loop_driver builds and produces the same structured output"],
+        "new_tests": [],
+        "test_command": "dune build --root <worktree> && semgrep --config .semgrep/ --severity ERROR lib/ bin/ && dune runtest --root <worktree>"
+      },
+      "coding_guidelines_to_emphasize": [
+        "abstractions.md — pp_agent_event is the single source of truth for event formatting",
+        "module-boundaries.md — formatting logic belongs in the type's module, not in callers"
+      ],
+      "depends_on": [1]
+    },
+    {
+      "stage": 4,
+      "title": "Refactor agent_loop.ml: flatten execute_one_tool and extract run_inner helpers",
+      "status": "committed",
+      "description": "Two readability fixes in agent_loop.ml: (1) flatten the nested option+result matching in execute_one_tool (comment on line 222) using let* or helper functions; (2) extract named helpers for the hook callbacks and tool-result collection in run_inner to reduce its length (comment on line 392).",
+      "files_to_modify": [
+        "lib/pera_core/agent_loop.ml"
+      ],
+      "implementation_notes": [
+        "execute_one_tool (line 222): The current structure is match tool_opt with | None -> ... | Some tool -> (match validated_args_result with | Error -> ... | Ok () -> (match before_result with | Deny -> ... | Allow -> ...)). Refactor to use let* / Result monad or extract sub-steps as named local functions: let result_of_unknown_tool, let result_of_schema_error, let call_before_hook ~config ~final_agent_msg ~tc, let execute_and_emit. Each sub-step returns a (tool_result_content, [`Skip of tool_result_content]) to exit early. Alternatively, use a simple helper: let fail_tool ~tool_call_id ~tool_name ~msg out_stream = (push event; return result) and build the flow as a flat sequence of Result.bind calls.",
+        "run_inner (line 392): Extract the following as named helper functions: invoke_should_stop ~config ~final_agent_msg ~tool_results ~messages_ref (calls the hook, returns bool); invoke_prepare_next_turn ~config ~model_ref ~options_ref ~messages_ref ~final_agent_msg ~tool_results (calls the hook, mutates refs if update returned); inject_steering_messages ~config (calls get_steering_messages, returns list). The function should read top-to-bottom as a sequence of named steps.",
+        "No behaviour change — this is a pure readability refactor. All tests must pass unchanged."
+      ],
+      "test_requirements": {
+        "existing_tests": ["All 19 tests must remain green — behaviour is unchanged"],
+        "new_tests": [],
+        "test_command": "dune build --root <worktree> && semgrep --config .semgrep/ --severity ERROR lib/ bin/ && dune runtest --root <worktree>"
+      },
+      "coding_guidelines_to_emphasize": [
+        "nesting-and-control-flow.md — reduce nesting with bind operators and early returns",
+        "naming-and-intermediates.md — name each logical step as a local function"
+      ],
+      "depends_on": []
+    },
+    {
+      "stage": 5,
+      "title": "Shared test helpers for pera_provider tests",
+      "status": "committed",
+      "description": "Extract the associative-list helpers in lib/pera_provider/test/anthropic_request_test.ml into a shared lib/pera_provider/test/provider_test_helpers.ml module, accessible to all pera_provider test files. Converts the test dune file to use (tests ...) stanza if applicable.",
+      "files_to_create": [
+        "lib/pera_provider/test/provider_test_helpers.ml",
+        "lib/pera_provider/test/provider_test_helpers.mli"
+      ],
+      "files_to_modify": [
+        "lib/pera_provider/test/dune",
+        "lib/pera_provider/test/anthropic_request_test.ml"
+      ],
+      "implementation_notes": [
+        "Identify helpers in anthropic_request_test.ml (assoc-list constructors, message builders, assertion helpers) and move them to provider_test_helpers.ml.",
+        "Update dune to include provider_test_helpers in the modules list for each test that needs it.",
+        "If there are other test files in lib/pera_provider/test/ that have similar helpers, consolidate them too."
+      ],
+      "test_requirements": {
+        "existing_tests": ["All pera_provider tests remain green"],
+        "new_tests": [],
+        "test_command": "dune build --root <worktree> && semgrep --config .semgrep/ --severity ERROR lib/ bin/ && dune runtest --root <worktree>"
+      },
+      "coding_guidelines_to_emphasize": [
+        "code-reuse.md — shared test helpers reduce duplication",
+        "module-boundaries.md — helpers belong in their own file"
+      ],
+      "depends_on": []
+    },
+    {
+      "stage": 6,
+      "title": "Http_client connection pool + Provider.S redesign",
+      "status": "committed",
+      "description": "Introduce Http_client.t wrapping a persistent Piaf.Client.t for connection reuse. Redesign Provider.S to have type t (provider instance) + create ~env ~sw, so that stream_simple takes the instance rather than ~env. Anthropic_provider.create ~env ~sw creates the Http_client and stores it; stream_simple reuses it across calls. Faux_provider.as_provider is updated to satisfy the new S (with unit as t). The stream_fn closure type in agent_types.mli is unchanged — callers bind the provider instance into the closure before passing it to the loop.",
+      "files_to_modify": [
+        "lib/pera_provider/http_client.mli",
+        "lib/pera_provider/http_client.ml",
+        "lib/pera_provider/provider.mli",
+        "lib/pera_provider/provider.ml",
+        "lib/pera_provider/anthropic_provider.mli",
+        "lib/pera_provider/anthropic_provider.ml",
+        "lib/pera_core/faux_provider.mli",
+        "lib/pera_core/faux_provider.ml",
+        "lib/pera_provider/test/http_client_test.ml",
+        "bin/drivers/provider_driver.ml",
+        "bin/drivers/loop_driver.ml"
+      ],
+      "implementation_notes": [
+        "http_client.mli changes: add 'type t' (abstract, wraps Piaf.Client.t); add 'val create : env:Eio_unix.Stdenv.base -> sw:Eio.Switch.t -> string -> (t, error) result' where the string is the base URL (e.g. 'https://api.anthropic.com'). Change post_stream signature from (~env ~sw ~headers ~body ~on_chunk url) to (~client:t ~headers ~body ~on_chunk path) where path is the request path appended to the base URL. The old one-shot function becomes an internal detail or is removed.",
+        "http_client.ml: implement create using Piaf.Client.create ~sw env (Uri.of_string base_url). The Piaf.Client.t is stored in the abstract type. post_stream uses Piaf.Client.call or Piaf.Client.post on the existing client. The client is tied to the switch passed to create — when the switch ends, the client is closed automatically (Piaf handles this via sw).",
+        "provider.mli changes: add 'type t' and 'val create : env:Eio_unix.Stdenv.base -> sw:Eio.Switch.t -> t' to module type S. Change stream_simple from (~env ~model ~context ~options ~sw) to (t -> ~model ~context ~options ~sw). The t is a first-class provider value holding the connection.",
+        "anthropic_provider.mli/ml: 'type t = { client: Http_client.t; api_key: string }'. create ~env ~sw reads ANTHROPIC_API_KEY from env, calls Http_client.create, returns t. stream_simple (provider: t) ~model ~context ~options ~sw calls Http_client.post_stream ~client:provider.client.",
+        "faux_provider.ml: update as_provider to satisfy new Provider.S. type t = unit (stateless). create ~env:_ ~sw:_ = (). stream_simple () ~model ~context ~options ~sw = stream_fn_of_scripts scripts ...",
+        "provider_driver.ml: add let provider = Anthropic_provider.create ~env ~sw before the stream_simple call; update call site to Anthropic_provider.stream_simple provider ~model ~context ~options ~sw.",
+        "loop_driver.ml: the driver uses Faux_provider directly via stream_fn_of_scripts, not Provider.S, so minimal change is needed. Update as_provider usage if any.",
+        "http_client_test.ml: update test to use the new Http_client.create API. The test that drives post_stream against http://127.0.0.1:1/ must now call Http_client.create first (which will fail fast), asserting that create returns an Error with a non-empty error_to_string. Or: create succeeds (connection is lazy) and post_stream fails — either is acceptable, just verify error_to_string is non-empty."
+      ],
+      "test_requirements": {
+        "existing_tests": ["All tests remain green; provider_driver still compiles and runs"],
+        "new_tests": [
+          {
+            "file": "lib/pera_provider/test/http_client_test.ml",
+            "test_name": "test_create_error_gives_nonempty_message",
+            "description": "Call Http_client.create or Http_client.post_stream against an invalid URL and assert the returned Error has a non-empty error_to_string"
+          }
+        ],
+        "test_command": "dune build --root <worktree> && semgrep --config .semgrep/ --severity ERROR lib/ bin/ && dune runtest --root <worktree>"
+      },
+      "coding_guidelines_to_emphasize": [
+        "abstractions.md — Http_client.t is the narrow seam; Piaf types must not leak into callers",
+        "module-boundaries.md — .mli hides Piaf entirely",
+        "error-handling.md — create returns Result; never raises on connection failure",
+        "pera-specific.md §5 — ~sw labelled arg on create ties the client lifetime to the switch"
+      ],
+      "depends_on": []
+    }
+  ],
+  "summary": "6 stages; no epoch grouping needed. Stages 1, 4, 5, 6 are independent. Stage 2 depends on Stage 1 (uses derived pp functions in helpers). Stage 3 depends on Stage 1 (uses derived pp as base). Recommended order: 1 → 2 → 3 → 4 → 5 → 6 (linear, each PASS before next).",
+  "baseline": {
+    "build_passes": true,
+    "tests_pass": true,
+    "known_failures": []
+  }
+}

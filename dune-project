@@ -21,7 +21,9 @@
   (containers
    (>= 3.0))
   (yojson
-   (>= 2.0))))
+   (>= 2.0))
+  (ppx_deriving
+   (>= 1.6))))
 
 (package
  (name pera-provider)
@@ -46,11 +48,48 @@
    (>= 0.2))
   (re
    (>= 1.10))
+  (ppx_deriving
+   (>= 1.6))
   (qcheck-alcotest
    (and
     (>= 0.21)
     :with-test))
   (qcheck-core
+   (and
+    (>= 0.21)
+    :with-test))))
+
+(package
+ (name pera-core)
+ (synopsis "Pera agent core loop")
+ (description
+  "Agent loop, hooks, tool execution, and Faux_provider")
+ (depends
+  (ocaml
+   (>= 5.4))
+  (pera-types
+   (= :version))
+  (pera-provider
+   (= :version))
+  (containers
+   (>= 3.0))
+  (yojson
+   (>= 2.0))
+  (eio
+   (>= 1.0))
+  (eio_main
+   (>= 1.0))
+  (eio_linux
+   (>= 1.0))
+  (alcotest
+   (>= 1.7))
+  (ppx_deriving
+   (>= 1.6))
+  (qcheck-core
+   (and
+    (>= 0.21)
+    :with-test))
+  (qcheck-alcotest
    (and
     (>= 0.21)
     :with-test))))

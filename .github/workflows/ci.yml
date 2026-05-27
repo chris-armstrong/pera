@@ -20,12 +20,7 @@ jobs:
           opam-local-packages: ""
 
       - name: Install dependencies
-        run: |
-          opam install -y \
-            containers yojson \
-            eio eio_main eio_linux \
-            piaf re \
-            alcotest qcheck-alcotest qcheck-core
+        run: opam install . --deps-only --with-test -y
 
       - name: Install semgrep
         run: pip install semgrep --quiet

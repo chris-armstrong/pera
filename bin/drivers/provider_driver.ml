@@ -113,8 +113,9 @@ let () =
       Printf.printf "---\n%!";
       Eio_main.run @@ fun env ->
       Eio.Switch.run @@ fun sw ->
+      let provider = Anthropic_provider.create ~env ~sw in
       let stream =
-        Anthropic_provider.stream_simple ~env ~model ~context ~options ~sw
+        Anthropic_provider.stream_simple provider ~model ~context ~options ~sw
       in
       let result =
         Event_stream.iter stream ~f:(fun event ->

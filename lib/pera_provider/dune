@@ -2,4 +2,5 @@
  (name pera_provider)
  (public_name pera-provider)
  (libraries pera_types containers yojson eio eio_main eio_linux piaf re)
- (modules_without_implementation provider))
+ (preprocess
+  (pps ppx_deriving.eq ppx_deriving.show)))

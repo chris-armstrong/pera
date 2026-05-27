@@ -1,0 +1,69 @@
+open Containers
+
+type turn_script = {
+  events : Pera_types.Types.assistant_message_event list;
+  final : Pera_types.Types.assistant_message;
+}
+
+type error_script = {
+  error_events : Pera_types.Types.assistant_message_event list;
+  error_message : string;
+}
+
+type script = Turn of turn_script | Error of error_script
+
+(** Module-level recording of all provider contexts received, in call order. *)
+let recorded : Pera_provider.Provider.context list ref = ref []
+
+let recorded_contexts () = List.rev !recorded
+let reset_recorded () = recorded := []
+
+let stream_fn_of_scripts ?pause scripts =
+  let scripts_ref = ref scripts in
+  fun ~model:_ ~context ~options:_ ~sw ->
+    recorded := context :: !recorded;
+    let script =
+      match !scripts_ref with
+      | [] -> failwith "Faux_provider: no more scripts"
+      | s :: rest ->
+          scripts_ref := rest;
+          s
+    in
+    let stream = Pera_provider.Event_stream.create ~capacity:32 in
+    Eio.Fiber.fork ~sw (fun () ->
+        match
+          match script with
+          | Turn { events; final } ->
+              List.iter
+                (fun event ->
+                  Pera_provider.Event_stream.push stream event;
+                  Option.iter (fun f -> f ()) pause)
+                events;
+              Pera_provider.Event_stream.close stream final
+          | Error { error_events; error_message } ->
+              List.iter
+                (fun event ->
+                  Pera_provider.Event_stream.push stream event;
+                  Option.iter (fun f -> f ()) pause)
+                error_events;
+              Pera_provider.Event_stream.close_error stream error_message
+        with
+        | () -> ()
+        | exception exn -> (
+            try
+              Pera_provider.Event_stream.close_error stream
+                (Printexc.to_string exn)
+            with _ -> ()));
+    stream
+
+let as_provider scripts =
+  let fn = stream_fn_of_scripts scripts in
+  (module struct
+    type t = unit
+
+    let name = "Faux"
+    let create ~env:_ ~sw:_ = ()
+
+    let stream_simple () ~model ~context ~options ~sw =
+      fn ~model ~context ~options ~sw
+  end : Pera_provider.Provider.S)

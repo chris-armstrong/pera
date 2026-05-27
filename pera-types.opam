@@ -11,6 +11,7 @@ depends: [
   "ocaml" {>= "5.4"}
   "containers" {>= "3.0"}
   "yojson" {>= "2.0"}
+  "ppx_deriving" {>= "1.6"}
   "odoc" {with-doc}
 ]
 build: [
