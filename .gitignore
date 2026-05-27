@@ -1,6 +1,6 @@
 _build/
+_opam/
 *.install
-*.opam
 .merlin
 *.byte
 *.native
