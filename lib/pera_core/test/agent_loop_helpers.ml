@@ -1,5 +1,6 @@
 open Containers
 open Pera_core
+open Pera_core_test_util
 
 (** {1 Message builders} *)
 

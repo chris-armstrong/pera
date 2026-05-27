@@ -1,3 +1,3 @@
 (executables
  (names provider_driver loop_driver)
- (libraries pera_core pera_provider pera_types eio_main containers))
+ (libraries pera_core pera_core_test_util pera_provider pera_types eio_main containers))

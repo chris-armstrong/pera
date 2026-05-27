@@ -1,5 +1,5 @@
 open Containers [@@warning "-33"]
-open Pera_core
+open Pera_core_test_util
 
 (** Build a minimal [assistant_message] with the given [stop_reason] and text
     content. Used to construct scripted final messages in tests. *)
