@@ -25,6 +25,7 @@ jobs:
             containers yojson \
             eio eio_main eio_linux \
             piaf re \
+            ppx_deriving \
             alcotest qcheck-alcotest qcheck-core
 
       - name: Install semgrep
