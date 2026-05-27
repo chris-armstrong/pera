@@ -1,26 +1,17 @@
 (include_subdirs no)
 
-(test
- (name agent_types_test)
- (modules agent_types_test)
- (libraries pera_core pera_types pera_provider alcotest containers eio_main))
-
-(test
- (name faux_provider_test)
- (modules faux_provider_test)
- (libraries pera_core pera_types pera_provider alcotest containers eio_main))
-
-(test
- (name agent_loop_test)
- (modules agent_loop_test)
- (libraries pera_core pera_types pera_provider alcotest containers eio_main))
-
-(test
- (name agent_loop_tools_test)
- (modules agent_loop_tools_test)
- (libraries pera_core pera_types pera_provider alcotest containers eio_main))
-
-(test
- (name agent_loop_cancel_test)
- (modules agent_loop_cancel_test)
+(tests
+ (names
+  agent_types_test
+  faux_provider_test
+  agent_loop_test
+  agent_loop_tools_test
+  agent_loop_cancel_test)
+ (modules
+  agent_types_test
+  faux_provider_test
+  agent_loop_test
+  agent_loop_tools_test
+  agent_loop_cancel_test
+  agent_loop_helpers)
  (libraries pera_core pera_types pera_provider alcotest containers eio_main))

@@ -49,7 +49,7 @@
     {
       "stage": 2,
       "title": "Shared test helpers module + dune (tests) stanza",
-      "status": "pending",
+      "status": "committed",
       "description": "Extract the duplicated helpers (make_assistant_message, make_user_agent_message, make_tool_use_assistant_message, make_tool_call, default_convert_to_llm, test_model, test_options, empty_schema, int_field_schema, make_config, make_text_turn_script, make_tool_use_turn_script, collect_agent_events, count_events) into lib/pera_core/test/agent_loop_helpers.ml. Add a check_before ordering-assertion helper (comment on agent_loop_test.ml line 166). Convert the 5 separate (test ...) stanzas in lib/pera_core/test/dune to a single (tests ...) stanza.",
       "files_to_create": [
         "lib/pera_core/test/agent_loop_helpers.ml",

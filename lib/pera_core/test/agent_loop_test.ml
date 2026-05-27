@@ -1,66 +1,6 @@
 open Containers [@@warning "-33"]
 open Pera_core
-
-(** {1 Test helpers} *)
-
-(** Build a minimal [assistant_message] with the given stop_reason and text. *)
-let make_assistant_message ?(stop_reason = Pera_types.Types.EndTurn) text =
-  Pera_types.Types.
-    {
-      content = [ AText text ];
-      stop_reason;
-      provenance =
-        {
-          api = "faux";
-          provider = "faux";
-          model = "faux";
-          error_message = None;
-        };
-      usage =
-        {
-          input_tokens = 0;
-          output_tokens = 0;
-          cache_read_tokens = 0;
-          cache_write_tokens = 0;
-          cost_usd = None;
-        };
-    }
-
-(** Build a minimal [agent_message] wrapping a [UserMessage]. *)
-let make_user_agent_message text =
-  let um = Pera_types.Types.{ role = "user"; content = [ UText text ] } in
-  Agent_types.Real (Pera_provider.Provider.UserMessage um)
-
-(** The default convert_to_llm: unwrap [Real] messages, ignore [Synthetic]. *)
-let default_convert_to_llm msgs =
-  List.filter_map
-    (fun msg ->
-      match msg with
-      | Agent_types.Real m -> Some m
-      | Agent_types.Synthetic _ -> .)
-    msgs
-
-(** A model value for loop calls. *)
-let test_model = Pera_types.Types.{ id = "test-model"; api = "faux" }
-
-(** Simple stream options for loop calls. *)
-let test_options =
-  Pera_provider.Provider.{ max_tokens = 1024; temperature = None }
-
-(** Build a simple Faux script for a text-only turn. *)
-let make_text_turn_script text =
-  let partial_msg = make_assistant_message "" in
-  let final_msg = make_assistant_message text in
-  Faux_provider.Turn
-    Faux_provider.
-      {
-        events =
-          [
-            Pera_types.Types.AME_text_start { partial = partial_msg };
-            Pera_types.Types.AME_text_delta { text; partial = final_msg };
-          ];
-        final = final_msg;
-      }
+open Agent_loop_helpers
 
 (** Build a minimal loop config with sensible defaults. *)
 let make_config ?(transform_context = None) ?(get_api_key = None)
@@ -85,18 +25,6 @@ let make_config ?(transform_context = None) ?(get_api_key = None)
       get_steering_messages;
       get_follow_up_messages;
     }
-
-(** Collect all agent events from an [Event_stream] into a list. Returns the
-    list and the final result. *)
-let collect_agent_events stream =
-  let buf = ref [] in
-  let result =
-    Pera_provider.Event_stream.iter stream ~f:(fun e -> buf := e :: !buf)
-  in
-  (List.rev !buf, result)
-
-(** Count events matching a predicate. *)
-let count_events pred events = List.length (List.filter pred events)
 
 (** Check whether an event is [AE_turn_start]. *)
 let is_turn_start = function Agent_types.AE_turn_start -> true | _ -> false
@@ -151,33 +79,16 @@ let test_single_text_turn_emits_lifecycle_and_final_messages () =
   Alcotest.(check int) "one agent_end" 1 (count_events is_agent_end events);
   (* Assert order: agent_start < turn_start < message_start < message_end <
      turn_end < agent_end *)
-  let indexed = List.mapi (fun i e -> (i, e)) events in
-  let find_first pred =
-    List.find_opt (fun (_, e) -> pred e) indexed
-    |> Option.map fst
-    |> Option.get_exn_or "event not found"
-  in
-  let agent_start_idx = find_first is_agent_start in
-  let turn_start_idx = find_first is_turn_start in
-  let message_start_idx = find_first is_message_start in
-  let message_end_idx = find_first is_message_end in
-  let turn_end_idx = find_first is_turn_end in
-  let agent_end_idx = find_first is_agent_end in
-  Alcotest.(check bool)
-    "agent_start < turn_start" true
-    (agent_start_idx < turn_start_idx);
-  Alcotest.(check bool)
-    "turn_start < message_start" true
-    (turn_start_idx < message_start_idx);
-  Alcotest.(check bool)
-    "message_start < message_end" true
-    (message_start_idx < message_end_idx);
-  Alcotest.(check bool)
-    "message_end < turn_end" true
-    (message_end_idx < turn_end_idx);
-  Alcotest.(check bool)
-    "turn_end < agent_end" true
-    (turn_end_idx < agent_end_idx);
+  check_event_order
+    [
+      ("agent_start", is_agent_start);
+      ("turn_start", is_turn_start);
+      ("message_start", is_message_start);
+      ("message_end", is_message_end);
+      ("turn_end", is_turn_end);
+      ("agent_end", is_agent_end);
+    ]
+    events;
   (* Assert final messages: user + assistant *)
   match result with
   | Error msg -> Alcotest.failf "expected Ok result, got Error %s" msg
@@ -417,7 +328,8 @@ let test_error_stop_reason_terminates_run () =
   Eio.Switch.run @@ fun sw ->
   Faux_provider.reset_recorded ();
   let error_final =
-    make_assistant_message ~stop_reason:Pera_types.Types.Error "oops"
+    make_assistant_message ~stop_reason:Pera_types.Types.Error
+      [ Pera_types.Types.AText "oops" ]
   in
   let error_script =
     Faux_provider.Turn
@@ -426,7 +338,7 @@ let test_error_stop_reason_terminates_run () =
           events =
             [
               Pera_types.Types.AME_text_start
-                { partial = make_assistant_message "" };
+                { partial = make_text_assistant_message "" };
             ];
           final = error_final;
         }

@@ -1,51 +1,6 @@
 open Containers [@@warning "-33"]
 open Pera_core
-
-(** {1 Test helpers} *)
-
-(** Build a minimal [assistant_message] with the given stop_reason and text. *)
-let make_assistant_message ?(stop_reason = Pera_types.Types.EndTurn) text =
-  Pera_types.Types.
-    {
-      content = [ AText text ];
-      stop_reason;
-      provenance =
-        {
-          api = "faux";
-          provider = "faux";
-          model = "faux";
-          error_message = None;
-        };
-      usage =
-        {
-          input_tokens = 0;
-          output_tokens = 0;
-          cache_read_tokens = 0;
-          cache_write_tokens = 0;
-          cost_usd = None;
-        };
-    }
-
-(** Build a minimal [agent_message] wrapping a [UserMessage]. *)
-let make_user_agent_message text =
-  let um = Pera_types.Types.{ role = "user"; content = [ UText text ] } in
-  Agent_types.Real (Pera_provider.Provider.UserMessage um)
-
-(** The default convert_to_llm: unwrap [Real] messages, ignore [Synthetic]. *)
-let default_convert_to_llm msgs =
-  List.filter_map
-    (fun msg ->
-      match msg with
-      | Agent_types.Real m -> Some m
-      | Agent_types.Synthetic _ -> .)
-    msgs
-
-(** A model value for loop calls. *)
-let test_model = Pera_types.Types.{ id = "test-model"; api = "faux" }
-
-(** Simple stream options for loop calls. *)
-let test_options =
-  Pera_provider.Provider.{ max_tokens = 1024; temperature = None }
+open Agent_loop_helpers
 
 (** Build a simple loop config with sensible defaults. *)
 let make_config ?(get_follow_up_messages = None) ?(tools = [])
@@ -70,52 +25,6 @@ let make_config ?(get_follow_up_messages = None) ?(tools = [])
       get_follow_up_messages;
     }
 
-(** Build a simple Faux script for a text-only turn. *)
-let make_text_turn_script text =
-  let partial_msg = make_assistant_message "" in
-  let final_msg = make_assistant_message text in
-  Faux_provider.Turn
-    Faux_provider.
-      {
-        events =
-          [
-            Pera_types.Types.AME_text_start { partial = partial_msg };
-            Pera_types.Types.AME_text_delta { text; partial = final_msg };
-          ];
-        final = final_msg;
-      }
-
-(** Build a simple tool schema with no required fields. *)
-let empty_schema =
-  Pera_provider.Json_schema.object_ ~properties:[] ~required:[] ()
-
-(** Build a tool call record. *)
-let make_tool_call id name arguments = Pera_types.Types.{ id; name; arguments }
-
-(** Build a [assistant_message] with tool calls and ToolUse stop_reason. *)
-let make_tool_use_assistant_message tool_calls =
-  let content = List.map (fun tc -> Pera_types.Types.AToolCall tc) tool_calls in
-  Pera_types.Types.
-    {
-      content;
-      stop_reason = ToolUse;
-      provenance =
-        {
-          api = "faux";
-          provider = "faux";
-          model = "faux";
-          error_message = None;
-        };
-      usage =
-        {
-          input_tokens = 0;
-          output_tokens = 0;
-          cache_read_tokens = 0;
-          cache_write_tokens = 0;
-          cost_usd = None;
-        };
-    }
-
 (** Collect events from an [Event_stream] into a ref list. Returns a function to
     call after the switch to get the collected events. *)
 let collect_events_into buf stream =
@@ -132,9 +41,6 @@ let is_turn_start = function Agent_types.AE_turn_start -> true | _ -> false
 
 (** Check whether an event is [AE_turn_end]. *)
 let is_turn_end = function Agent_types.AE_turn_end _ -> true | _ -> false
-
-(** Count events matching a predicate. *)
-let count_events pred events = List.length (List.filter pred events)
 
 (** {1 Test 1: cancellation during stream} *)
 
@@ -172,8 +78,8 @@ let test_cancellation_during_stream_emits_aborted_and_ends () =
     let never, _ = Eio.Promise.create () in
     Eio.Promise.await never
   in
-  let partial_msg = make_assistant_message "" in
-  let final_msg = make_assistant_message "hello" in
+  let partial_msg = make_text_assistant_message "" in
+  let final_msg = make_text_assistant_message "hello" in
   let script =
     Faux_provider.Turn
       Faux_provider.
