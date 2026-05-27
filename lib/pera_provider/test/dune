@@ -26,4 +26,5 @@
 
 (test
  (name anthropic_request_test)
+ (modules anthropic_request_test provider_test_helpers)
  (libraries pera_provider pera_types alcotest containers fmt))

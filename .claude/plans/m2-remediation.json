@@ -136,7 +136,7 @@
     {
       "stage": 5,
       "title": "Shared test helpers for pera_provider tests",
-      "status": "pending",
+      "status": "committed",
       "description": "Extract the associative-list helpers in lib/pera_provider/test/anthropic_request_test.ml into a shared lib/pera_provider/test/provider_test_helpers.ml module, accessible to all pera_provider test files. Converts the test dune file to use (tests ...) stanza if applicable.",
       "files_to_create": [
         "lib/pera_provider/test/provider_test_helpers.ml",

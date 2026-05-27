@@ -1,47 +1,7 @@
 open Containers
 open Pera_types
 open Pera_provider
-
-(* ── Helpers ── *)
-
-(** Look up the value for [key] in an assoc list, failing the test if absent. *)
-let assoc_exn key fields =
-  List.assoc_opt ~eq:String.equal key fields
-  |> Option.get_exn_or (Fmt.str "expected key %S in assoc" key)
-
-(** Unwrap a [`Assoc] JSON value, failing the test if it is not an assoc. *)
-let as_assoc label json =
-  match json with
-  | `Assoc fields -> fields
-  | other ->
-      Alcotest.failf "%s: expected JSON object, got %s" label
-        (Yojson.Safe.to_string other)
-
-(** Unwrap a [`List] JSON value, failing the test if it is not a list. *)
-let as_list label json =
-  match json with
-  | `List items -> items
-  | other ->
-      Alcotest.failf "%s: expected JSON array, got %s" label
-        (Yojson.Safe.to_string other)
-
-(** Unwrap a [`String] JSON value, failing the test if it is not a string. *)
-let as_string label json =
-  match json with
-  | `String s -> s
-  | other ->
-      Alcotest.failf "%s: expected JSON string, got %s" label
-        (Yojson.Safe.to_string other)
-
-(** Build a minimal [Provider.context] around a message list. *)
-let make_context messages =
-  { Provider.system = ""; messages; tools = []; thinking = false }
-
-(** Build a minimal [Provider.simple_stream_options]. *)
-let make_options () = { Provider.max_tokens = 1024; temperature = None }
-
-(** A minimal model value. *)
-let test_model = { Types.id = "test-model"; api = "anthropic" }
+open Provider_test_helpers
 
 (** Render [messages] through [build_request_body] and return the parsed
     messages array from the resulting JSON. *)
@@ -54,11 +14,6 @@ let render_messages messages =
   let fields = as_assoc "body" body in
   let messages_json = assoc_exn "messages" fields in
   as_list "messages" messages_json
-
-(** Build a [ToolResultMessage] with string content. *)
-let make_tool_result ?(is_error = false) tool_call_id content_str =
-  Provider.ToolResultMessage
-    { Types.tool_call_id; content = `String content_str; is_error }
 
 (* ── Test 1: single tool result renders as a user message ── *)
 
