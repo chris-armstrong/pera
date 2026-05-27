@@ -171,4 +171,9 @@ let pp_agent_event ppf event =
       Format.fprintf ppf "[AE_tool_execution_end] id=%s name=%s is_error=%b"
         tool_call_id tool_name is_error
 
+(** Re-shadow the ppx-generated [show_agent_event] so it delegates to the
+    hand-written [pp_agent_event] above rather than the derived OCaml-syntax
+    printer that [@@deriving show] closed over at generation time. *)
+let show_agent_event e = Format.asprintf "%a" pp_agent_event e
+
 let agent_event_testable = Alcotest.testable pp_agent_event equal_agent_event
