@@ -59,7 +59,8 @@ val as_provider : script list -> (module Pera_provider.Provider.S)
 (** [as_provider scripts] wraps [scripts] in a first-class module satisfying
     {!Pera_provider.Provider.S}.
 
-    The [stream_simple] implementation ignores [~env] and delegates to
-    {!stream_fn_of_scripts}. This function exists to prove that [Faux_provider]
-    is a valid [Provider.S] and that the adapter is trivial; the loop itself
-    always uses the {!Agent_types.stream_fn} form directly. *)
+    The module has [type t = unit] (stateless). [create] ignores [~env] and
+    [~sw] and returns [()]. [stream_simple] ignores the [unit] instance and
+    delegates to {!stream_fn_of_scripts}. This function exists to prove that
+    [Faux_provider] is a valid [Provider.S] and that the adapter is trivial; the
+    loop itself always uses the {!Agent_types.stream_fn} form directly. *)

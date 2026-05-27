@@ -2,8 +2,11 @@ open Containers
 open Pera_types
 
 let name = "Anthropic"
-let anthropic_api_url = "https://api.anthropic.com/v1/messages"
+let anthropic_base_url = "https://api.anthropic.com"
+let anthropic_messages_path = "/v1/messages"
 let anthropic_version = "2023-06-01"
+
+type t = { client : Http_client.t; api_key : string }
 
 (** Build the JSON request body for the Anthropic messages API. Delegates to
     [Anthropic_request] which owns the serialisation logic. *)
@@ -32,8 +35,9 @@ let process_chunk sse_state interp_state stream done_message chunk =
   sse_state := new_sse_state;
   List.iter (handle_framed interp_state stream done_message) framed_events
 
-(** Process the response body by feeding each chunk through the SSE/interpreter
-    pipeline. Called by [on_chunk] from [Http_client.post_stream]. *)
+(** Build the on_chunk callback and finalise function for a streaming request.
+    The on_chunk callback feeds raw chunks through the SSE/interpreter pipeline.
+    The finalise function closes the stream based on the accumulated result. *)
 let process_chunks stream =
   let sse_state = ref Sse_parser.initial_state in
   let interp_state = ref Anthropic_interpreter.initial_state in
@@ -60,34 +64,45 @@ let build_headers api_key =
     ("accept", "text/event-stream");
   ]
 
-(** Run the HTTP request and process the streaming response body. Returns
-    [Ok ()] on success or [Error msg] on any failure. *)
-let do_request ~env ~model ~context ~options ~sw stream =
-  let open Result.Syntax in
-  let* api_key =
-    Sys.getenv_opt "ANTHROPIC_API_KEY"
-    |> Option.to_result "ANTHROPIC_API_KEY environment variable is not set"
-  in
+(** Run the HTTP request using the persistent provider client and process the
+    streaming response body. Closes the stream when done. *)
+let do_request ~provider ~model ~context ~options ~sw:_ stream =
   let request_body = build_request_body ~model ~context ~options in
   let request_body_str = Yojson.Safe.to_string request_body in
-  let headers = build_headers api_key in
+  let headers = build_headers provider.api_key in
   let on_chunk, finalise = process_chunks stream in
-  let* () =
-    Http_client.post_stream ~env ~sw ~headers ~body:request_body_str ~on_chunk
-      anthropic_api_url
-    |> Result.map_error Http_client.error_to_string
+  let http_result =
+    Http_client.post_stream ~client:provider.client ~headers
+      ~body:request_body_str ~on_chunk anthropic_messages_path
   in
-  Ok (finalise ())
+  match http_result with
+  | Error http_err ->
+      Event_stream.close_error stream (Http_client.error_to_string http_err)
+  | Ok () -> finalise ()
 
-let stream_simple ~env ~model ~context ~options ~sw =
+let create ~env ~sw =
+  let api_key =
+    match Sys.getenv_opt "ANTHROPIC_API_KEY" with
+    | Some k -> k
+    | None -> failwith "ANTHROPIC_API_KEY environment variable is not set"
+  in
+  let client =
+    match Http_client.create ~env ~sw anthropic_base_url with
+    | Ok c -> c
+    | Error e ->
+        failwith
+          (Printf.sprintf "Anthropic_provider.create: %s"
+             (Http_client.error_to_string e))
+  in
+  { client; api_key }
+
+let stream_simple provider ~model ~context ~options ~sw =
   let stream :
       (Types.assistant_message_event, Types.assistant_message) Event_stream.t =
     Event_stream.create ~capacity:32
   in
   let run_request () =
-    match do_request ~env ~model ~context ~options ~sw stream with
-    | Ok () -> ()
-    | Error msg -> Event_stream.close_error stream msg
+    do_request ~provider ~model ~context ~options ~sw stream
   in
   Eio.Fiber.fork ~sw run_request;
   stream

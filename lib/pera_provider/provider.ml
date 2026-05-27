@@ -34,10 +34,13 @@ type simple_stream_options = { max_tokens : int; temperature : float option }
 [@@deriving eq, show]
 
 module type S = sig
+  type t
+
   val name : string
+  val create : env:Eio_unix.Stdenv.base -> sw:Eio.Switch.t -> t
 
   val stream_simple :
-    env:Eio_unix.Stdenv.base ->
+    t ->
     model:Types.model ->
     context:context ->
     options:simple_stream_options ->

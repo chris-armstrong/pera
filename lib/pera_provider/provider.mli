@@ -70,21 +70,30 @@ val show_simple_stream_options : simple_stream_options -> string
 
 (** The module type that every concrete provider must satisfy. *)
 module type S = sig
+  type t
+  (** The provider instance type. Holds connection state (e.g. an HTTP client
+      and API credentials). Lifetime is tied to the switch passed to {!create}.
+  *)
+
   val name : string
   (** Human-readable provider name used in provenance records. *)
 
+  val create : env:Eio_unix.Stdenv.base -> sw:Eio.Switch.t -> t
+  (** [create ~env ~sw] initialises a provider instance bound to [sw].
+      Establishes any persistent connections needed for {!stream_simple} calls.
+      The instance is valid for the lifetime of [sw]. *)
+
   val stream_simple :
-    env:Eio_unix.Stdenv.base ->
+    t ->
     model:Types.model ->
     context:context ->
     options:simple_stream_options ->
     sw:Eio.Switch.t ->
     (Types.assistant_message_event, Types.assistant_message) Event_stream.t
-  (** [stream_simple ~env ~model ~context ~options ~sw] initiates a streaming
-      completion request and returns an {!Event_stream.t} that emits
-      {!Types.assistant_message_event} values as they arrive.
-
-      [env] is the Eio environment — required for making network connections.
+  (** [stream_simple provider ~model ~context ~options ~sw] initiates a
+      streaming completion request using [provider] and returns an
+      {!Event_stream.t} that emits {!Types.assistant_message_event} values as
+      they arrive.
 
       The returned stream:
       - Emits zero or more [AME_*] events as content arrives.

@@ -165,7 +165,7 @@
     {
       "stage": 6,
       "title": "Http_client connection pool + Provider.S redesign",
-      "status": "pending",
+      "status": "committed",
       "description": "Introduce Http_client.t wrapping a persistent Piaf.Client.t for connection reuse. Redesign Provider.S to have type t (provider instance) + create ~env ~sw, so that stream_simple takes the instance rather than ~env. Anthropic_provider.create ~env ~sw creates the Http_client and stores it; stream_simple reuses it across calls. Faux_provider.as_provider is updated to satisfy the new S (with unit as t). The stream_fn closure type in agent_types.mli is unchanged — callers bind the provider instance into the closure before passing it to the loop.",
       "files_to_modify": [
         "lib/pera_provider/http_client.mli",

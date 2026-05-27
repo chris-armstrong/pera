@@ -59,8 +59,11 @@ let stream_fn_of_scripts ?pause scripts =
 let as_provider scripts =
   let fn = stream_fn_of_scripts scripts in
   (module struct
-    let name = "Faux"
+    type t = unit
 
-    let stream_simple ~env:_ ~model ~context ~options ~sw =
+    let name = "Faux"
+    let create ~env:_ ~sw:_ = ()
+
+    let stream_simple () ~model ~context ~options ~sw =
       fn ~model ~context ~options ~sw
   end : Pera_provider.Provider.S)

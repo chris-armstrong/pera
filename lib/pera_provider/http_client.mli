@@ -3,6 +3,13 @@
     Piaf types are hidden behind this interface. Callers depend only on the
     types declared here. *)
 
+type t
+(** An abstract persistent HTTP client bound to a single base URL.
+
+    The client wraps a {!Piaf.Client.t} connection pool. Its lifetime is tied to
+    the switch passed to {!create}: when the switch ends, the underlying
+    connection is torn down automatically. *)
+
 type error
 (** An opaque HTTP transport error. *)
 
@@ -10,16 +17,25 @@ val error_to_string : error -> string
 (** [error_to_string e] converts a transport error to a human-readable string.
     Always returns a non-empty string. Never raises. *)
 
+val create :
+  env:Eio_unix.Stdenv.base -> sw:Eio.Switch.t -> string -> (t, error) result
+(** [create ~env ~sw base_url] opens a persistent HTTP connection to [base_url]
+    (e.g. ["https://api.anthropic.com"]). Returns [Ok t] on success or [Error e]
+    if the URL is invalid or the initial connection fails.
+
+    The returned client is valid for the lifetime of [sw]. Never raises on
+    expected failure modes. *)
+
 val post_stream :
-  env:Eio_unix.Stdenv.base ->
-  sw:Eio.Switch.t ->
+  client:t ->
   headers:(string * string) list ->
   body:string ->
   on_chunk:(string -> unit) ->
   string ->
   (unit, error) result
-(** [post_stream ~env ~sw ~headers ~body ~on_chunk url] issues a streaming HTTP
-    POST to [url] with the given [headers] and [body] string. Each chunk of the
-    response body is delivered to [on_chunk] as it arrives. Returns [Ok ()] on a
-    successful 2xx response with all chunks delivered, or [Error e] on any
-    transport or HTTP error. Never raises on expected failure modes. *)
+(** [post_stream ~client ~headers ~body ~on_chunk path] issues a streaming HTTP
+    POST to [path] (appended to the base URL stored in [client]) with the given
+    [headers] and [body] string. Each chunk of the response body is delivered to
+    [on_chunk] as it arrives. Returns [Ok ()] on a successful 2xx response with
+    all chunks delivered, or [Error e] on any transport or HTTP error. Never
+    raises on expected failure modes. *)
