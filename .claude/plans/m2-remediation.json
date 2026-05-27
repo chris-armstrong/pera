@@ -85,7 +85,7 @@
     {
       "stage": 3,
       "title": "Enhance pp_agent_event; loop_driver uses it",
-      "status": "pending",
+      "status": "committed",
       "description": "Enhance pp_agent_event in agent_types.ml to include all field details: message counts for AE_agent_end, tool result counts for AE_turn_end, event kind for AE_message_update, tool name/id for AE_tool_execution_*. Remove describe_agent_event from loop_driver.ml and replace with Format.asprintf \"%a\" Agent_types.pp_agent_event event. This resolves the 'formatting code belongs in common code' comment on loop_driver.ml line 108.",
       "files_to_modify": [
         "lib/pera_core/agent_types.ml",

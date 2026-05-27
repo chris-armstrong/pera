@@ -105,44 +105,7 @@ let make_config ?(tools = []) ?(tool_execution = `Parallel)
     }
 
 (** Format an [agent_event] as a human-readable structured line. *)
-let describe_agent_event = function
-  | Agent_types.AE_agent_start -> "[AE_agent_start]"
-  | Agent_types.AE_agent_end { messages } ->
-      Printf.sprintf "[AE_agent_end] messages=%d" (List.length messages)
-  | Agent_types.AE_turn_start -> "[AE_turn_start]"
-  | Agent_types.AE_turn_end { tool_results; _ } ->
-      Printf.sprintf "[AE_turn_end] tool_results=%d" (List.length tool_results)
-  | Agent_types.AE_message_start _ -> "[AE_message_start]"
-  | Agent_types.AE_message_update { event; _ } ->
-      let kind =
-        match event with
-        | Types.AME_text_start _ -> "text_start"
-        | Types.AME_text_delta { text; _ } ->
-            Printf.sprintf "text_delta(%s)" text
-        | Types.AME_thinking_start _ -> "thinking_start"
-        | Types.AME_thinking_delta { text; _ } ->
-            Printf.sprintf "thinking_delta(%s)" text
-        | Types.AME_tool_call_start { name; id; _ } ->
-            Printf.sprintf "tool_call_start(%s/%s)" name id
-        | Types.AME_tool_call_delta { index; _ } ->
-            Printf.sprintf "tool_call_delta(idx=%d)" index
-        | Types.AME_tool_call_end { index; _ } ->
-            Printf.sprintf "tool_call_end(idx=%d)" index
-        | Types.AME_done _ -> "done"
-        | Types.AME_error { message; _ } -> Printf.sprintf "error(%s)" message
-      in
-      Printf.sprintf "[AE_message_update] %s" kind
-  | Agent_types.AE_message_end _ -> "[AE_message_end]"
-  | Agent_types.AE_tool_execution_start { tool_call_id; tool_name; _ } ->
-      Printf.sprintf "[AE_tool_execution_start] id=%s name=%s" tool_call_id
-        tool_name
-  | Agent_types.AE_tool_execution_update { tool_call_id; tool_name; _ } ->
-      Printf.sprintf "[AE_tool_execution_update] id=%s name=%s" tool_call_id
-        tool_name
-  | Agent_types.AE_tool_execution_end { tool_call_id; tool_name; is_error; _ }
-    ->
-      Printf.sprintf "[AE_tool_execution_end] id=%s name=%s is_error=%b"
-        tool_call_id tool_name is_error
+let describe e = Format.asprintf "%a" Agent_types.pp_agent_event e
 
 (** Run a loop config, printing each event and the final result.
 
@@ -156,7 +119,7 @@ let run_scenario ~name ~messages ~sw config ~check_result =
   let iter_result =
     Event_stream.iter loop_stream ~f:(fun event ->
         events := !events @ [ event ];
-        Printf.printf "  %s\n%!" (describe_agent_event event))
+        Printf.printf "  %s\n%!" (describe event))
   in
   match iter_result with
   | Ok final_messages ->
@@ -529,7 +492,7 @@ let scenario_mid_stream_cancel () =
                ignore
                  (Event_stream.iter loop_stream ~f:(fun e ->
                       events := !events @ [ e ];
-                      Printf.printf "  %s\n%!" (describe_agent_event e)))
+                      Printf.printf "  %s\n%!" (describe e)))
              with _ -> ());
          Eio.Promise.await pause_reached_p;
          Eio.Switch.fail sw (Failure "cancelled by test"))
@@ -542,7 +505,7 @@ let scenario_mid_stream_cancel () =
           ignore
             (Event_stream.iter loop_stream ~f:(fun e ->
                  events := !events @ [ e ];
-                 Printf.printf "  %s\n%!" (describe_agent_event e)))));
+                 Printf.printf "  %s\n%!" (describe e)))));
   let ev = !events in
   let has_agent_end =
     List.exists (function Agent_types.AE_agent_end _ -> true | _ -> false) ev

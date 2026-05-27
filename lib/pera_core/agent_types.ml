@@ -128,26 +128,47 @@ let tool_output_to_result_content ~tool_call_id ~is_error output =
   in
   Pera_types.Types.{ tool_call_id; content; is_error }
 
+let pp_assistant_message_event_kind ppf event =
+  match event with
+  | Pera_types.Types.AME_text_start _ -> Format.pp_print_string ppf "text_start"
+  | Pera_types.Types.AME_text_delta { text; _ } ->
+      Format.fprintf ppf "text_delta(text=%s)" text
+  | Pera_types.Types.AME_thinking_start _ ->
+      Format.pp_print_string ppf "thinking_start"
+  | Pera_types.Types.AME_thinking_delta { text; _ } ->
+      Format.fprintf ppf "thinking_delta(text=%s)" text
+  | Pera_types.Types.AME_tool_call_start { name; id; _ } ->
+      Format.fprintf ppf "tool_call_start(name=%s, id=%s)" name id
+  | Pera_types.Types.AME_tool_call_delta { index; _ } ->
+      Format.fprintf ppf "tool_call_delta(idx=%d)" index
+  | Pera_types.Types.AME_tool_call_end { index; _ } ->
+      Format.fprintf ppf "tool_call_end(idx=%d)" index
+  | Pera_types.Types.AME_done _ -> Format.pp_print_string ppf "done"
+  | Pera_types.Types.AME_error { message; _ } ->
+      Format.fprintf ppf "error(%s)" message
+
 let pp_agent_event ppf event =
   match event with
-  | AE_agent_start -> Format.fprintf ppf "AE_agent_start"
+  | AE_agent_start -> Format.pp_print_string ppf "[AE_agent_start]"
   | AE_agent_end { messages } ->
-      Format.fprintf ppf "AE_agent_end {messages=[%d]}" (List.length messages)
-  | AE_turn_start -> Format.fprintf ppf "AE_turn_start"
+      Format.fprintf ppf "[AE_agent_end] messages=%d" (List.length messages)
+  | AE_turn_start -> Format.pp_print_string ppf "[AE_turn_start]"
   | AE_turn_end { message = _; tool_results } ->
-      Format.fprintf ppf "AE_turn_end {tool_results=[%d]}"
+      Format.fprintf ppf "[AE_turn_end] tool_results=%d"
         (List.length tool_results)
-  | AE_message_start _ -> Format.fprintf ppf "AE_message_start"
-  | AE_message_update _ -> Format.fprintf ppf "AE_message_update"
-  | AE_message_end _ -> Format.fprintf ppf "AE_message_end"
+  | AE_message_start _ -> Format.pp_print_string ppf "[AE_message_start]"
+  | AE_message_update { message = _; event } ->
+      Format.fprintf ppf "[AE_message_update] %a"
+        pp_assistant_message_event_kind event
+  | AE_message_end _ -> Format.pp_print_string ppf "[AE_message_end]"
   | AE_tool_execution_start { tool_call_id; tool_name; _ } ->
-      Format.fprintf ppf "AE_tool_execution_start {id=%s; name=%s}" tool_call_id
+      Format.fprintf ppf "[AE_tool_execution_start] id=%s name=%s" tool_call_id
         tool_name
   | AE_tool_execution_update { tool_call_id; tool_name; _ } ->
-      Format.fprintf ppf "AE_tool_execution_update {id=%s; name=%s}"
-        tool_call_id tool_name
+      Format.fprintf ppf "[AE_tool_execution_update] id=%s name=%s" tool_call_id
+        tool_name
   | AE_tool_execution_end { tool_call_id; tool_name; is_error; _ } ->
-      Format.fprintf ppf "AE_tool_execution_end {id=%s; name=%s; is_error=%b}"
+      Format.fprintf ppf "[AE_tool_execution_end] id=%s name=%s is_error=%b"
         tool_call_id tool_name is_error
 
 let agent_event_testable = Alcotest.testable pp_agent_event equal_agent_event
