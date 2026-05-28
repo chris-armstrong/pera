@@ -39,3 +39,8 @@
  (name openai_completions_request_test)
  (modules openai_completions_request_test provider_test_helpers)
  (libraries pera_provider pera_types alcotest containers fmt))
+
+(test
+ (name openai_completions_interpreter_test)
+ (modules openai_completions_interpreter_test)
+ (libraries pera_provider pera_types alcotest containers))
