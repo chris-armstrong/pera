@@ -393,6 +393,19 @@ let finalize_tool_calls state =
   in
   ({ state with active_tool_calls = [] }, events)
 
+(** Extract usage from the top-level chunk JSON when [stream_options.include_usage]
+    is true. Usage appears only on the final chunk. *)
+let extract_usage json =
+  match json with
+  | `Assoc fields -> (
+      match List.assoc_opt ~eq:String.equal "usage" fields with
+      | Some (`Assoc u) ->
+          let input_tokens = json_int_field u "prompt_tokens" in
+          let output_tokens = json_int_field u "completion_tokens" in
+          Some { Types.input_tokens; output_tokens; cache_read_tokens = 0; cache_write_tokens = 0; cost_usd = None }
+      | _ -> None)
+  | _ -> None
+
 (** Handle a non-null [finish_reason] by finalising all active blocks and
     emitting [AME_done]. *)
 let handle_finish_reason state reason_str =
@@ -425,6 +438,11 @@ let feed state (framed : Sse_parser.framed_event) =
             Types.AME_error { message = "Malformed JSON in SSE data"; partial };
           ] )
     | json -> (
+        let state =
+          match extract_usage json with
+          | Some u -> { state with usage = u }
+          | None -> state
+        in
         match extract_choice json with
         | None -> (state, [])
         | Some choice ->

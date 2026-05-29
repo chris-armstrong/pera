@@ -113,10 +113,17 @@ let assistant_message_to_json (msg : Types.assistant_message) =
   let has_tool_calls = List.exists is_tool_call msg.content in
   if has_tool_calls then
     let tool_calls = List.filter_map tool_call_block_to_json msg.content in
+    let texts = List.filter_map text_of_content msg.content in
+    let content =
+      match texts with
+      | [] -> `Null
+      | [ single ] -> `String single
+      | many -> `String (String.concat "\n" many)
+    in
     `Assoc
       [
         ("role", `String "assistant");
-        ("content", `Null);
+        ("content", content);
         ("tool_calls", `List tool_calls);
       ]
   else
@@ -212,6 +219,7 @@ let build_request_body ~model ~context ~options ~compat =
     [
       ("model", `String model.Types.id);
       ("stream", `Bool true);
+      ("stream_options", `Assoc [ ("include_usage", `Bool true) ]);
       ("messages", `List with_system);
       (compat.max_tokens_field, `Int options.max_tokens);
     ]
