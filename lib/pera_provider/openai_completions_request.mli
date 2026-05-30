@@ -29,7 +29,7 @@ val opencode_zen_compat : compat
 val opencode_go_compat : compat
 (** OpenCode Go endpoint preset.
 
-    - [base_url = "https://go.opencode.ai"]
+    - [base_url = "https://opencode.ai/zen/go/v1/chat/completions"]
     - [reasoning_field = "reasoning"]
     - [max_tokens_field = "max_completion_tokens"]
     - [require_tool_result_name = false] *)

@@ -24,7 +24,7 @@ let opencode_zen_compat =
 
 let opencode_go_compat =
   {
-    base_url = "https://go.opencode.ai";
+    base_url = "https://opencode.ai/zen/go/v1/chat/completions";
     reasoning_field = "reasoning";
     max_tokens_field = "max_completion_tokens";
     require_tool_result_name = false;
@@ -41,7 +41,7 @@ let default_compat =
 (** Select a compatibility preset by name. Valid values:
     - ["openai"] → default (api.openai.com)
     - ["zen"]    → zen.opencode.ai
-    - ["go"]     → go.opencode.ai
+    - ["go"]     → opencode.ai/zen/go/v1/chat/completions
     Unknown values fall back to [default_compat]. *)
 let compat_of_string = function
   | "zen" -> opencode_zen_compat
