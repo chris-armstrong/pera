@@ -1,17 +1,27 @@
 open Containers
 open Pera_harness
 
-(* Helper: create a temporary directory *)
-let mkdtemp () =
-  let tmpdir : string = Filename.get_temp_dir_name () in
-  let pid = Unix.getpid () in
-  let time = int_of_float (Unix.time ()) in
-  let suffix = Printf.sprintf "%d_%d" pid time in
-  let path = Filename.concat tmpdir ("pera_test_" ^ suffix) in
-  Unix.mkdir path 0o755;
+let make_temp_dir env =
+  let tmpdir = Filename.get_temp_dir_name () in
+  let buf = Cstruct.create 8 in
+  Eio.Flow.read_exact env#secure_random buf;
+  let bytes = Cstruct.to_string buf in
+  let len = String.length bytes in
+  let hex_chars = ref [] in
+  for i = 0 to len - 1 do
+    let code = Char.code (String.get bytes i) in
+    hex_chars := Printf.sprintf "%02x" code :: !hex_chars
+  done;
+  let hex = String.concat "" (List.rev !hex_chars) in
+  let path = Filename.concat tmpdir ("pera_test_" ^ hex) in
+  Eio.Path.(mkdirs ~exists_ok:false ~perm:0o700 (env#fs / path));
   path
 
-(* Define Alcotest testables for domain types *)
+let cleanup tmpdir =
+  try
+    let cmd = Printf.sprintf "rm -rf %s" (Filename.quote tmpdir) in
+    ignore (Sys.command cmd)
+  with _ -> ()
 
 let file_kind_pp fmt = function
   | `File -> Format.pp_print_string fmt "File"
@@ -28,14 +38,8 @@ let file_error_code_pp fmt c = Pera_types.Types.pp_file_error_code fmt c
 let file_error_code_equal = Pera_types.Types.equal_file_error_code
 
 let () =
-  let tmpdir = mkdtemp () in
-  let cleanup () =
-    try
-      let cmd = Printf.sprintf "rm -rf %s" (Filename.quote tmpdir) in
-      ignore (Sys.command cmd)
-    with _ -> ()
-  in
   Eio_main.run @@ fun env ->
+  let tmpdir = make_temp_dir env in
   Eio.Switch.run @@ fun sw ->
   let module E = (val Local_env.create ~env ~cwd:tmpdir : Execution_env.S) in
   let open Result.Syntax in
@@ -190,4 +194,4 @@ let () =
                   Alcotest.(check string) "unchanged" "/etc/hosts" resolved);
         ] );
     ];
-  cleanup ()
+  cleanup tmpdir
