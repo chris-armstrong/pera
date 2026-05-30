@@ -165,6 +165,7 @@ These are part of the project's workflow, not runtime code.
 | Document | What it covers |
 |----------|---------------|
 | `SPECIFICATION.md` | Full architectural specification (layers, data model, provider layer, agent core, harness, compaction, tools, CLI) |
+| `USAGE.md` | How to run the development drivers (`provider_driver`, `conversation_driver`, `loop_driver`) |
 | `docs/guidelines/index.md` | Mandatory coding guidelines index |
 | `dune-project` | Package definitions and dependencies |
 

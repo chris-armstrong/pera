@@ -69,6 +69,7 @@ let get_weather_tool =
     }
 
 let () =
+  Driver_log.setup ();
   match Sys.getenv_opt "ANTHROPIC_API_KEY" with
   | None ->
       print_endline "skipped: no API key";

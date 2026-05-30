@@ -49,6 +49,7 @@ let select_model registry argv =
         exit 0
 
 let () =
+  Driver_log.setup ();
   let registry = build_registry () in
   if List.is_empty (Provider_registry.to_list registry) then (
     print_endline "skipped: no API keys";

@@ -669,6 +669,7 @@ let run_named_scenario name sw =
 (** {1 Entry point} *)
 
 let () =
+  Driver_log.setup ();
   let argv = Sys.argv in
   Eio_main.run @@ fun _env ->
   Eio.Switch.run @@ fun sw ->

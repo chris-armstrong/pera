@@ -1,6 +1,10 @@
 open Containers
 open Pera_types
 
+let src = Logs.Src.create "pera.openai_completions" ~doc:"Pera OpenAI completions provider"
+
+module Log = (val Logs.src_log src : Logs.LOG)
+
 let name = "OpenAI"
 
 type t = {
@@ -34,7 +38,7 @@ let handle_framed interp_state stream done_message framed =
 (** Feed a raw SSE chunk through the SSE parser and dispatch all framed events.
 *)
 let process_chunk sse_state interp_state stream done_message chunk =
-  Printf.eprintf "[DEBUG] raw chunk: %S\n%!" chunk;
+  Log.debug (fun m -> m "raw chunk: %S" chunk);
   let new_sse_state, framed_events = Sse_parser.feed !sse_state chunk in
   sse_state := new_sse_state;
   List.iter (handle_framed interp_state stream done_message) framed_events
@@ -79,8 +83,8 @@ let do_request ~provider ~model ~context ~options ~sw:_ stream =
   in
   let request_body_str = Yojson.Safe.to_string request_body in
   let full_url = provider.compat.base_url ^ "/v1/chat/completions" in
-  Printf.eprintf "[DEBUG] POST %s  model=%s\n%!" full_url model.Types.id;
-  Printf.eprintf "[DEBUG] request body:\n%s\n%!" request_body_str;
+  Log.debug (fun m -> m "POST %s  model=%s" full_url model.Types.id);
+  Log.debug (fun m -> m "request body: %s" request_body_str);
   let headers = build_headers provider.api_key in
   let on_chunk, finalise = process_chunks stream ~compat:provider.compat in
   let http_result =
@@ -109,9 +113,10 @@ let create ~env ~sw =
     | None -> base_compat.base_url
   in
   let compat = { base_compat with base_url } in
-  Printf.eprintf "[DEBUG] OPENAI_COMPAT=%s  base_url=%s\n%!"
-    (match Sys.getenv_opt "OPENAI_COMPAT" with Some s -> s | None -> "(unset)")
-    base_url;
+  Log.debug (fun m ->
+      m "OPENAI_COMPAT=%s  base_url=%s"
+        (Option.get_or ~default:"(unset)" (Sys.getenv_opt "OPENAI_COMPAT"))
+        base_url);
   let client =
     match Http_client.create ~env ~sw base_url with
     | Ok c -> c
