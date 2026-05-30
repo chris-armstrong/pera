@@ -1,21 +1,5 @@
 open Containers
 
-module Sh = struct
-  [@@@warning "-16"]
-
-  let exec ~command ?cwd ?env ?timeout ?on_stdout ?on_stderr ~sw ~cancel =
-    let _ = (command, cwd, env, timeout, on_stdout, on_stderr, sw, cancel) in
-    Error
-      {
-        Pera_types.Types.code = Unknown;
-        message = "shell execution not implemented in Stage 1";
-      }
-
-  let find_executable ~name =
-    let _ = name in
-    None
-end
-
 let create ~env ~cwd =
   let cwd_fpath = Fpath.v cwd in
 
@@ -86,6 +70,117 @@ let create ~env ~cwd =
 
   let eio_path p = Eio.Path.(env#fs / p) in
 
+  let proc_mgr = Eio.Stdenv.process_mgr env in
+  let clock = Eio.Stdenv.clock env in
+
+  let module Sh = struct
+    [@@@warning "-16"]
+
+    let find_executable ~name =
+      let path_var = try Sys.getenv "PATH" with Not_found -> "" in
+      String.split_on_char ':' path_var
+      |> List.filter (fun s -> not (String.is_empty s))
+      |> List.find_map (fun dir ->
+          let candidate = Filename.concat dir name in
+          try
+            Unix.access candidate [ Unix.X_OK ];
+            Some candidate
+          with Unix.Unix_error _ -> None)
+
+    let pipe_reader ~sw src buf cb =
+      let fiber_body () =
+        let tmp = Cstruct.create 4096 in
+        let rec read_loop () =
+          match Eio.Flow.single_read src tmp with
+          | n when n > 0 ->
+              let str = Cstruct.to_string (Cstruct.sub tmp 0 n) in
+              Buffer.add_string buf str;
+              Option.iter (fun f -> f str) cb;
+              read_loop ()
+          | _ -> read_loop ()
+        in
+        try read_loop () with End_of_file -> ()
+      in
+      Eio.Fiber.fork ~sw fiber_body
+
+    let exec ~command ?cwd ?env:extra_env ?timeout ?on_stdout ?on_stderr ~sw
+        ~cancel =
+      let _ = cancel in
+      let resolved_cwd =
+        match cwd with
+        | Some c ->
+            let p = Fpath.v c in
+            if Fpath.is_rel p then Some (Fpath.to_string Fpath.(cwd_fpath // p))
+            else Some c
+        | None -> None
+      in
+      let merged_env =
+        match extra_env with
+        | None -> None
+        | Some extra ->
+            let base =
+              match Unix.environment () with
+              | a -> Array.to_list a
+              | exception Not_found -> []
+            in
+            let entries = List.map (fun (k, v) -> k ^ "=" ^ v) extra in
+            Some (Array.of_list (base @ entries))
+      in
+      let run_process () =
+        let stdout_buf = Buffer.create 256 in
+        let stderr_buf = Buffer.create 256 in
+        let stdout_src, stdout_sink = Eio.Process.pipe ~sw proc_mgr in
+        let stderr_src, stderr_sink = Eio.Process.pipe ~sw proc_mgr in
+        let cwd_path =
+          match resolved_cwd with
+          | Some p -> Some Eio.Path.(env#fs / p)
+          | None -> None
+        in
+        let proc =
+          Eio.Process.spawn ~sw proc_mgr ?cwd:cwd_path ~stdout:stdout_sink
+            ~stderr:stderr_sink ?env:merged_env
+            [ "/bin/sh"; "-c"; command ]
+        in
+        Eio.Resource.close stdout_sink;
+        Eio.Resource.close stderr_sink;
+        pipe_reader ~sw stdout_src stdout_buf on_stdout;
+        pipe_reader ~sw stderr_src stderr_buf on_stderr;
+        let exit_status = Eio.Process.await proc in
+        match exit_status with
+        | `Exited code ->
+            Ok
+              {
+                Execution_env.stdout = Buffer.contents stdout_buf;
+                stderr = Buffer.contents stderr_buf;
+                exit_code = code;
+              }
+        | `Signaled n ->
+            Error
+              {
+                Pera_types.Types.code = Aborted;
+                message = Printf.sprintf "Process was killed by signal %d" n;
+              }
+      in
+      let run_with_timeout t =
+        try Eio.Time.with_timeout_exn clock t run_process
+        with Eio.Time.Timeout ->
+          Error
+            {
+              Pera_types.Types.code = Timeout;
+              message = Printf.sprintf "Command timed out after %.1f seconds" t;
+            }
+      in
+      let handle_cancelled () =
+        try
+          match timeout with
+          | None -> run_process ()
+          | Some t -> run_with_timeout t
+        with Eio.Cancel.Cancelled _ ->
+          Error
+            { Pera_types.Types.code = Aborted; message = "Operation cancelled" }
+      in
+      handle_cancelled ()
+  end in
   let module Fs = struct
     let read_text_file ~path ~sw =
       let _ = sw in
