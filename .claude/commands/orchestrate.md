@@ -31,32 +31,36 @@ Invoke `@executor` with:
 - Stage number
 - Path to guidelines index: `docs/guidelines/index.md`
 
-### 2b. Review (parallel)
+### 2b. Route the result
 
-Invoke all three reviewers **in parallel**:
+Commit the stage
+```bash
+git add <files from stage>
+git commit -m "<change>(<module>): <stage title>\n\n<stage description>\n"
+```
+
+where;
+* `<change>` is one of feat, fix, docs, refactor, test, chore, etc.
+* `<module>` is the name of the modified module (or if several, the main one)
+* `<stage title>` is the title of the stage (absent any stage or epoch numbers)
+* `<stage description>` is 1-2 sentences describing the change
+
+
+## Phase 3 — Epoch Review
+After all stages in an epoch complete, run all three reviewers in parallel over the entire epoch's changes as a batch. This catches issues that span stage boundaries.
+
 - `@structure-reviewer` — reads `docs/guidelines/index.md`, focuses on abstractions, module boundaries, nesting, naming
 - `@correctness-reviewer` — reads `docs/guidelines/index.md`, focuses on error handling, partial functions, patterns, type safety, pera-specific
 - `@test-reviewer` — reads `docs/guidelines/index.md`, focuses on TDD discipline, test completeness, test quality
 
 Each reviewer independently returns PASS, FAIL, or REPLAN.
 
-### 2c. Route the result
-
-**All three PASS** → commit the stage:
-```bash
-git add <files from stage>
-git commit -m "<stage title>\n\nChris Armstrong"
-```
-
 **Any FAIL** → invoke `@executor` again with the failing reviewer's feedback. Max 3 attempts per stage. If still failing after 3, pause and ask the user.
 
 **Any REPLAN** → invoke `@planner` with the REPLAN feedback. Update the plan in place. Resume from the replanned stage.
 
-## Phase 3 — Epoch Review
+If any changes are made during the epoch review, commit
 
-After all stages in an epoch complete, run all three reviewers in parallel over the entire epoch's changes as a batch. This catches issues that span stage boundaries.
-
-If any reviewer returns FAIL, invoke `@executor` for targeted fixes.
 
 ## Phase 4 — Reflection
 
@@ -68,7 +72,6 @@ After all epochs complete, summarise:
 
 ## Important Notes
 
-- Never commit until all three reviewers pass
 - Never skip the test-reviewer even if the stage has "no tests" — the test-reviewer will verify that claim
 - If the user intervenes mid-loop, pause and incorporate their feedback before continuing
 - Plan files live in `.claude/plans/` — do not use `.opencode/plans/`
