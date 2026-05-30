@@ -2,21 +2,7 @@ open Containers
 open Pera_tools
 open Pera_harness
 open Pera_core.Agent_types
-
-(** Check if [sub] is a substring of [s]. *)
-let is_substring ~sub s =
-  let sub_len = String.length sub in
-  let s_len = String.length s in
-  if sub_len > s_len then false
-  else
-    let max_start = s_len - sub_len in
-    let rec check i =
-      if i > max_start then false
-      else if String.starts_with ~prefix:sub (String.sub s i (s_len - i)) then
-        true
-      else check (i + 1)
-    in
-    check 0
+open Test_util
 
 let make_temp_dir env =
   let tmpdir = Filename.get_temp_dir_name () in
@@ -56,7 +42,9 @@ let run_write_test (body : (module Execution_env.S) -> Eio.Switch.t -> unit) =
            : Pera_harness.Execution_env.S)
      in
      body (module E) sw
-   with _ -> ());
+   with e ->
+     cleanup tmpdir;
+     raise e);
   cleanup tmpdir
 
 (* ── Write tool tests ──────────────────────────────────────────────────── *)

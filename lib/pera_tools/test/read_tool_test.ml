@@ -2,6 +2,7 @@ open Containers
 open Pera_tools
 open Pera_harness
 open Pera_core.Agent_types
+open Test_util
 
 let make_temp_dir env =
   let tmpdir = Filename.get_temp_dir_name () in
@@ -24,23 +25,6 @@ let cleanup tmpdir =
     let cmd = Printf.sprintf "rm -rf %s" (Filename.quote tmpdir) in
     ignore (Sys.command cmd)
   with _ -> ()
-
-(** Check if [sub] is a substring of [s]. *)
-let is_substring ~sub s =
-  let sub_len = String.length sub in
-  let s_len = String.length s in
-  if sub_len > s_len then false
-  else
-    let max_start = s_len - sub_len in
-    let rec check i =
-      if i > max_start then false
-      else if
-        String.starts_with ~prefix:sub
-          (String.sub s i (s_len - i))
-      then true
-      else check (i + 1)
-    in
-    check 0
 
 (** Write a file via env, asserting success for test setup. *)
 let write_file (module E : Execution_env.S) ~path ~content ~sw =
@@ -65,7 +49,8 @@ let test_truncate_head_over_line_limit () =
   let _result_str, info = Truncate.truncate_head content in
   Alcotest.(check bool) "truncated" true info.truncated;
   Alcotest.(check int) "output_lines" 2000 info.output_lines;
-  Alcotest.(check bool) "truncated_by lines"
+  Alcotest.(check bool)
+    "truncated_by lines"
     (match info.truncated_by with Some `Lines -> true | _ -> false)
     true
 
@@ -74,28 +59,31 @@ let test_truncate_tail_shows_end () =
   let content = String.concat "\n" lines in
   let result_str, info = Truncate.truncate_tail content in
   Alcotest.(check bool) "truncated" true info.truncated;
-  Alcotest.(check bool) "contains last line"
+  Alcotest.(check bool)
+    "contains last line"
     (String.ends_with ~suffix:"2001" result_str)
     true;
   (* First kept line is "2" (line 1 was dropped by tail truncation) *)
-  Alcotest.(check bool) "head line 1 dropped (tail shows last 2000)"
+  Alcotest.(check bool)
+    "head line 1 dropped (tail shows last 2000)"
     (String.starts_with ~prefix:"2" (String.trim result_str))
     true
 
 (* ── Read tool tests ───────────────────────────────────────────────────── *)
 
-let run_read_test
-    (body : (module Execution_env.S) -> Eio.Switch.t -> unit) =
+let run_read_test (body : (module Execution_env.S) -> Eio.Switch.t -> unit) =
   Eio_main.run @@ fun env ->
   let tmpdir = make_temp_dir env in
   (try
      Eio.Switch.run @@ fun sw ->
      let module E =
        (val Pera_harness.Local_env.create ~env ~cwd:tmpdir
-        : Pera_harness.Execution_env.S)
+           : Pera_harness.Execution_env.S)
      in
      body (module E) sw
-   with _ -> ());
+   with e ->
+     cleanup tmpdir;
+     raise e);
   cleanup tmpdir
 
 let test_read_returns_file_content () =
@@ -106,7 +94,8 @@ let test_read_returns_file_content () =
       Eio.Cancel.sub (fun cancel ->
           match tool.execute ~ctx:() ~args ~sw ~cancel with
           | Ok (Tool_text s) ->
-              Alcotest.(check bool) "contains hello world" true
+              Alcotest.(check bool)
+                "contains hello world" true
                 (is_substring ~sub:"hello world" s)
           | Ok _ -> Alcotest.fail "expected Tool_text"
           | Error e -> Alcotest.failf "read failed: %s" e.message))
@@ -122,7 +111,8 @@ let test_read_with_offset_skips_lines () =
           match tool.execute ~ctx:() ~args ~sw ~cancel with
           | Ok (Tool_text s) ->
               let trimmed = String.trim s in
-              Alcotest.(check bool) "starts with line3" true
+              Alcotest.(check bool)
+                "starts with line3" true
                 (String.starts_with ~prefix:"line3" trimmed)
           | Ok _ -> Alcotest.fail "expected Tool_text"
           | Error e -> Alcotest.failf "read failed: %s" e.message))
@@ -139,10 +129,16 @@ let test_read_with_limit_caps_output () =
       Eio.Cancel.sub (fun cancel ->
           match tool.execute ~ctx:() ~args ~sw ~cancel with
           | Ok (Tool_text s) ->
-              let output_lines = String.split_on_char '\n' (String.trim s) in
-              Alcotest.(check int) "5 lines of content" 5
-                (List.length output_lines);
-              Alcotest.(check bool) "footer mentions remaining" true
+              let output_lines =
+                String.trim s |> String.split_on_char '\n'
+                |> List.filter (fun line ->
+                    (not (String.is_empty line))
+                    && not (String.starts_with ~prefix:"[" line))
+              in
+              Alcotest.(check int)
+                "5 lines of content" 5 (List.length output_lines);
+              Alcotest.(check bool)
+                "footer mentions remaining" true
                 (is_substring ~sub:"remaining" s)
           | Ok _ -> Alcotest.fail "expected Tool_text"
           | Error e -> Alcotest.failf "read failed: %s" e.message))
@@ -167,7 +163,8 @@ let test_read_truncates_at_line_limit () =
       Eio.Cancel.sub (fun cancel ->
           match tool.execute ~ctx:() ~args ~sw ~cancel with
           | Ok (Tool_text s) ->
-              Alcotest.(check bool) "contains Use offset=" true
+              Alcotest.(check bool)
+                "contains Use offset=" true
                 (is_substring ~sub:"Use offset=" s)
           | Ok _ -> Alcotest.fail "expected Tool_text"
           | Error e -> Alcotest.failf "read failed: %s" e.message))
@@ -178,7 +175,9 @@ let test_read_offset_beyond_eof_returns_user_error () =
       let lines = List.init 5 (fun i -> "line" ^ string_of_int (i + 1)) in
       let content = String.concat "\n" lines in
       write_file (module E) ~path:"short.txt" ~content ~sw;
-      let args = `Assoc [ ("path", `String "short.txt"); ("offset", `Int 10) ] in
+      let args =
+        `Assoc [ ("path", `String "short.txt"); ("offset", `Int 10) ]
+      in
       Eio.Cancel.sub (fun cancel ->
           match tool.execute ~ctx:() ~args ~sw ~cancel with
           | Error e ->
@@ -196,9 +195,8 @@ let () =
             test_truncate_head_over_line_limit;
         ] );
       ( "truncate_tail",
-        [
-          Alcotest.test_case "shows_end" `Quick test_truncate_tail_shows_end;
-        ] );
+        [ Alcotest.test_case "shows_end" `Quick test_truncate_tail_shows_end ]
+      );
       ( "read_tool",
         [
           Alcotest.test_case "returns_file_content" `Quick
