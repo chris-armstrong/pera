@@ -149,3 +149,38 @@
     (>= 1.7))
    (ppx_deriving
     (>= 1.6))))
+
+(package
+ (name pera-tools)
+ (synopsis "Tool implementations for Pera")
+ (description
+   "Tool implementations (read, write, bash, grep) for the Pera AI agent framework")
+ (depends
+  (ocaml
+   (>= 5.4))
+  (pera-types
+   (= :version))
+  (pera-harness
+   (= :version))
+  (pera-core
+   (= :version))
+  (pera-provider
+   (= :version))
+  (containers
+   (>= 3.0))
+  (yojson
+   (>= 2.0))
+  (eio
+   (>= 1.0))
+  (eio_main
+   (>= 1.0))
+  (eio_linux
+   (>= 1.0))
+  (fpath
+   (>= 0.7))
+  (ppx_deriving
+   (>= 1.6))
+  (alcotest
+   (and
+    (>= 1.7)
+    :with-test))))
