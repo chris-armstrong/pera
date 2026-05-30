@@ -28,7 +28,7 @@ let select_model registry argv =
     | "anthropic" ->
         Types.{ id = "claude-haiku-4-5-20251001"; api = "anthropic" }
     | "openai-completions" ->
-        Types.{ id = "gpt-4o-mini"; api = "openai-completions" }
+        Types.{ id = "kimi-k2.6"; api = "openai-completions" }
     | _ ->
         Printf.eprintf "unknown provider: %s\n" api;
         Printf.eprintf "available: anthropic | openai-completions\n";
@@ -39,7 +39,7 @@ let select_model registry argv =
     | ("anthropic", _) :: _ ->
         Types.{ id = "claude-haiku-4-5-20251001"; api = "anthropic" }
     | ("openai-completions", _) :: _ ->
-        Types.{ id = "gpt-4o-mini"; api = "openai-completions" }
+        Types.{ id = "kimi-k2.6"; api = "openai-completions" }
     | (name, _) :: _ ->
         (* Fallback: use whatever was registered first. *)
         Types.{ id = "unknown"; api = name }

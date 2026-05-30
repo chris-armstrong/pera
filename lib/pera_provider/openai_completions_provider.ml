@@ -78,7 +78,9 @@ let do_request ~provider ~model ~context ~options ~sw:_ stream =
     build_request_body ~model ~context ~options ~compat:provider.compat
   in
   let request_body_str = Yojson.Safe.to_string request_body in
-  Printf.eprintf "[DEBUG] model=%s  request body:\n%s\n%!" model.Types.id request_body_str;
+  let full_url = provider.compat.base_url ^ "/v1/chat/completions" in
+  Printf.eprintf "[DEBUG] POST %s  model=%s\n%!" full_url model.Types.id;
+  Printf.eprintf "[DEBUG] request body:\n%s\n%!" request_body_str;
   let headers = build_headers provider.api_key in
   let on_chunk, finalise = process_chunks stream ~compat:provider.compat in
   let http_result =
