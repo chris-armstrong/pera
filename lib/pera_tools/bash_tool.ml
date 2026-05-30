@@ -29,11 +29,14 @@ let bash (env : (module Pera_harness.Execution_env.S)) =
   let process_ok_result raw result =
     if Int.equal result.Pera_harness.Execution_env.exit_code 0 then
       let truncated, _info = Truncate.truncate_tail raw in
-      Ok (Pera_core.Agent_types.Tool_text truncated)
+      let text =
+        if String.is_empty truncated then "(no output)" else truncated
+      in
+      Ok (Pera_core.Agent_types.Tool_text text)
     else
       let msg =
-        Printf.sprintf "Command exited with code %d:\n%s"
-          result.Pera_harness.Execution_env.exit_code raw
+        Printf.sprintf "%s\n\nCommand exited with code %d." raw
+          result.Pera_harness.Execution_env.exit_code
       in
       Error { Pera_types.Types.message = msg; is_user_error = false }
   in

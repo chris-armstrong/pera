@@ -176,11 +176,9 @@
    (>= 1.0))
   (eio_linux
    (>= 1.0))
-  (fpath
-   (>= 0.7))
-  (ppx_deriving
-   (>= 1.6))
-  (alcotest
+   (ppx_deriving
+    (>= 1.6))
+   (alcotest
    (and
     (>= 1.7)
     :with-test))))

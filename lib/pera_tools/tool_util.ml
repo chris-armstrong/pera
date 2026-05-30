@@ -1,5 +1,9 @@
 open Containers
 
+(** Convert a [file_error] to a [tool_error]. *)
+let file_error_to_tool_error (e : Pera_types.Types.file_error) =
+  { Pera_types.Types.message = e.message; is_user_error = false }
+
 let get_string key args =
   match args with
   | `Assoc fields -> (

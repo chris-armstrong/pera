@@ -7,3 +7,8 @@
  (name tool_driver)
  (libraries pera_tools pera_harness pera_core pera_provider pera_types
             eio eio_main eio_linux unix containers fpath))
+
+(executable
+ (name env_driver)
+ (libraries pera_harness pera_types eio eio_main eio_linux containers fpath
+            cstruct unix))

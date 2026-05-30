@@ -10,10 +10,6 @@ let rg_install_msg =
   \  - Arch: sudo pacman -S ripgrep\n\
   \  - Nix/NixOS: nix-env -iA nixpkgs.ripgrep"
 
-(** Convert a [file_error] to a [tool_error]. *)
-let file_error_to_tool_error (e : Pera_types.Types.file_error) =
-  { Pera_types.Types.message = e.message; is_user_error = false }
-
 let grep_schema =
   Pera_provider.Json_schema.object_ ~required:[ "pattern" ]
     ~properties:
@@ -62,6 +58,25 @@ let build_rg_command ~rg ~pattern ~path_opt ~glob_opt =
   add_quoted (Option.value path_opt ~default:".");
   Buffer.contents buf
 
+let handle_grep_output ~exit_code ~stdout_str ~stderr_str =
+  match exit_code with
+  | 0 ->
+      let match_lines = split_lines stdout_str in
+      let total = List.length match_lines in
+      if total > default_max_matches then
+        let capped = List.take default_max_matches match_lines in
+        let joined = String.concat "\n" capped in
+        let output =
+          Printf.sprintf "%s\n[Match limit of %d reached]" joined
+            default_max_matches
+        in
+        Ok (Pera_core.Agent_types.Tool_text output)
+      else Ok (Pera_core.Agent_types.Tool_text stdout_str)
+  | 1 -> Ok (Pera_core.Agent_types.Tool_text "No matches found.")
+  | _ ->
+      let msg = if String.is_empty stderr_str then stdout_str else stderr_str in
+      Error { Pera_types.Types.message = msg; is_user_error = false }
+
 let grep (env : (module Pera_harness.Execution_env.S)) =
   let module E = (val env : Pera_harness.Execution_env.S) in
   (* Memoised rg path: None = unchecked, Some None = not found,
@@ -108,7 +123,8 @@ let grep (env : (module Pera_harness.Execution_env.S)) =
         (* Resolve the env's current working directory so Sh.exec runs ripgrep
            in the correct directory (the env's cwd, not the parent process cwd). *)
         let* cwd =
-          E.Fs.absolute_path "." |> Result.map_error file_error_to_tool_error
+          E.Fs.absolute_path "."
+          |> Result.map_error Tool_util.file_error_to_tool_error
         in
         let stdout_buf = Buffer.create 1024 in
         let stderr_buf = Buffer.create 1024 in
@@ -124,26 +140,8 @@ let grep (env : (module Pera_harness.Execution_env.S)) =
             Error
               { Pera_types.Types.message = e.message; is_user_error = false }
         | Ok result ->
-            if Int.equal result.Pera_harness.Execution_env.exit_code 0 then
-              let raw = Buffer.contents stdout_buf in
-              let match_lines = split_lines raw in
-              let total = List.length match_lines in
-              if total > default_max_matches then
-                let capped = List.take default_max_matches match_lines in
-                let joined = String.concat "\n" capped in
-                let output =
-                  Printf.sprintf "%s\n[Match limit of %d reached]" joined
-                    default_max_matches
-                in
-                Ok (Pera_core.Agent_types.Tool_text output)
-              else Ok (Pera_core.Agent_types.Tool_text raw)
-            else if Int.equal result.Pera_harness.Execution_env.exit_code 1 then
-              Ok (Pera_core.Agent_types.Tool_text "No matches found.")
-            else
-              let stderr_msg = Buffer.contents stderr_buf in
-              let stdout_msg = Buffer.contents stdout_buf in
-              let msg =
-                if String.is_empty stderr_msg then stdout_msg else stderr_msg
-              in
-              Error { Pera_types.Types.message = msg; is_user_error = false });
+            let exit_code = result.Pera_harness.Execution_env.exit_code in
+            let stdout_str = Buffer.contents stdout_buf in
+            let stderr_str = Buffer.contents stderr_buf in
+            handle_grep_output ~exit_code ~stdout_str ~stderr_str);
   }

@@ -1,0 +1,170 @@
+{
+  "plan_id": "m4-remediation",
+  "title": "M4 — Remediation of Epoch 2 (Tools) review findings",
+  "source": "Epoch 2 Review, May 30 2026",
+  "baseline": {
+    "build_passes": true,
+    "tests_pass": true,
+    "known_failures": [],
+    "notes": "Existing tool_driver passes, but contains concurrency races, lack of proper timeout cancelation (orphan child processes), and missing required harness test and driver files."
+  },
+  "stages": [
+    {
+      "stage": 1,
+      "title": "Fix Local_env.Sh.exec concurrency and timeout handling",
+      "status": "pending",
+      "description": "Refactor Local_env.Sh.exec to eliminate the background reader race condition and ensure child processes are terminated promptly on timeout or cancellation.",
+      "files_to_create": [],
+      "files_to_modify": [
+        "lib/pera_harness/local_env.ml"
+      ],
+      "depends_on": [],
+      "implementation_notes": [
+        "Use structured concurrency via a sub-switch inside exec to wrap the process lifecycle.",
+        "Run the stdout reader, stderr reader, and process awaiter in parallel using Eio.Fiber.all to guarantee readers are fully joined before returning.",
+        "Ensure that when a timeout or cancellation occurs, the sub-switch is cancelled, which automatically terminates the child process and closes resources."
+      ],
+      "test_requirements": {
+        "existing_tests": [
+          "dune runtest lib/pera_tools"
+        ],
+        "new_tests": [],
+        "test_command": "eval $(opam env) && dune runtest"
+      },
+      "coding_guidelines_to_emphasize": [
+        "eio.md — sub-switch for process lifecycle, Eio.Fiber.all for parallel streams",
+        "error-handling.md — map Eio.Time.Timeout to correct Timeout code"
+      ]
+    },
+    {
+      "stage": 2,
+      "title": "Add missing Stage 2 harness files",
+      "status": "pending",
+      "description": "Create local_env_sh_test.ml and env_driver.ml to complete the specified harness layer.",
+      "files_to_create": [
+        "lib/pera_harness/test/local_env_sh_test.ml",
+        "bin/drivers/env_driver.ml"
+      ],
+      "files_to_modify": [
+        "lib/pera_harness/test/dune",
+        "bin/drivers/dune"
+      ],
+      "depends_on": [
+        1
+      ],
+      "implementation_notes": [
+        "Create lib/pera_harness/test/local_env_sh_test.ml with tests for basic command execution, timeout behavior, and PATH scanning.",
+        "Create bin/drivers/env_driver.ml to exercise the harness layer standalone and output PASS/FAIL verdicts.",
+        "Update the respective dune files to compile these newly created targets."
+      ],
+      "test_requirements": {
+        "existing_tests": [],
+        "new_tests": [
+          "test_exec_returns_stdout",
+          "test_exec_captures_stderr",
+          "test_exec_nonzero_exit_code",
+          "test_exec_timeout_returns_error",
+          "test_find_executable_finds_sh"
+        ],
+        "test_command": "eval $(opam env) && dune runtest lib/pera_harness && dune exec ./bin/drivers/env_driver.exe"
+      },
+      "coding_guidelines_to_emphasize": [
+        "test-patterns.md — Arrange-Act-Assert structure, explicit test cases"
+      ]
+    },
+    {
+      "stage": 3,
+      "title": "Align bash_tool output formatting and empty fallback",
+      "status": "pending",
+      "description": "Refactor bash_tool to match the specified template for non-zero exit codes and output representation when empty.",
+      "files_to_create": [],
+      "files_to_modify": [
+        "lib/pera_tools/bash_tool.ml"
+      ],
+      "depends_on": [
+        1
+      ],
+      "implementation_notes": [
+        "Check if command output is empty; if so, return '(no output)' in the Tool_text.",
+        "Align non-zero exit code message formatting with the spec template: '<output>\\n\\nCommand exited with code <exit_code>.'"
+      ],
+      "test_requirements": {
+        "existing_tests": [
+          "dune runtest lib/pera_tools"
+        ],
+        "new_tests": [],
+        "test_command": "eval $(opam env) && dune runtest lib/pera_tools"
+      },
+      "coding_guidelines_to_emphasize": [
+        "error-handling.md — clear separation between code and message formatting"
+      ]
+    },
+    {
+      "stage": 4,
+      "title": "Centralize shared helpers and resolve minor code smells",
+      "status": "pending",
+      "description": "Consolidate duplicated error and test utilities to clean up codebase duplication.",
+      "files_to_create": [],
+      "files_to_modify": [
+        "lib/pera_tools/tool_util.ml",
+        "lib/pera_tools/tool_util.mli",
+        "lib/pera_tools/grep_tool.ml",
+        "lib/pera_tools/read_tool.ml",
+        "lib/pera_tools/write_tool.ml",
+        "lib/pera_tools/test/test_util.ml",
+        "lib/pera_tools/test/read_tool_test.ml",
+        "lib/pera_tools/test/write_tool_test.ml",
+        "lib/pera_tools/test/bash_tool_test.ml",
+        "lib/pera_tools/test/grep_tool_test.ml"
+      ],
+      "depends_on": [
+        3
+      ],
+      "implementation_notes": [
+        "Move file_error_to_tool_error from grep_tool.ml to tool_util.ml and export via tool_util.mli.",
+        "Centralize make_temp_dir, cleanup, and write_file from individual test files into test_util.ml.",
+        "Remove the unused 'fpath' dependency from lib/pera_tools/dune if no longer needed.",
+        "Address String.get in tests by replacing with safe accessors or adding comments."
+      ],
+      "test_requirements": {
+        "existing_tests": [
+          "dune runtest"
+        ],
+        "new_tests": [],
+        "test_command": "eval $(opam env) && dune runtest"
+      },
+      "coding_guidelines_to_emphasize": [
+        "abstractions.md — Shared code lives in infrastructure, not duplicated",
+        "pera-specific.md — open Containers in every .ml, no String.get"
+      ]
+    },
+    {
+      "stage": 5,
+      "title": "Extract complex inline blocks into helper functions",
+      "status": "pending",
+      "description": "Improve readability of read_tool and grep_tool by extracting dense multi-branch pattern matching.",
+      "files_to_create": [],
+      "files_to_modify": [
+        "lib/pera_tools/read_tool.ml",
+        "lib/pera_tools/grep_tool.ml"
+      ],
+      "depends_on": [
+        4
+      ],
+      "implementation_notes": [
+        "Extract the read_tool's footer calculation block (lines 76-93) into a format_footer helper.",
+        "Extract the grep_tool's output/exit-code handling (lines 127-148) into a handle_grep_output helper."
+      ],
+      "test_requirements": {
+        "existing_tests": [
+          "dune runtest"
+        ],
+        "new_tests": [],
+        "test_command": "eval $(opam env) && dune runtest"
+      },
+      "coding_guidelines_to_emphasize": [
+        "nesting-and-control-flow.md — Complex logic extracted into named helper functions"
+      ]
+    }
+  ]
+}

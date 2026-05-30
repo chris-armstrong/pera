@@ -29,11 +29,7 @@ let write (env : (module Pera_harness.Execution_env.S)) =
         let* content = Tool_util.get_string "content" args in
         let* () =
           E.Fs.write_file ~path ~content ~sw
-          |> Result.map_error (fun (e : Pera_types.Types.file_error) ->
-              {
-                Pera_types.Types.message = e.Pera_types.Types.message;
-                is_user_error = false;
-              })
+          |> Result.map_error Tool_util.file_error_to_tool_error
         in
         let bytes = String.length content in
         Ok

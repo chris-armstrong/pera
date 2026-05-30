@@ -1,5 +1,27 @@
 open Containers
 
+let format_footer ~truncated ~output_lines ~total_lines ~next_offset
+    ~remaining_after_trunc ~shown_count ~total_remaining =
+  if truncated then
+    Printf.sprintf
+      "\n\
+       [Output truncated to %d lines (%d total). Use offset=%d to view \
+       remaining lines.]"
+      output_lines total_lines next_offset
+  else if remaining_after_trunc > 0 then
+    Printf.sprintf
+      "\n\
+       [Showing %d lines; %d remaining. Use offset=%d to view remaining lines.]"
+      shown_count remaining_after_trunc next_offset
+  else if shown_count < total_remaining then
+    Printf.sprintf
+      "\n\
+       [Showing %d lines; %d remaining. Use offset=%d to view remaining lines.]"
+      shown_count
+      (total_remaining - shown_count)
+      next_offset
+  else ""
+
 let read_schema =
   Pera_provider.Json_schema.object_ ~required:[ "path" ]
     ~properties:
@@ -11,13 +33,14 @@ let read_schema =
           Pera_provider.Json_schema.optional
             (Pera_provider.Json_schema.integer
                ~description:
-                 "Start reading from this line number (1-indexed). Default is 0 \
-                  (beginning)."
+                 "Start reading from this line number (1-indexed). Default is \
+                  0 (beginning)."
                ()) );
         ( "limit",
           Pera_provider.Json_schema.optional
             (Pera_provider.Json_schema.integer
-               ~description:"Maximum number of lines to return. Default is 2000."
+               ~description:
+                 "Maximum number of lines to return. Default is 2000."
                ()) );
       ]
     ()
@@ -40,11 +63,7 @@ let read (env : (module Pera_harness.Execution_env.S)) =
         let limit = Tool_util.get_int_opt "limit" args in
         let* content =
           E.Fs.read_text_file ~path ~sw
-          |> Result.map_error (fun (e : Pera_types.Types.file_error) ->
-                 {
-                   Pera_types.Types.message = e.Pera_types.Types.message;
-                   is_user_error = false;
-                 })
+          |> Result.map_error Tool_util.file_error_to_tool_error
         in
         let lines = String.split_on_char '\n' content in
         let total_lines = List.length lines in
@@ -74,23 +93,9 @@ let read (env : (module Pera_harness.Execution_env.S)) =
           let next_offset = offset + info.output_lines in
           let remaining_after_trunc = total_remaining - info.output_lines in
           let footer =
-            if info.truncated then
-              Printf.sprintf
-                "\n[Output truncated to %d lines (%d total). Use offset=%d to \
-                 view remaining lines.]"
-                info.output_lines info.total_lines next_offset
-            else if remaining_after_trunc > 0 then
-              Printf.sprintf
-                "\n[Showing %d lines; %d remaining. Use offset=%d to view \
-                 remaining lines.]"
-                shown_count remaining_after_trunc next_offset
-            else if shown_count < total_remaining then
-              Printf.sprintf
-                "\n[Showing %d lines; %d remaining. Use offset=%d to view \
-                 remaining lines.]"
-                shown_count (total_remaining - shown_count) next_offset
-            else
-              ""
+            format_footer ~truncated:info.truncated
+              ~output_lines:info.output_lines ~total_lines:info.total_lines
+              ~next_offset ~remaining_after_trunc ~shown_count ~total_remaining
           in
           Ok (Pera_core.Agent_types.Tool_text (truncated_str ^ footer)));
   }

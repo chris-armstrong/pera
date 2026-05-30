@@ -4,28 +4,6 @@ open Pera_harness
 open Pera_core.Agent_types
 open Test_util
 
-let make_temp_dir env =
-  let tmpdir = Filename.get_temp_dir_name () in
-  let buf = Cstruct.create 8 in
-  Eio.Flow.read_exact env#secure_random buf;
-  let bytes = Cstruct.to_string buf in
-  let len = String.length bytes in
-  let hex_chars = ref [] in
-  for i = 0 to len - 1 do
-    let code = Char.code (String.get bytes i) in
-    hex_chars := Printf.sprintf "%02x" code :: !hex_chars
-  done;
-  let hex = String.concat "" (List.rev !hex_chars) in
-  let path = Filename.concat tmpdir ("pera_test_" ^ hex) in
-  Eio.Path.(mkdirs ~exists_ok:false ~perm:0o700 (env#fs / path));
-  path
-
-let cleanup tmpdir =
-  try
-    let cmd = Printf.sprintf "rm -rf %s" (Filename.quote tmpdir) in
-    ignore (Sys.command cmd)
-  with _ -> ()
-
 let run_bash_test (body : (module Execution_env.S) -> Eio.Switch.t -> unit) =
   Eio_main.run @@ fun env ->
   let tmpdir = make_temp_dir env in
@@ -94,6 +72,19 @@ let test_bash_timeout_returns_error () =
               Alcotest.(check bool) "is_user_error false" false e.is_user_error
           | Ok _ -> Alcotest.fail "expected Error for timed-out command"))
 
+let test_bash_no_output_command_returns_no_output () =
+  run_bash_test (fun (module E) sw ->
+      let tool = Bash_tool.bash (module E) in
+      let args = `Assoc [ ("command", `String "true") ] in
+      Eio.Cancel.sub (fun cancel ->
+          match tool.execute ~ctx:() ~args ~sw ~cancel with
+          | Ok (Tool_text s) ->
+              Alcotest.(check bool)
+                "(no output) text" true
+                (String.equal s "(no output)")
+          | Ok _ -> Alcotest.fail "expected Tool_text"
+          | Error e -> Alcotest.failf "bash failed: %s" e.message))
+
 let test_bash_tail_truncation_preserves_end () =
   run_bash_test (fun (module E) sw ->
       let tool = Bash_tool.bash (module E) in
@@ -123,6 +114,8 @@ let () =
             test_bash_stderr_in_combined_output;
           Alcotest.test_case "timeout_returns_error" `Quick
             test_bash_timeout_returns_error;
+          Alcotest.test_case "no_output_command_returns_no_output" `Quick
+            test_bash_no_output_command_returns_no_output;
           Alcotest.test_case "tail_truncation_preserves_end" `Quick
             test_bash_tail_truncation_preserves_end;
         ] );
