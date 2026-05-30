@@ -34,6 +34,7 @@ let handle_framed interp_state stream done_message framed =
 (** Feed a raw SSE chunk through the SSE parser and dispatch all framed events.
 *)
 let process_chunk sse_state interp_state stream done_message chunk =
+  Printf.eprintf "[DEBUG] raw chunk: %S\n%!" chunk;
   let new_sse_state, framed_events = Sse_parser.feed !sse_state chunk in
   sse_state := new_sse_state;
   List.iter (handle_framed interp_state stream done_message) framed_events
@@ -77,6 +78,7 @@ let do_request ~provider ~model ~context ~options ~sw:_ stream =
     build_request_body ~model ~context ~options ~compat:provider.compat
   in
   let request_body_str = Yojson.Safe.to_string request_body in
+  Printf.eprintf "[DEBUG] model=%s  request body:\n%s\n%!" model.Types.id request_body_str;
   let headers = build_headers provider.api_key in
   let on_chunk, finalise = process_chunks stream ~compat:provider.compat in
   let http_result =
@@ -105,6 +107,9 @@ let create ~env ~sw =
     | None -> base_compat.base_url
   in
   let compat = { base_compat with base_url } in
+  Printf.eprintf "[DEBUG] OPENAI_COMPAT=%s  base_url=%s\n%!"
+    (match Sys.getenv_opt "OPENAI_COMPAT" with Some s -> s | None -> "(unset)")
+    base_url;
   let client =
     match Http_client.create ~env ~sw base_url with
     | Ok c -> c

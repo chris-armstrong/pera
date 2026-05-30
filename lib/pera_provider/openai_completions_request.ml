@@ -24,7 +24,7 @@ let opencode_zen_compat =
 
 let opencode_go_compat =
   {
-    base_url = "https://opencode.ai/zen/go/v1/chat/completions";
+    base_url = "https://opencode.ai/zen/go";
     reasoning_field = "reasoning";
     max_tokens_field = "max_completion_tokens";
     require_tool_result_name = false;

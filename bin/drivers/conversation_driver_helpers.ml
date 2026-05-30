@@ -66,7 +66,7 @@ let describe_provider_event = function
       Printf.sprintf "[tool_call_end] index=%d" index
   | Types.AME_done _ -> "[done]"
   | Types.AME_error { message; _ } ->
-      Printf.sprintf "[error] %s" (truncate 80 message)
+      Printf.sprintf "[error] %s" message
 
 (** Format an [agent_event] as a one-liner for driver output. *)
 let describe_agent_event = function
@@ -173,7 +173,7 @@ let run_scenario ~name ~messages ~sw ~check_result config =
       if passed then Printf.printf "  PASS\n%!" else Printf.printf "  FAIL\n%!";
       passed
   | Error err ->
-      Printf.printf "  => stream error: %s\n%!" err;
+      Printf.eprintf "  => stream error: %s\n%!" err;
       let passed = check_result !events [] in
       if passed then Printf.printf "  PASS\n%!" else Printf.printf "  FAIL\n%!";
       passed
