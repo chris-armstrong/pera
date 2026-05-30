@@ -36,7 +36,7 @@ type script =
   | Error of error_script  (** Turn that resolves with a transport error. *)
 
 val stream_fn_of_scripts :
-  ?pause:(unit -> unit) -> script list -> Agent_types.stream_fn
+  ?pause:(unit -> unit) -> script list -> Pera_core.Agent_types.stream_fn
 (** Build a {!Agent_types.stream_fn} that plays through [scripts] in order. Each
     call to the returned function consumes the next script; calling it more
     times than there are scripts raises
