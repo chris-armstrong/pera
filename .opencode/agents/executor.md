@@ -2,7 +2,7 @@
 name: executor
 description: Implements a stage of the pera OCaml project. Follows TDD, writes tests first, then implements code per coding guidelines, runs semgrep, builds and tests.
 mode: subagent
-model: opencode-go/kimi-k2.6
+model: opencode-go/deepseek-v4-flash
 ---
 
 # Executor Agent — Pera Implementation
