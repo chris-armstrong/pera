@@ -98,8 +98,11 @@ let snapshot state =
     usage = state.usage;
   }
 
-(** Extract a string field from a JSON object, returning [None] if absent or not
-    a string. *)
+(** Extract a string field from a JSON object, returning [None] if absent.
+    Non-string values (including [`Null]) are treated as absent rather than
+    raising, because OpenAI streaming deltas may explicitly set optional fields
+    to [null].  This matches the lenient pattern used in the Anthropic
+    interpreter. *)
 let json_string_field_opt fields key =
   match List.assoc_opt ~eq:String.equal key fields with
   | Some (`String s) -> Some s

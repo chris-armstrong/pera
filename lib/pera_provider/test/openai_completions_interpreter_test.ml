@@ -35,73 +35,29 @@ let make_framed_raw event_type data =
 
 (* ── Event tag helper ── *)
 
-let ame_tag = function
-  | Types.AME_text_start _ -> "AME_text_start"
-  | Types.AME_text_delta _ -> "AME_text_delta"
-  | Types.AME_thinking_start _ -> "AME_thinking_start"
-  | Types.AME_thinking_delta _ -> "AME_thinking_delta"
-  | Types.AME_tool_call_start _ -> "AME_tool_call_start"
-  | Types.AME_tool_call_delta _ -> "AME_tool_call_delta"
-  | Types.AME_tool_call_end _ -> "AME_tool_call_end"
-  | Types.AME_done _ -> "AME_done"
-  | Types.AME_error _ -> "AME_error"
+let ame_tag e =
+  let s = Types.show_assistant_message_event e in
+  let s =
+    let len = String.length s in
+    if len > 6 && String.equal (String.sub s 0 6) "Types." then
+      String.sub s 6 (len - 6)
+    else s
+  in
+  let len = String.length s in
+  let rec find_end i =
+    if i >= len then i
+    else
+      match s.[i] with
+      | ' ' | '{' | '(' -> i
+      | _ -> find_end (i + 1)
+  in
+  String.sub s 0 (find_end 0)
 
 (* ── Alcotest testable for assistant_message_event ── *)
 
-let pp_stop_reason fmt = function
-  | Types.EndTurn -> Format.pp_print_string fmt "EndTurn"
-  | Types.ToolUse -> Format.pp_print_string fmt "ToolUse"
-  | Types.MaxTokens -> Format.pp_print_string fmt "MaxTokens"
-  | Types.StopSequence -> Format.pp_print_string fmt "StopSequence"
-  | Types.Error -> Format.pp_print_string fmt "Error"
-  | Types.Aborted -> Format.pp_print_string fmt "Aborted"
-
-let pp_assistant_content fmt = function
-  | Types.AText s -> Format.fprintf fmt "AText(%S)" s
-  | Types.AThinking { text; _ } -> Format.fprintf fmt "AThinking(%S)" text
-  | Types.AToolCall { id; name; arguments } ->
-      Format.fprintf fmt "AToolCall(id=%s,name=%s,args=%s)" id name
-        (Yojson.Safe.to_string arguments)
-
-let pp_assistant_message fmt (m : Types.assistant_message) =
-  Format.fprintf fmt "{content=[%a]; stop_reason=%a}"
-    (Format.pp_print_list pp_assistant_content)
-    m.content pp_stop_reason m.stop_reason
-
-let pp_ame fmt = function
-  | Types.AME_text_start { partial } ->
-      Format.fprintf fmt "AME_text_start(partial=%a)" pp_assistant_message
-        partial
-  | Types.AME_text_delta { text; partial } ->
-      Format.fprintf fmt "AME_text_delta(text=%S,partial=%a)" text
-        pp_assistant_message partial
-  | Types.AME_thinking_start { partial } ->
-      Format.fprintf fmt "AME_thinking_start(partial=%a)" pp_assistant_message
-        partial
-  | Types.AME_thinking_delta { text; partial } ->
-      Format.fprintf fmt "AME_thinking_delta(text=%S,partial=%a)" text
-        pp_assistant_message partial
-  | Types.AME_tool_call_start { index; id; name; partial } ->
-      Format.fprintf fmt
-        "AME_tool_call_start(index=%d,id=%s,name=%s,partial=%a)" index id name
-        pp_assistant_message partial
-  | Types.AME_tool_call_delta { index; arguments_fragment; partial } ->
-      Format.fprintf fmt "AME_tool_call_delta(index=%d,fragment=%S,partial=%a)"
-        index arguments_fragment pp_assistant_message partial
-  | Types.AME_tool_call_end { index; partial } ->
-      Format.fprintf fmt "AME_tool_call_end(index=%d,partial=%a)" index
-        pp_assistant_message partial
-  | Types.AME_done { message } ->
-      Format.fprintf fmt "AME_done(message=%a)" pp_assistant_message message
-  | Types.AME_error { message; partial } ->
-      Format.fprintf fmt "AME_error(message=%S,partial=%a)" message
-        pp_assistant_message partial
-
-let equal_ame a b =
-  (* Compare full event structure via pretty-printing, which includes all fields. *)
-  String.equal (Format.asprintf "%a" pp_ame a) (Format.asprintf "%a" pp_ame b)
-
-let ame_testable = Alcotest.testable pp_ame equal_ame
+let ame_testable =
+  Alcotest.testable Types.pp_assistant_message_event
+    Types.equal_assistant_message_event
 
 (* ── OpenAI chunk builders ── *)
 
