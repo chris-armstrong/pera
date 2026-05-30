@@ -95,10 +95,39 @@
      :with-test))))
 
 (package
+ (name pera-harness)
+ (synopsis "Execution environment for Pera")
+ (description
+   "Execution environment abstraction and OS-backed implementation for the Pera AI agent framework")
+ (depends
+  (ocaml
+   (>= 5.4))
+  (pera-types
+   (= :version))
+  (containers
+   (>= 3.0))
+  (eio
+   (>= 1.0))
+  (eio_main
+   (>= 1.0))
+  (eio_linux
+   (>= 1.0))
+  (unix
+   (>= 5.4))
+  (fpath
+   (>= 0.7))
+  (ppx_deriving
+   (>= 1.6))
+  (alcotest
+   (and
+    (>= 1.7)
+    :with-test))))
+
+(package
  (name pera-core-test-util)
  (synopsis "Test utilities for pera-core")
  (description
-  "Test doubles and Alcotest testables for pera-core consumers")
+   "Test doubles and Alcotest testables for pera-core consumers")
  (depends
    (ocaml
     (>= 5.4))

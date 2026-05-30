@@ -1,0 +1,3 @@
+(tests
+ (names local_env_fs_test)
+ (libraries pera_harness pera_types eio eio_main eio_linux alcotest containers fpath unix))
