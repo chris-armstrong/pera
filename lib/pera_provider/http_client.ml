@@ -19,6 +19,7 @@ let check_response_status (response : Piaf.Response.t) =
       Piaf.Body.to_string response.body
       |> Result.value ~default:"<unreadable body>"
     in
+    Printf.eprintf "[DEBUG] HTTP failure response body:\n%s\n%!" body_str;
     Error (Printf.sprintf "HTTP error %d: %s" status_code body_str)
 
 let create ~env ~sw base_url =
@@ -37,6 +38,8 @@ let post_stream ~client ~headers ~body ~on_chunk path =
     |> Result.map_error (fun piaf_err ->
         Printf.sprintf "HTTP request failed: %s" (Piaf.Error.to_string piaf_err))
   in
+  let status_code = Piaf.Status.to_code response.status in
+  Printf.eprintf "[DEBUG] HTTP response status: %d\n%!" status_code;
   let* () = check_response_status response in
   Piaf.Body.fold_string ~init:() response.body ~f:(fun () chunk ->
       on_chunk chunk)
