@@ -1,6 +1,6 @@
 (library
  (name pera_provider)
  (public_name pera-provider)
- (libraries pera_types containers yojson eio eio_main eio_linux piaf re)
+ (libraries pera_types containers yojson eio eio_main eio_linux piaf re uri logs)
  (preprocess
   (pps ppx_deriving.eq ppx_deriving.show)))

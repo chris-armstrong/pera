@@ -175,5 +175,3 @@ let pp_agent_event ppf event =
     hand-written [pp_agent_event] above rather than the derived OCaml-syntax
     printer that [@@deriving show] closed over at generation time. *)
 let show_agent_event e = Format.asprintf "%a" pp_agent_event e
-
-let agent_event_testable = Alcotest.testable pp_agent_event equal_agent_event

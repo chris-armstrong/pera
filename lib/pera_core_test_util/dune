@@ -1,0 +1,4 @@
+(library
+ (name pera_core_test_util)
+ (public_name pera-core-test-util)
+ (libraries pera_types pera_provider pera_core containers yojson eio eio_main alcotest))

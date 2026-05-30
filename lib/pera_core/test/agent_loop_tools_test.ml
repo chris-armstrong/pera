@@ -1,5 +1,6 @@
 open Containers [@@warning "-33"]
 open Pera_core
+open Pera_core_test_util
 open Agent_loop_helpers
 
 (** Check whether an event is [AE_tool_execution_start]. *)

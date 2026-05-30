@@ -46,6 +46,8 @@
    (>= 1.0))
   (piaf
    (>= 0.2))
+  (logs
+   (>= 0.7))
   (re
    (>= 1.10))
   (ppx_deriving
@@ -63,33 +65,58 @@
  (name pera-core)
  (synopsis "Pera agent core loop")
  (description
-  "Agent loop, hooks, tool execution, and Faux_provider")
+  "Agent loop, hooks, and tool execution")
  (depends
-  (ocaml
-   (>= 5.4))
-  (pera-types
-   (= :version))
-  (pera-provider
-   (= :version))
-  (containers
-   (>= 3.0))
-  (yojson
-   (>= 2.0))
-  (eio
-   (>= 1.0))
-  (eio_main
-   (>= 1.0))
-  (eio_linux
-   (>= 1.0))
-  (alcotest
-   (>= 1.7))
-  (ppx_deriving
-   (>= 1.6))
-  (qcheck-core
-   (and
-    (>= 0.21)
-    :with-test))
-  (qcheck-alcotest
-   (and
-    (>= 0.21)
-    :with-test))))
+   (ocaml
+    (>= 5.4))
+   (pera-types
+    (= :version))
+   (pera-provider
+    (= :version))
+   (containers
+    (>= 3.0))
+   (yojson
+    (>= 2.0))
+   (eio
+    (>= 1.0))
+   (eio_main
+    (>= 1.0))
+   (eio_linux
+    (>= 1.0))
+   (ppx_deriving
+    (>= 1.6))
+   (qcheck-core
+    (and
+     (>= 0.21)
+     :with-test))
+   (qcheck-alcotest
+    (and
+     (>= 0.21)
+     :with-test))))
+
+(package
+ (name pera-core-test-util)
+ (synopsis "Test utilities for pera-core")
+ (description
+  "Test doubles and Alcotest testables for pera-core consumers")
+ (depends
+   (ocaml
+    (>= 5.4))
+   (pera-types
+    (= :version))
+   (pera-provider
+    (= :version))
+   (pera-core
+    (= :version))
+   (containers
+    (>= 3.0))
+   (yojson
+    (>= 2.0))
+   (eio
+    (>= 1.0))
+   (eio_main
+    (>= 1.0))
+   (alcotest
+    (>= 1.7))
+   (ppx_deriving
+    (>= 1.6))))

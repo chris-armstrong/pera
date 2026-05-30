@@ -1,0 +1,10 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "command": {
+    "orchestrate": {
+      "description": "Orchestrates a set of changes using a plan",
+      "model": "opencode-go/deepseek-v4-pro",
+      "template": "{file:../.claude/commands/orchestrate.md}"
+    }
+  }
+}

@@ -47,13 +47,13 @@ val test_options : Pera_provider.Provider.simple_stream_options
 
 (** {1 Script builders} *)
 
-val make_text_turn_script : string -> Pera_core.Faux_provider.script
+val make_text_turn_script : string -> Pera_core_test_util.Faux_provider.script
 (** [make_text_turn_script text] builds a [Faux_provider] script for a text-only
     turn that emits a [AME_text_start] and [AME_text_delta] event before
     resolving with a final message containing [text]. *)
 
 val make_tool_use_turn_script :
-  Pera_types.Types.tool_call list -> Pera_core.Faux_provider.script
+  Pera_types.Types.tool_call list -> Pera_core_test_util.Faux_provider.script
 (** [make_tool_use_turn_script tool_calls] builds a [Faux_provider] script for a
     turn that issues the given tool calls. Raises if [tool_calls] is empty. *)
 

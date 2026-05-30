@@ -189,9 +189,3 @@ val agent_message_equal : agent_message -> agent_message -> bool
 (** Structural equality for {!agent_message}. The [Synthetic] case is
     uninhabited; only [Real] messages are compared. Uses
     [Provider.equal_message]. *)
-
-(** {1 Alcotest support} *)
-
-val agent_event_testable : agent_event Alcotest.testable
-(** Alcotest testable for {!agent_event}. Uses [pp_agent_event] and
-    [equal_agent_event]. *)
