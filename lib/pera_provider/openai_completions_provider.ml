@@ -94,12 +94,17 @@ let create ~env ~sw =
     | Some k -> k
     | None -> failwith "OPENAI_API_KEY environment variable is not set"
   in
+  let base_compat =
+    match Sys.getenv_opt "OPENAI_COMPAT" with
+    | Some preset -> Openai_completions_request.compat_of_string preset
+    | None -> Openai_completions_request.default_compat
+  in
   let base_url =
     match Sys.getenv_opt "OPENAI_BASE_URL" with
     | Some url -> url
-    | None -> Openai_completions_request.default_compat.base_url
+    | None -> base_compat.base_url
   in
-  let compat = { Openai_completions_request.default_compat with base_url } in
+  let compat = { base_compat with base_url } in
   let client =
     match Http_client.create ~env ~sw base_url with
     | Ok c -> c

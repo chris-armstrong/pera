@@ -38,6 +38,16 @@ let default_compat =
     require_tool_result_name = false;
   }
 
+(** Select a compatibility preset by name. Valid values:
+    - ["openai"] → default (api.openai.com)
+    - ["zen"]    → zen.opencode.ai
+    - ["go"]     → go.opencode.ai
+    Unknown values fall back to [default_compat]. *)
+let compat_of_string = function
+  | "zen" -> opencode_zen_compat
+  | "go" -> opencode_go_compat
+  | _ -> default_compat
+
 (** Convert a [Yojson.Safe.t] to the string representation expected by the
     OpenAI API for message content fields. [`String s] is unwrapped to [s];
     other JSON values are serialised with [Yojson.Safe.to_string]. *)

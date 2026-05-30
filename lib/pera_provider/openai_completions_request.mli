@@ -42,6 +42,14 @@ val default_compat : compat
     - [max_tokens_field = "max_completion_tokens"]
     - [require_tool_result_name = false] *)
 
+val compat_of_string : string -> compat
+(** Select a compatibility preset by name.
+
+    - ["openai"] → {!default_compat}
+    - ["zen"]    → {!opencode_zen_compat}
+    - ["go"]     → {!opencode_go_compat}
+    Unknown values fall back to {!default_compat}. *)
+
 val messages_to_json :
   ?find_tool_name:(tool_call_id:string -> string option) ->
   compat:compat ->
