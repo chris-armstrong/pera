@@ -3,6 +3,10 @@ open Pera_core
 open Pera_provider
 open Pera_types
 
+let src = Logs.Src.create "pera.driver.conversation_helpers" ~doc:"Conversation driver helpers"
+
+module Log = (val Logs.src_log src : Logs.LOG)
+
 (** {1 Mock tools} *)
 
 (** Echo: return the [text] argument as-is. Mode: Parallel. *)
@@ -173,7 +177,7 @@ let run_scenario ~name ~messages ~sw ~check_result config =
       if passed then Printf.printf "  PASS\n%!" else Printf.printf "  FAIL\n%!";
       passed
   | Error err ->
-      Printf.eprintf "  => stream error: %s\n%!" err;
+      Log.err (fun m -> m "stream error: %s" err);
       let passed = check_result !events [] in
       if passed then Printf.printf "  PASS\n%!" else Printf.printf "  FAIL\n%!";
       passed
@@ -306,7 +310,6 @@ let run_named_scenario name ~model stream_fn sw =
   | "parallel_echo" ->
       [ { name; passed = scenario_parallel_echo ~model stream_fn sw } ]
   | _ ->
-      Printf.eprintf "unknown scenario: %s\n" name;
-      Printf.eprintf
-        "available: simple_text | echo_tool | multi_turn | parallel_echo\n";
+      Log.err (fun m -> m "unknown scenario: %s" name);
+      Log.err (fun m -> m "available: simple_text | echo_tool | multi_turn | parallel_echo");
       exit 1

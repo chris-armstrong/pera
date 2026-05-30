@@ -4,6 +4,10 @@ open Pera_core_test_util
 open Pera_provider
 open Pera_types
 
+let src = Logs.Src.create "pera.driver.loop" ~doc:"Loop driver"
+
+module Log = (val Logs.src_log src : Logs.LOG)
+
 (** {1 Helpers} *)
 
 (** Build a minimal [assistant_message] with the given text and stop_reason. *)
@@ -659,11 +663,11 @@ let run_named_scenario name sw =
   | "steering_message" -> [ { name; passed = scenario_steering_message sw } ]
   | "follow_up_message" -> [ { name; passed = scenario_follow_up_message sw } ]
   | _ ->
-      Printf.eprintf "unknown scenario: %s\n" name;
-      Printf.eprintf
-        "available: single_text_turn | parallel_tool_calls | \
-         sequential_tool_calls | tool_error | mid_stream_cancel | \
-         steering_message | follow_up_message\n";
+      Log.err (fun m -> m "unknown scenario: %s" name);
+      Log.err (fun m ->
+          m "available: single_text_turn | parallel_tool_calls | \
+             sequential_tool_calls | tool_error | mid_stream_cancel | \
+             steering_message | follow_up_message");
       exit 1
 
 (** {1 Entry point} *)

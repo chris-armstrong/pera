@@ -2,6 +2,10 @@ open Containers
 open Pera_provider
 open Pera_types
 
+let src = Logs.Src.create "pera.driver.provider" ~doc:"Provider driver"
+
+module Log = (val Logs.src_log src : Logs.LOG)
+
 (** Truncate a string to at most [max_len] characters, appending "..." if
     truncated. *)
 let truncate max_len s =
@@ -90,8 +94,7 @@ let () =
           match int_of_string_opt argv.(3) with
           | Some n -> n
           | None ->
-              Printf.eprintf "warning: invalid max_tokens %S, using %d\n"
-                argv.(3) default_max_tokens;
+              Log.warn (fun m -> m "invalid max_tokens %S, using %d" argv.(3) default_max_tokens);
               default_max_tokens)
         else default_max_tokens
       in

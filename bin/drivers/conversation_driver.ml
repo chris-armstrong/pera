@@ -3,6 +3,10 @@ open Pera_core
 open Pera_provider
 open Pera_types
 
+let src = Logs.Src.create "pera.driver.conversation" ~doc:"Conversation driver"
+
+module Log = (val Logs.src_log src : Logs.LOG)
+
 (** Build the provider registry from available API keys. *)
 let build_registry () =
   let registry = ref Provider_registry.empty in
@@ -30,8 +34,8 @@ let select_model registry argv =
     | "openai-completions" ->
         Types.{ id = "kimi-k2.6"; api = "openai-completions" }
     | _ ->
-        Printf.eprintf "unknown provider: %s\n" api;
-        Printf.eprintf "available: anthropic | openai-completions\n";
+        Log.err (fun m -> m "unknown provider: %s" api);
+        Log.err (fun m -> m "available: anthropic | openai-completions");
         exit 1)
   else
     (* Default to the first registered provider. *)
