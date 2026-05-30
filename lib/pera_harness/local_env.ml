@@ -78,10 +78,11 @@ let create ~env ~cwd =
 
     let find_executable ~name =
       let path_var = try Sys.getenv "PATH" with Not_found -> "" in
-      String.split_on_char ':' path_var
+      let sep = if String.equal (Sys.os_type) "Win32" then ';' else ':' in
+      String.split_on_char sep path_var
       |> List.filter (fun s -> not (String.is_empty s))
       |> List.find_map (fun dir ->
-          let candidate = Filename.concat dir name in
+          let candidate = Fpath.to_string Fpath.(v dir / name) in
           try
             Unix.access candidate [ Unix.X_OK ];
             Some candidate
@@ -171,7 +172,8 @@ let create ~env ~cwd =
                 (fun () -> read_stream stdout_src stdout_buf on_stdout);
                 (fun () -> read_stream stderr_src stderr_buf on_stderr);
                 (fun () ->
-                  await_process_and_set_result proc ~stdout_buf ~stderr_buf result);
+                  await_process_and_set_result proc ~stdout_buf ~stderr_buf
+                    result);
               ];
             match !result with
             | Some r -> r
