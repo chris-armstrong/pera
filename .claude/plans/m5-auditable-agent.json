@@ -1,0 +1,430 @@
+{
+  "plan_id": "m5-auditable-agent",
+  "title": "M5 \u2014 Auditable agent (session logging)",
+  "source": "SPECIFICATION.md \u00a76 (agent wrapper), \u00a77 (harness), \u00a711 (M5 milestone), \u00a712 (session_driver + harness_driver). Milestone M5: M4 plus session logging. Every event the agent emits is durable to disk in the JSONL tree format. Adds the agent wrapper (subscription fan-out, single-flight, observable state), the session writer, entry ID generation, and the assembled harness. Introduces session_driver and harness_driver.",
+  "baseline": {
+    "build_passes": true,
+    "tests_pass": true,
+    "known_failures": [],
+    "notes": "M4 (acting agent) is complete. Libraries: pera_types, pera_provider, pera_core, pera_core_test_util, pera_harness, pera_tools. Drivers: provider_driver, loop_driver, conversation_driver, env_driver, tool_driver.\n\nDESIGN DECISIONS settled (do not revisit without asking):\n(1) PACKAGE SPLIT: Execution_env+Local_env move to new pera_env package. pera_tools depends on pera_env (not pera_harness). Agent_harness lives in new pera_agent package depending on pera_harness+pera_tools. No cycles. Stage 0 includes this restructure.\n(2) pera_harness gains pera_core, pera_provider, yojson, uuidm deps. Acceptable: heavyweight components belong in implementation packages.\n(3) Entry IDs: Standard non-truncated UUIDv7 strings (full 36-character representation) via Uuidm.v7_non_monotonic_gen. The full representation guarantees uniqueness, so there is NO allocation-time collision check and NO seen_ids table. Reliable lexicographical time-ordering from the UUIDv7 timestamp prefix. Clock non-monotonicity within a millisecond is not a practical concern; document at the generator. (Diverges from old SPEC '8-char truncated'; SPECIFICATION.md §3 updated to match.)\n(4) Session_writer uses Eio.Path.with_open_out ~append:true per entry + Eio.File.sync. Re-opens per entry. Fine at turn-boundary rates.\n(5) All session writes from event subscriber. Disk failure handling deferred.\n(6) User messages written by Agent_harness.send before Agent_loop.run.\n(7) ACTOR/MAILBOX: Agent_wrapper.create ~sw forks a long-lived actor fibre. send enqueues Run{messages; reply: Promise.u} to a capacity-1 Eio.Stream, then awaits the reply promise. Actor processes one run at a time; uses Fun.protect to always resolve reply (including on exception/cancellation). send has NO ~sw parameter. Agent_harness.create gains ~sw; Agent_harness.send drops ~sw.\n(8) Leaf semantics (childless, per-run): a Leaf entry is a childless marker. Session_writer.write_leaf appends a Leaf parented at the current tip but does NOT advance current_parent_id — only write_leaf is non-advancing; all other writers advance. Exactly one Leaf is written per run at AE_agent_end (NOT per turn at AE_turn_end). Content entries always chain off the previous content entry, never off a Leaf. Restore walks back from the most recent Leaf. See SPECIFICATION.md §3 'Two senses of leaf'.\n(9) convert_to_llm uses refutation syntax `| Synthetic _ -> .` (synthetic is already `type synthetic = |` in Pera_core.Agent_types; no modification to Agent_types needed).\n(10) Prompt_assembly inlined in Agent_harness.\n(11) cost_usd type: Pera_types.Types.usage.cost_usd changes from `float option` to `Decimal.t option` using the ocaml-decimal opam package (library 'decimal', module Decimal; https://github.com/yawaramin/ocaml-decimal). This is a cross-cutting pera_types change; Stage 0 Part F enumerates every construction/match site that must be touched and the dune files that gain the `decimal` dep. Serialised to JSON as a string (Decimal.to_string) when Some, key omitted when None.\n(12) HTTP connect_timeout is unrelated to M5 and is isolated in its own stage (Epoch 4, Stage 7); it is not a dependency of any M5 stage.\n(13) EXEC_ENV INJECTION: Agent_harness.config gains exec_env: (module Pera_env.Execution_env.S). Agent_harness.create no longer constructs Local_env internally; the caller is responsible for supplying the execution environment. This enables Sandboxed_env or any other Execution_env.S implementation to be injected without modifying Agent_harness. ~env:Eio_unix.Stdenv.base is retained in create for Session_writer's Eio.Path filesystem access. pera_tools already accepts (module Execution_env.S) polymorphically and needs no change.\n\nPACKAGE DEPENDENCY GRAPH AFTER M5:\npera_types <- pera_provider <- pera_core <- pera_core_test_util\npera_types <- pera_env <- pera_harness\npera_core <- pera_harness\npera_env <- pera_tools\npera_core <- pera_tools\npera_harness + pera_tools <- pera_agent\n\nREUSE AUDIT:\n- Execution_env.S, Local_env: MOVE to pera_env (Stage 0).\n- Tools.default, etc: pera_tools dep changes from pera_harness to pera_env.\n- Agent_loop.run, Agent_types: REUSE from pera_core.\n- Faux_provider.stream_fn_of_scripts: REUSE from pera_core_test_util.\n\nNEW MODULES:\n- pera_env package: Execution_env, Local_env (moved from pera_harness).\n- Entry_id (pera_harness): UUIDv7 ID generation.\n- Session_types (pera_harness): entry type defs + JSON codec.\n- Session_writer (pera_harness): JSONL writer with fsync.\n- Agent_wrapper (pera_harness): actor/mailbox wrapper over Agent_loop.run.\n- pera_agent package: Agent_harness (assembled harness).\n- session_driver, harness_driver (bin/drivers).\n\nKEY RISKS:\n- Eio.File.sync type compatibility with with_open_out callback arg. Fallback: open_out ~sw + explicit close.\n- Synthetic refutation pattern: verify with dune build at Stage 4.\n- Actor reply promise unresolved if actor fibre dies: Fun.protect in actor loop handles this."
+  },
+  "epochs": [
+    {
+      "epoch": 0,
+      "title": "Entry ID + Session types",
+      "status": "pending",
+      "description": "Bootstrap the session infrastructure. Upgrade pera_harness deps and introduce Entry_id (Stage 0). Build Session_types with all entry definitions and the JSON codec (Stage 1). These two stages are prerequisites for the session writer and everything above.",
+      "stages": [
+        {
+          "stage": 0,
+          "title": "Package restructure + Entry_id + Decimal (cost_usd) support",
+          "status": "pending",
+          "description": "Six-part stage: (A) create pera_env package by moving Execution_env+Local_env out of pera_harness; (B) update pera_tools to depend on pera_env instead of pera_harness; (C) create the pera_agent package skeleton for Stage 4; (D) update pera_harness deps and module list; (E) add Entry_id (full UUIDv7) to pera_harness; (F) change Pera_types.Types.usage.cost_usd from float option to Decimal.t option using ocaml-decimal, updating every construction/match site. HTTP connect_timeout is NOT part of this stage (see Epoch 4, Stage 7).",
+          "files_to_create": [
+            "lib/pera_env/dune",
+            "lib/pera_env/execution_env.mli",
+            "lib/pera_env/execution_env.ml",
+            "lib/pera_env/local_env.mli",
+            "lib/pera_env/local_env.ml",
+            "lib/pera_env/test/dune",
+            "lib/pera_env/test/local_env_fs_test.ml",
+            "lib/pera_env/test/local_env_sh_test.ml",
+            "lib/pera_agent/dune",
+            "lib/pera_harness/entry_id.mli",
+            "lib/pera_harness/entry_id.ml",
+            "lib/pera_harness/test/entry_id_test.ml"
+          ],
+          "files_to_modify": [
+            "lib/pera_harness/dune",
+            "lib/pera_harness/test/dune",
+            "lib/pera_tools/dune",
+            "lib/pera_tools/test/dune",
+            "lib/pera_types/dune",
+            "lib/pera_types/types.mli",
+            "lib/pera_types/types.ml",
+            "lib/pera_provider/dune",
+            "lib/pera_provider/anthropic_response.ml",
+            "lib/pera_provider/openai_completions_response.ml",
+            "lib/pera_provider/test/dune",
+            "lib/pera_provider/test/anthropic_interpreter_test.ml",
+            "lib/pera_provider/test/openai_completions_response_test.ml",
+            "lib/pera_provider/test/sse_pipeline_integration_test.ml",
+            "lib/pera_provider/test/event_stream_test.ml",
+            "lib/pera_provider/test/faux_provider_helpers.ml",
+            "lib/pera_core/test/dune",
+            "lib/pera_core/test/agent_loop_helpers.ml",
+            "lib/pera_core/test/faux_provider.ml",
+            "lib/pera_core/test/faux_provider_helpers.ml",
+            "lib/pera_core/test/conversation_driver_helpers.ml",
+            "bin/drivers/dune",
+            "bin/drivers/conversation_driver_helpers.ml",
+            "bin/drivers/loop_driver.ml",
+            "bin/drivers/provider_driver.ml",
+            "dune-project"
+          ],
+          "files_to_delete": [
+            "lib/pera_harness/execution_env.mli",
+            "lib/pera_harness/execution_env.ml",
+            "lib/pera_harness/local_env.mli",
+            "lib/pera_harness/local_env.ml",
+            "lib/pera_harness/test/local_env_fs_test.ml",
+            "lib/pera_harness/test/local_env_sh_test.ml"
+          ],
+          "depends_on": [],
+          "implementation_notes": "PART A \u2014 CREATE pera_env:\nNew library at lib/pera_env/. Move execution_env.mli/ml and local_env.mli/ml verbatim. Move local_env_fs_test and local_env_sh_test to lib/pera_env/test/.\n\npera_env dune:\n(library\n (name pera_env)\n (public_name pera-env)\n (modules execution_env local_env)\n (libraries pera_types eio eio_main eio_linux unix containers fpath)\n (preprocess (pps ppx_deriving.eq ppx_deriving.show)))\n\nAll existing references to Pera_harness.Execution_env and Pera_harness.Local_env in pera_tools and drivers must be updated to Pera_env.Execution_env and Pera_env.Local_env.\n\nPART B \u2014 UPDATE pera_tools:\nChange (libraries pera_harness ...) to (libraries pera_env ...) in lib/pera_tools/dune.\nUpdate any open Pera_harness in tools source files to open Pera_env.\n\nPART C \u2014 CREATE pera_agent skeleton:\nlib/pera_agent/dune (empty library for now; Agent_harness added in Stage 4):\n(library\n (name pera_agent)\n (public_name pera-agent)\n (modules)  (* populated in Stage 4 *)\n (libraries pera_harness pera_tools pera_env pera_core pera_provider pera_types\n            eio eio_main eio_linux containers yojson))\n\nPART D \u2014 UPDATE pera_harness:\nRemove execution_env and local_env from modules list. Add entry_id, session_types, session_writer, agent_wrapper (stub last three as empty files immediately).\nNew deps: pera_env, pera_core, pera_provider, yojson, uuidm.\n\nUpdated pera_harness dune:\n(library\n (name pera_harness)\n (public_name pera-harness)\n (modules entry_id session_types session_writer agent_wrapper)\n (libraries pera_types pera_env pera_provider pera_core eio eio_main eio_linux\n            unix containers fpath yojson uuidm decimal)\n (preprocess (pps ppx_deriving.eq ppx_deriving.show)))\n\nPART E \u2014 Entry_id module (full UUIDv7, no truncation, no dedup):\nentry_id.mli:\n  type t = string\n  val generate : unit -> t\n  (* generate () returns a fresh standard 36-character UUIDv7 string. *)\nentry_id.ml:\n  let rand_state = Random.State.make_self_init ()\n  let gen = Uuidm.v7_non_monotonic_gen ~now_ms:(fun () -> Int64.of_float (Unix.gettimeofday () *. 1000.)) rand_state\n  let generate () = Uuidm.to_string (gen ())\nNOTE: full 36-char representation guarantees uniqueness, so there is NO seen_ids table and NO collision/dedup loop. Add a code comment that clock non-monotonicity within a millisecond is acceptable for session ordering.\n\nPART F \u2014 Decimal (cost_usd):\nChange Pera_types.Types.usage.cost_usd from `float option` to `Decimal.t option` (Decimal from the ocaml-decimal opam package; library name 'decimal', module 'Decimal'). Update types.mli and types.ml. Add `decimal` to the (libraries ...) of every dune that constructs or matches a non-None cost_usd: lib/pera_types/dune, lib/pera_provider/dune, lib/pera_provider/test/dune, lib/pera_core/test/dune, bin/drivers/dune (and lib/pera_harness/dune in Part D, since Session_types serialises it).\nConstruction/match sites to update (set cost_usd = None unchanged-in-shape, or wrap real values in Decimal.of_string / Decimal.of_float):\n  lib/pera_provider/anthropic_response.ml, lib/pera_provider/openai_completions_response.ml (real cost computation \u2014 use Decimal),\n  lib/pera_provider/test/{anthropic_interpreter_test,openai_completions_response_test,sse_pipeline_integration_test,event_stream_test,faux_provider_helpers}.ml,\n  lib/pera_core/test/{agent_loop_helpers,faux_provider,faux_provider_helpers,conversation_driver_helpers}.ml,\n  bin/drivers/{conversation_driver_helpers,loop_driver,provider_driver}.ml.\nMost sites set cost_usd = None and only need the dune dep if they pattern-match the field's type; sites that build a numeric cost must use Decimal. Verify equal_usage / pp_usage / show_usage still derive (ppx_deriving over Decimal.t needs Decimal to provide equal/pp, or write them manually \u2014 confirm at build; if ppx_deriving.eq/show cannot derive over Decimal.t, hand-write equal_usage/pp_usage or wrap with a custom comparator).\n\ndune-project gains pera-env and pera-agent packages and the `decimal` dependency. pera-harness gains pera-env, pera-core, pera-provider, yojson, uuidm, decimal deps. pera-tools changes pera-harness dep to pera-env.",
+          "coding_guidelines_to_emphasize": [
+            "pera-specific.md \u2014 open Containers at top of entry_id.ml",
+            "module-boundaries.md \u2014 .mli with type and val before .ml",
+            "naming-and-intermediates.md \u2014 named let bindings for rand_state and generator"
+          ],
+          "test_requirements": {
+            "existing_tests": [
+              "all existing tests must still pass after the package restructure (pera_env move) AND the cost_usd float->Decimal.t option change — provider, core, and driver tests all construct usage values"
+            ],
+            "new_tests": [
+              "test_generate_returns_36_chars: length = 36",
+              "test_generate_returns_lowercase_hex_and_hyphens: standard UUIDv7 format",
+              "test_generate_ids_are_unique: 1000 calls all distinct",
+              "test_generate_ids_are_lexicographically_ordered_over_time: 10 calls with Unix.sleepf 0.002 between each; each id >= previous"
+            ],
+            "test_command": "dune runtest",
+            "notes": "entry_id_test.ml is a pure Alcotest test, no Eio required. The ordering test uses Unix.sleepf (not Eio time) since Entry_id uses Unix.gettimeofday directly. Allow 1 inversion in ordering test for clock skew tolerance, or skip if flaky."
+          },
+          "acceptance_criteria": [
+            "dune build passes",
+            "pera_harness library lists pera_core, pera_provider, yojson, uuidm, decimal in deps",
+            "Entry_id.mli exposes `type t = string` and `val generate : unit -> t`",
+            "Entry_id.generate returns standard 36-character UUIDv7 strings with no seen_ids/dedup table",
+            "1000 consecutive calls produce distinct IDs",
+            "Pera_types.Types.usage.cost_usd is `Decimal.t option`; all packages and tests build and pass"
+          ]
+        },
+        {
+          "stage": 1,
+          "title": "Session_types \u2014 entry definitions + JSON codec",
+          "status": "pending",
+          "description": "Define all session entry types (SessionInfo, Message, Leaf, ModelChange, ThinkingLevelChange, Compaction) and their JSONL serialisation. Provides entry_to_json and message_to_json. No IO. Pure module.",
+          "files_to_create": [
+            "lib/pera_harness/session_types.mli",
+            "lib/pera_harness/session_types.ml",
+            "lib/pera_harness/test/session_types_test.ml"
+          ],
+          "files_to_modify": [
+            "lib/pera_harness/test/dune"
+          ],
+          "depends_on": [
+            0
+          ],
+          "implementation_notes": "TYPES:\ntype entry_id = Entry_id.t\ntype session_info_entry = { id; timestamp: float; session_id: string; cwd: string; model: Pera_types.Types.model; parent_session_id: string option }\ntype message_entry = { id; parent_id: entry_id option; timestamp: float; message: Pera_provider.Provider.message }\ntype leaf_entry = { id; parent_id: entry_id option; timestamp: float }\ntype model_change_entry = { id; parent_id: entry_id option; timestamp: float; model: Pera_types.Types.model }\ntype thinking_level_change_entry = { id; parent_id: entry_id option; timestamp: float; thinking_enabled: bool }\ntype compaction_entry = { id; parent_id: entry_id option; timestamp: float; summary: string; first_kept_entry_id: entry_id }\ntype session_entry = SessionInfo of session_info_entry | Message of message_entry | Leaf of leaf_entry | ModelChange of model_change_entry | ThinkingLevelChange of thinking_level_change_entry | Compaction of compaction_entry\n\nJSON FORMAT - all entries include: 'id' (string), 'type' (string), 'timestamp' (float). parent_id included only when Some. No null values for absent optionals - omit the key entirely.\n\ntype values: 'session_info', 'message', 'leaf', 'model_change', 'thinking_level_change', 'compaction'\n\nMESSAGE_TO_JSON:\nUserMessage { role; content } -> {role:'user', content:[...content_blocks...]}\n  UText t -> {type:'text', text:t}\n  UImage {url;media_type} -> {type:'image', url, media_type}\nAssistantMessage { content; stop_reason; provenance; usage } -> {role:'assistant', content:[...], stop_reason:str, provenance:{api,provider,model}, usage:{input_tokens,output_tokens,cache_read_tokens,cache_write_tokens, cost_usd}}\n  usage.cost_usd: serialise Decimal.t option as a JSON string via Decimal.to_string when Some; OMIT the cost_usd key entirely when None (no null).\n  provenance.error_message included only when Some\n  AText t -> {type:'text', text:t}\n  AThinking {text;signature} -> {type:'thinking', text, signature:string|omitted}\n  AToolCall {id;name;arguments} -> {type:'tool_call', id, name, arguments:<yojson>}\nToolResultMessage {tool_call_id;content;is_error} -> {role:'tool_result', tool_call_id, content, is_error:bool}\n\nSTOP_REASON strings: EndTurn->'end_turn', ToolUse->'tool_use', MaxTokens->'max_tokens', StopSequence->'stop_sequence', Error->'error', Aborted->'aborted'\n\nDo not use ppx_deriving.yojson - write manual Yojson.Safe codec. No GADTs. Keep codec functions in session_types.ml (not a separate file).",
+          "coding_guidelines_to_emphasize": [
+            "pera-specific.md \u2014 open Containers; no structural equality",
+            "error-handling.md \u2014 no exceptions in pure codec functions",
+            "pattern-matching.md \u2014 exhaustive match on stop_reason, content variants",
+            "naming-and-intermediates.md \u2014 name intermediate json values for clarity"
+          ],
+          "test_requirements": {
+            "existing_tests": [],
+            "new_tests": [
+              "test_session_info_entry_serialises_required_fields: JSON has id, type:'session_info', timestamp, session_id, cwd, model",
+              "test_session_info_entry_omits_parent_session_id_when_none: parent_session_id=None -> no parent_session_id key",
+              "test_message_entry_serialises_parent_id: parent_id=Some 'abc12345' -> JSON has parent_id:'abc12345'",
+              "test_message_entry_omits_parent_id_when_none: parent_id=None -> no parent_id key",
+              "test_leaf_entry_serialises_correctly: type:'leaf' present",
+              "test_user_message_content_serialised_as_array: UserMessage([UText 'hi']) -> role:'user', content:[{type:'text',text:'hi'}]",
+              "test_assistant_message_stop_reason_strings: each stop_reason variant -> correct string",
+              "test_assistant_thinking_block_serialised: AThinking{text='t';signature=Some 's'} -> {type:'thinking',text:'t',signature:'s'}",
+              "test_tool_call_arguments_embedded_as_json: AToolCall{arguments=`Assoc[('k',`String 'v')]} -> arguments:{k:'v'}",
+              "test_tool_result_message_serialised: ToolResultMessage{is_error=true;...} -> is_error:true",
+              "test_assistant_message_cost_usd_serialised: cost_usd=Some (Decimal.of_string \"0.0015\") -> cost_usd:\"0.0015\" in usage",
+              "test_assistant_message_cost_usd_omitted_when_none: cost_usd=None -> usage has no cost_usd key",
+              "test_entry_to_json_wraps_message_entry: full Message entry -> outer has id/type/timestamp/parent_id/message/cost_usd keys"
+            ],
+            "test_command": "dune runtest",
+            "notes": "All tests are pure (no IO, no Eio). Use Yojson.Safe.Util.member / to_string for assertions. Create Alcotest testable for session_entry if needed. Arrange-Act-Assert structure per test."
+          },
+          "acceptance_criteria": [
+            "dune build passes",
+            "entry_to_json produces valid Yojson for all entry variants",
+            "message_to_json correctly encodes all Provider.message variants",
+            "parent_id key absent when None (not null)",
+            "All tests pass"
+          ]
+        }
+      ]
+    },
+    {
+      "epoch": 1,
+      "title": "Session writer + Agent wrapper",
+      "status": "pending",
+      "description": "Build the two core infrastructure pieces: Session_writer (JSONL persistence with fsync) and Agent_wrapper (actor/mailbox pattern). Both are in pera_harness. They are independent and can be developed in parallel.",
+      "stages": [
+        {
+          "stage": 2,
+          "title": "Session_writer \u2014 JSONL + fsync",
+          "status": "pending",
+          "description": "Append-only JSONL session file writer. Manages the current_parent_id chain internally. Each append_entry call writes one JSON line + newline then calls Eio.File.sync before returning. Uses Eio.Path.with_open_out per entry. write_leaf appends a childless Leaf marker WITHOUT advancing the tip (per SPECIFICATION.md §3); all other writers advance current_parent_id.",
+          "files_to_create": [
+            "lib/pera_harness/session_writer.mli",
+            "lib/pera_harness/session_writer.ml",
+            "lib/pera_harness/test/session_writer_test.ml"
+          ],
+          "files_to_modify": [
+            "lib/pera_harness/test/dune"
+          ],
+          "depends_on": [
+            1
+          ],
+          "implementation_notes": "INTERFACE:\ntype t\nval create : path:string -> env:Eio_unix.Stdenv.base -> model:Pera_types.Types.model -> cwd:string -> (t, Pera_types.Types.file_error) result\nval write_session_info : t -> (unit, Pera_types.Types.file_error) result\nval write_message : t -> Pera_provider.Provider.message -> (unit, Pera_types.Types.file_error) result\nval write_leaf : t -> (unit, Pera_types.Types.file_error) result\nval write_model_change : t -> Pera_types.Types.model -> (unit, Pera_types.Types.file_error) result\nval session_id : t -> string\nval current_parent_id : t -> Entry_id.t option\n\nINTERNAL STATE:\ntype t = {\n  path: string;\n  base: Eio.Fs.dir_ty Eio.Path.t;  (* env#fs stored at create time *)\n  session_id: string;\n  model: Pera_types.Types.model;\n  cwd: string;\n  mutable current_parent_id: Entry_id.t option;\n}\n\nAPPEND_LINE:\nlet append_line t json =\n  catch_write t.path (fun () ->\n    let line = Yojson.Safe.to_string json ^ \"\\n\" in\n    Eio.Path.with_open_out ~append:true ~create:(`If_missing 0o644)\n      Eio.Path.(t.base / t.path)\n      (fun file ->\n        Eio.Flow.copy_string line file;\n        Eio.File.sync file))\n\nEIO API NOTES:\n- Eio.Path.with_open_out : ?append:bool -> create:create -> _ t -> (File.rw_ty r -> 'a) -> 'a  (no ~sw)\n- Eio.Flow.copy_string : string -> _ #Flow.sink -> unit  (file satisfies #Flow.sink via rw_ty includes Flow.sink_ty)\n- Eio.File.sync : _ rw -> unit  (file satisfies _ rw via File.rw_ty)\n- If type errors at compile time, use: Eio.Path.open_out ~sw ~append:true ~create:(`If_missing 0o644) path, then Eio.Flow.copy_string; Eio.File.sync; Eio.Resource.close. Requires sw threaded through.\n\nCREATE - directory creation:\nlet parent = Filename.dirname path in\n(try Eio.Path.mkdirs ~exists_ok:true ~perm:0o755 Eio.Path.(base / parent)\n with _ -> ());\nNote: mkdirs may raise on permission errors; catch those in the outer result.\n\nwrite_session_info allocates entry_id, builds SessionInfo entry, calls append_line, sets current_parent_id.\nwrite_message allocates entry_id, builds Message entry with parent=current_parent_id, calls append_line, updates current_parent_id.\nwrite_model_change: same advancing pattern for ModelChange entry.\nwrite_leaf: allocates entry_id, builds Leaf entry with parent=current_parent_id, calls append_line, but does NOT update current_parent_id. The Leaf is a childless marker; the tip stays at the last content entry so the next content entry parents to that entry, not to the Leaf. write_leaf is the ONLY non-advancing writer.\n\nError handling: catch_write wraps Eio.Io exceptions to file_error codes (same pattern as local_env.ml). Return (unit, file_error) result from all write functions.",
+          "coding_guidelines_to_emphasize": [
+            "pera-specific.md \u2014 IO functions return Result, never raise",
+            "eio.md \u2014 no ~sw stored in writer struct; sync via Eio.File.sync not Unix.fsync",
+            "error-handling.md \u2014 use Result.Syntax bind operators for chains",
+            "nesting-and-control-flow.md \u2014 max 2 levels of nesting in write functions"
+          ],
+          "test_requirements": {
+            "existing_tests": [],
+            "new_tests": [
+              "test_write_session_info_creates_file_with_valid_jsonl: file exists; first line parses as JSON with type:'session_info'",
+              "test_write_message_appends_line_with_parent_id: after write_session_info + write_message, second line parent_id = first line id",
+              "test_write_leaf_sets_parent_to_last_message: leaf parent_id = last message id",
+              "test_leaf_is_childless_and_does_not_advance_tip: write_session_info; write_message m1; write_leaf; write_message m2 -> m2.parent_id = m1.id (NOT the leaf id); no entry has the leaf id as its parent_id",
+              "test_parent_chain_forms_linked_list: three CONTENT entries (no leaf); each parent_id = previous entry id",
+              "test_create_makes_parent_directories: path='a/b/c/session.jsonl' under temp dir; create succeeds; dirs a/b/c exist",
+              "test_session_id_is_uuid: session_id t is a valid standard 36-character UUIDv7",
+              "test_multiple_appends_accumulate_lines: 4 write calls -> file has 4 lines each valid JSON"
+            ],
+            "test_command": "dune runtest",
+            "notes": "Tests run under Eio_main.run. Use Stdlib.Filename.temp_dir or create subdirs of a fixed temp path. Clean up after each test. Parse JSONL by splitting on '\\n' and filtering empty strings. Each line must parse with Yojson.Safe.from_string (no exception)."
+          },
+          "acceptance_criteria": [
+            "dune build passes",
+            "write_session_info creates well-formed JSONL first line",
+            "content-entry parent chain is linear (each content entry parent_id = previous content entry id)",
+            "write_leaf is non-advancing: a Leaf is childless and the next content entry parents to the pre-leaf tip",
+            "Eio.File.sync called per entry (verified structurally by tests - content visible before close)",
+            "All tests pass"
+          ]
+        },
+        {
+          "stage": 3,
+          "title": "Agent_wrapper \u2014 actor/mailbox + subscription + observable state",
+          "status": "pending",
+          "description": "Actor-pattern wrapper over Agent_loop.run. create ~sw forks a long-lived actor fibre under the wrapper's switch. send enqueues a Run message to a capacity-1 mailbox (Eio.Stream) and awaits a reply promise. Actor processes runs sequentially; Fun.protect ensures the reply promise is always resolved. Provides subscription fan-out and observable state.",
+          "files_to_create": [
+            "lib/pera_harness/agent_wrapper.mli",
+            "lib/pera_harness/agent_wrapper.ml",
+            "lib/pera_harness/test/agent_wrapper_test.ml"
+          ],
+          "files_to_modify": [
+            "lib/pera_harness/test/dune"
+          ],
+          "depends_on": [
+            0
+          ],
+          "implementation_notes": "INTERFACE:\ntype 'ctx t\nval create : config:'ctx Pera_core.Agent_loop.agent_loop_config -> sw:Eio.Switch.t -> 'ctx t\n(* NOTE: create takes ~sw (wrapper lifetime switch); send has NO ~sw *)\nval subscribe : 'ctx t -> (Pera_core.Agent_types.agent_event -> unit) -> (unit -> unit)\nval send : 'ctx t -> messages:Pera_core.Agent_types.agent_message list -> unit\nval is_streaming : 'ctx t -> bool\nval pending_tool_call_names : 'ctx t -> string list\nval current_messages : 'ctx t -> Pera_core.Agent_types.agent_message list\n\nINTERNAL TYPES:\ntype msg =\n  | Run of {\n      messages : Pera_core.Agent_types.agent_message list;\n      reply    : unit Eio.Promise.u;\n    }\n\ntype 'ctx t = {\n  config        : 'ctx Pera_core.Agent_loop.agent_loop_config;\n  mailbox       : msg Eio.Stream.t;   (* capacity 1 *)\n  mutable subscribers   : (Pera_core.Agent_types.agent_event -> unit) list;\n  mutable is_running    : bool;\n  mutable in_flight_tools : (string * string) list;  (* (tool_call_id, tool_name) pairs *)\n  mutable messages      : Pera_core.Agent_types.agent_message list;\n  sub_mutex     : Eio.Mutex.t;        (* protects subscribers list only *)\n}\n\nNOTE: in_flight_tools is keyed by tool_call_id (unique per call) so that two parallel calls to the same-named tool are tracked and removed independently. pending_tool_call_names maps the list to its tool_name components (snd).\n\nCREATE (actor pattern):\nlet create ~config ~sw =\n  let t = { config; mailbox = Eio.Stream.create 1; subscribers = [];\n            is_running = false; in_flight_tools = []; messages = [];\n            sub_mutex = Eio.Mutex.create () } in\n  Eio.Fiber.fork ~sw (fun () ->\n    let rec loop () =\n      let (Run { messages; reply }) = Eio.Stream.take t.mailbox in\n      t.is_running <- true;\n      Fun.protect\n        ~finally:(fun () ->\n          t.is_running <- false;\n          t.in_flight_tools <- [];\n          Eio.Cancel.protect (fun () -> Eio.Promise.resolve reply ()))\n        (fun () ->\n          let stream = Pera_core.Agent_loop.run t.config ~messages ~sw in\n          Pera_provider.Event_stream.iter stream ~f:(fun event ->\n            update_state t event;\n            let subs = Eio.Mutex.use_ro t.sub_mutex (fun () -> t.subscribers) in\n            List.iter (fun sub -> sub event) subs)\n          |> ignore);\n      loop ()\n    in\n    loop ());\n  t\n\nSEND:\nlet send t ~messages =\n  let p, resolver = Eio.Promise.create () in\n  Eio.Stream.add t.mailbox (Run { messages; reply = resolver });\n  Eio.Promise.await p\n\nDESIGN NOTES:\n- Eio.Stream.add blocks if mailbox full (capacity 1). A second send while one runs blocks the caller until actor takes the message and begins processing.\n- Eio.Cancel.protect on Promise.resolve: ensures reply is always resolved even when sw is cancelled. Without this, send callers would block forever on cancelled runs.\n- is_running not mutex-protected: Eio cooperative scheduling means external reads only happen at yield points, after is_running is set consistently.\n- sub_mutex protects only subscribers list (subscribe/unsubscribe may come from any fibre).\n- Fun.protect guarantees finally runs even on unexpected exceptions from Agent_loop.run.\n\nSUBSCRIBE:\nlet subscribe t f =\n  Eio.Mutex.use_rw ~protect:false t.sub_mutex (fun () ->\n    t.subscribers <- t.subscribers @ [f]);\n  (fun () ->\n    Eio.Mutex.use_rw ~protect:false t.sub_mutex (fun () ->\n      t.subscribers <- List.filter (fun sub -> not (sub == f)) t.subscribers))\n\nUPDATE_STATE:\n| AE_tool_execution_start {tool_call_id;tool_name;_} -> t.in_flight_tools <- (tool_call_id, tool_name) :: t.in_flight_tools\n| AE_tool_execution_end {tool_call_id;_} -> t.in_flight_tools <- List.filter (fun (id, _) -> not (String.equal id tool_call_id)) t.in_flight_tools\n| AE_agent_end {messages;_} -> t.messages <- messages\n| _ -> ()\n\npending_tool_call_names t = List.map snd t.in_flight_tools",
+          "coding_guidelines_to_emphasize": [
+            "eio.md \u2014 Promise for one-shot completion signals; actor fibre under switch; Cancel.protect for cleanup after cancellation",
+            "pera-specific.md \u2014 open Containers; mutable state updates sequenced by cooperative scheduling",
+            "error-handling.md \u2014 unexpected exceptions in actor propagate via Fun.protect finally; send never raises (queues instead)"
+          ],
+          "test_requirements": {
+            "existing_tests": [],
+            "new_tests": [
+              "test_subscriber_receives_all_events: subscribe f; send 1-turn script; f called for each event in order",
+              "test_multiple_subscribers_all_notified: two subscribers both receive every event",
+              "test_unsubscribe_stops_notifications: subscribe f, get unsub; unsub(); send; f not called",
+              "test_concurrent_sends_both_complete: fork two fibres calling send simultaneously; both complete (second queues, not rejected)",
+              "test_second_send_runs_after_first_completes: two sequential sends produce events from both turns in order",
+              "test_is_streaming_true_during_send: check is_running (via is_streaming) from subscriber -> true",
+              "test_is_streaming_false_before_and_after_send: false before; false after",
+              "test_pending_tool_calls_updated_during_execution: script with tool call; subscriber at AE_tool_execution_start sees tool name in pending_tool_call_names",
+              "test_pending_tool_calls_keyed_by_id_for_duplicate_names: two concurrent calls to the same-named tool (distinct tool_call_ids); ending one leaves the other in pending_tool_call_names (proves removal is by tool_call_id, not name)",
+              "test_current_messages_updated_after_send: after send, current_messages = AE_agent_end.messages",
+              "test_current_messages_empty_before_first_send: before send, current_messages = []"
+            ],
+            "test_command": "dune runtest",
+            "notes": "Tests use Faux_provider.stream_fn_of_scripts from pera_core_test_util. test/dune must include pera_core_test_util in libraries. Build a minimal agent_loop_config helper (similar to agent_loop_test.ml make_config). For test_concurrent_sends_both_complete: use Eio.Fiber.both to run two fibres each calling send; assert BOTH return normally (the second blocks on the capacity-1 mailbox until the first completes, then runs) — neither raises, neither is rejected."
+          },
+          "acceptance_criteria": [
+            "dune build passes",
+            "All subscribers receive every event in registration order",
+            "Unsubscribed subscriber not called",
+            "Concurrent sends queue and both complete (not rejected)",
+            "is_streaming true during, false outside send",
+            "current_messages updated from AE_agent_end",
+            "Reply promise always resolved (Fun.protect + Cancel.protect)",
+            "All tests pass"
+          ]
+        }
+      ]
+    },
+    {
+  "epoch": 2,
+  "title": "Assembled harness",
+  "status": "pending",
+  "description": "Build Agent_harness in pera_agent: binds Local_env, Tools.default, Session_writer, and Agent_wrapper into a single entry point. Exposes send (writes user message entry + runs loop) and subscribe.",
+  "stages": [
+    {
+      "stage": 4,
+      "title": "Agent_harness \u2014 assembled harness in pera_agent",
+      "status": "pending",
+      "description": "Top-level assembly module. Accepts injected exec_env from config; creates tool list from it. Creates Session_writer and Agent_wrapper. Registers session subscriber on the wrapper. send writes the user message entry then runs the loop via wrapper. subscribe delegates to wrapper.",
+      "files_to_create": [
+        "lib/pera_agent/agent_harness.mli",
+        "lib/pera_agent/agent_harness.ml",
+        "lib/pera_agent/test/agent_harness_test.ml",
+        "lib/pera_agent/test/dune"
+      ],
+      "files_to_modify": [
+        "lib/pera_agent/dune"
+      ],
+          "depends_on": [
+            2,
+            3
+          ],
+          "implementation_notes": "INTERFACE:\ntype t\ntype config = {\n  cwd: string;\n  model: Pera_types.Types.model;\n  session_path: string;\n  stream_fn: Pera_core.Agent_types.stream_fn;\n  max_tokens: int;\n  exec_env: (module Pera_env.Execution_env.S);\n}\nval create : config:config -> env:Eio_unix.Stdenv.base -> sw:Eio.Switch.t -> (t, Pera_types.Types.file_error) result\nval send : t -> string -> unit\n(* NOTE: create takes ~sw for wrapper lifetime and ~env for Session_writer Eio.Path access; send has no ~sw.\n   exec_env is injected by the caller — use Local_env.create or Sandboxed_env.create before calling Agent_harness.create. *)\nval subscribe : t -> (Pera_core.Agent_types.agent_event -> unit) -> (unit -> unit)\n\nINTERNAL STATE:\ntype t = {\n  writer: Pera_harness.Session_writer.t;\n  wrapper: unit Pera_harness.Agent_wrapper.t;\n  mutable session_info_written: bool;\n}\n\nBUILD_SYSTEM_PROMPT (inlined function, not separate module):\nlet build_system_prompt tools =\n  let base = \"You are a helpful coding assistant. Work methodically, \\\n              verify your understanding before acting, and prefer small \\\n              targeted changes.\" in\n  let descs = List.map (fun (t : unit Pera_core.Agent_types.tool) ->\n    Printf.sprintf \"- %s: %s\" t.name t.description) tools in\n  if List.is_empty descs then base\n  else base ^ \"\\n\\nAvailable tools:\\n\" ^ String.concat \"\\n\" descs\n\nCONVERT_TO_LLM:\nlet convert_to_llm messages =\n  List.filter_map (function\n    | Pera_core.Agent_types.Real msg -> Some msg\n    | Pera_core.Agent_types.Synthetic _ -> .) messages\nNote: 'Synthetic _ -> .' is OCaml refutation syntax (empty match arm for uninhabited type). Requires 'type synthetic = |' in Agent_types. This compiles in OCaml 5.x with no warning.\n\nCREATE:\nlet tools = Pera_tools.Tools.default config.exec_env in\nBuild agent_loop_config with all hooks None (M5; M6 adds should_stop_after_turn for compaction):\nAgent_loop.{ model; system=build_system_prompt tools; options={max_tokens; temperature=None};\n  stream_fn; convert_to_llm; tool_ctx=(); tools; tool_execution=`Parallel;\n  transform_context=None; get_api_key=None; before_tool_call=None; after_tool_call=None;\n  should_stop_after_turn=None; prepare_next_turn=None;\n  get_steering_messages=None; get_follow_up_messages=None }\n\nSESSION_SUBSCRIBER (registered in create):\nlet session_subscriber writer event =\n  let open Result.Syntax in\n  let result = match event with\n    | AE_message_end { message = Real (AssistantMessage am) } ->\n        Session_writer.write_message writer (Provider.AssistantMessage am)\n    | AE_message_end _ -> Ok ()\n    | AE_turn_end { tool_results; _ } ->\n        (* Write tool results only; the Leaf is written once per run at AE_agent_end. *)\n        List.fold_left (fun acc tr ->\n          let* () = acc in\n          Session_writer.write_message writer (Provider.ToolResultMessage tr))\n          (Ok ()) tool_results\n    | AE_agent_end _ -> Session_writer.write_leaf writer\n    | _ -> Ok ()\n  in\n  match result with\n  | Ok () -> ()\n  | Error e -> Printf.eprintf \"session write error: %s\\n%!\" e.Pera_types.Types.message\n\nSEND:\nlet send t text =\n  if not t.session_info_written then (\n    (match Session_writer.write_session_info t.writer with\n    | Ok () -> () | Error e -> Printf.eprintf \"session_info write: %s\\n%!\" e.message);\n    t.session_info_written <- true);\n  let um = Pera_provider.Provider.UserMessage\n    Pera_types.Types.{ role = \"user\"; content = [ UText text ] } in\n  (match Session_writer.write_message t.writer um with\n  | Ok () -> () | Error e -> Printf.eprintf \"user message write: %s\\n%!\" e.message);\n  let agent_msg = Pera_core.Agent_types.Real um in\n  let history = Pera_harness.Agent_wrapper.current_messages t.wrapper in\n  let messages = history @ [ agent_msg ] in\n  Pera_harness.Agent_wrapper.send t.wrapper ~messages\n\nUPDATED pera_agent dune: add agent_harness to (modules ...) list.",
+          "coding_guidelines_to_emphasize": [
+            "module-boundaries.md \u2014 Agent_harness.mli defines the public contract; hide writer/wrapper internals",
+            "abstractions.md \u2014 config record bundles 6 params; one responsibility per module",
+            "error-handling.md \u2014 session write failures logged to stderr, not propagated (matches spec failure-handling policy)",
+            "pera-specific.md \u2014 open Containers; Synthetic refutation pattern"
+          ],
+          "test_requirements": {
+            "existing_tests": [],
+            "new_tests": [
+              "test_send_creates_session_file: after send, session file exists at configured path",
+              "test_session_file_contains_session_info_on_first_send: first line type:'session_info'",
+              "test_session_file_contains_user_message: second line type:'message', role:'user', text matches input",
+              "test_session_file_contains_assistant_message: assistant message line present",
+              "test_session_file_ends_with_leaf: exactly one leaf per send; last line type:'leaf'",
+              "test_single_send_chain_is_linear: one send; session_info <- user <- assistant <- leaf, each parent_id = previous line id",
+              "test_leaf_is_childless_across_sends: two sends; send-2 user message parent_id = send-1 last content entry id (the assistant), NOT send-1 leaf id; no entry references a leaf id as parent",
+              "test_second_send_continues_content_chain: two sends; the content-entry chain (excluding leaves) is gap-free across sends",
+              "test_subscriber_receives_events: register subscriber; send; subscriber called with AE_agent_start, AE_turn_start, AE_agent_end at minimum"
+            ],
+            "test_command": "dune runtest",
+            "notes": "Tests use Faux_provider.stream_fn_of_scripts and a temp directory. lib/pera_agent/test/dune must add pera_core_test_util and pera_env to libraries. Construct exec_env with Pera_env.Local_env.create ~env ~cwd before building the config — tests pass Local_env; production code can pass Sandboxed_env. Build a scripted turn that produces one text reply (EndTurn). Parse JSONL with helper parse_session_file. The concurrent-send serialisation is tested in agent_wrapper_test.ml - not repeated here."
+          },
+          "acceptance_criteria": [
+            "dune build passes",
+            "Session file created and contains all expected entry types",
+            "Exactly one Leaf written per send, at AE_agent_end",
+            "Content-entry parent chain is gap-free across multiple sends; Leaf entries are childless",
+            "Subscriber receives events from the wrapper",
+            "All tests pass"
+          ]
+        }
+      ]
+    },
+    {
+      "epoch": 3,
+      "title": "Drivers",
+      "status": "pending",
+      "description": "Introduce session_driver (exercises Session_writer in isolation) and harness_driver (exercises Agent_harness against Faux_provider). Both validate JSONL output and parent chain correctness.",
+      "stages": [
+        {
+          "stage": 5,
+          "title": "session_driver",
+          "status": "pending",
+          "description": "Layer driver for Session_writer. Appends representative entry sequences and verifies the JSONL output structure. Does not involve the agent loop or Faux_provider. Five scenarios covering the full entry-type vocabulary.",
+          "files_to_create": [
+            "bin/drivers/session_driver.ml"
+          ],
+          "files_to_modify": [
+            "bin/drivers/dune"
+          ],
+          "depends_on": [
+            2
+          ],
+          "implementation_notes": "DUNE STANZA:\n(executable\n (name session_driver)\n (libraries pera_harness pera_provider pera_types eio eio_main eio_linux\n            containers yojson))\n\nSCENARIOS (5):\n1. header_then_leaf: SessionInfo + Leaf. Verify: 2 lines; Leaf parent_id = SessionInfo id.\n2. user_assistant_turn: SessionInfo + UserMessage + AssistantMessage + Leaf. Verify: 4 lines; types in order; parent chain linear.\n3. tool_use_turn: SessionInfo + UserMessage + AssistantMessage + ToolResultMessage + Leaf. Verify: 5 lines; all types present.\n4. two_turns (childless-leaf chain): SessionInfo + UserMsg1 + AssistantMsg1 + Leaf1 + UserMsg2 + AssistantMsg2 + Leaf2. Verify: 7 lines; UserMsg2 parent_id = AssistantMsg1 id (NOT Leaf1 id — proves write_leaf is non-advancing); Leaf2 parent_id = AssistantMsg2 id; no entry has a Leaf id as its parent_id.\n5. model_change: SessionInfo + ModelChange + UserMessage + AssistantMessage + Leaf. Verify: ModelChange entry has correct model.id; UserMessage parent_id = ModelChange id (model_change advances the tip).\n\nHELPERS:\nparse_session_file path: read file, split on '\\n', filter empty, map Yojson.Safe.from_string.\ncheck_content_chain entries: filter OUT entries of type 'leaf', then assert each remaining entry's parent_id = the previous remaining entry's id (Leaf entries are childless and excluded from the chain).\nassert_leaves_childless entries: collect all leaf ids; assert no entry's parent_id is in that set.\nget_field json key: Yojson.Safe.Util.member key json.\n\nPRINT: '[session] <scenario_name> ... PASS' or '[session] <scenario_name> ... FAIL: <reason>'\nEXIT: 0 if all non-skipped pass, 1 otherwise.\n\nFor AssistantMessage entries: use a minimal assembly:\nTypes.{ content=[AText \"test reply\"]; stop_reason=EndTurn;\n  provenance={api=\"test\";provider=\"test\";model=\"test\";error_message=None};\n  usage={input_tokens=0;output_tokens=0;cache_read_tokens=0;cache_write_tokens=0;cost_usd=None} }",
+          "coding_guidelines_to_emphasize": [
+            "test-patterns.md \u2014 driver exercises public interface; print structured output; return meaningful exit code",
+            "naming-and-intermediates.md \u2014 name scenario helper functions clearly"
+          ],
+          "test_requirements": {
+            "existing_tests": [],
+            "new_tests": [],
+            "test_command": "./_build/default/bin/drivers/session_driver.exe",
+            "notes": "Drivers are not Alcotest tests. Run manually or wrap in a shell script that checks exit code. The driver itself IS the test. Expected output:\n[session] header_then_leaf ... PASS\n[session] user_assistant_turn ... PASS\n[session] tool_use_turn ... PASS\n[session] two_turns ... PASS\n[session] model_change ... PASS"
+          },
+          "acceptance_criteria": [
+            "session_driver compiles and links",
+            "All 5 scenarios print PASS",
+            "Exit code 0",
+            "JSONL output is parseable line-by-line with Yojson"
+          ]
+        },
+        {
+          "stage": 6,
+          "title": "harness_driver",
+          "status": "pending",
+          "description": "Layer driver for Agent_harness. Exercises the full stack (session writer + agent wrapper + tools) against Faux_provider. Three scenarios verifying that the session log reflects the events and the parent chain is well-formed.",
+          "files_to_create": [
+            "bin/drivers/harness_driver.ml"
+          ],
+          "files_to_modify": [
+            "bin/drivers/dune"
+          ],
+          "depends_on": [
+            4
+          ],
+          "implementation_notes": "DUNE STANZA:\n(executable\n (name harness_driver)\n (libraries pera_agent pera_tools pera_harness pera_core pera_core_test_util pera_provider\n            pera_types eio eio_main eio_linux containers yojson))\n\nSCENARIOS (3):\n\n1. text_only:\n   Script: 1-turn Faux (text reply, EndTurn).\n   Inject stream_fn = Faux_provider.stream_fn_of_scripts [Turn{events=[AME_text_delta{text=\"Hello\",partial=...}; AME_done{message=...}]; final=...}].\n   send \"What is 2+2?\".\n   Verify: session file has 4 entries; types = [session_info; message(user); message(assistant); leaf]; parent chain linear.\n\n2. tool_use:\n   Script: 2-turn Faux. Turn 1: tool call (ToolUse stop). Turn 2: text reply (EndTurn).\n   Provide a tool named 'echo' with mode=Parallel, execute returns Tool_text of its 'text' arg.\n   Pass tool as part of the harness config tools.\n   Actually: Agent_harness creates tools via Tools.default env. The faux script must produce a tool call whose name matches one of read/write/bash/grep. Easiest: script a 'read' tool call with path='/dev/null' - it will actually execute.\n   Alternative: use a simpler approach - script the turn to have EndTurn (no tool calls) and verify 4 entries. Then in turn 2 scenario, script a ToolUse turn + text turn. The harness uses real tools (Local_env). The bash tool can echo something simple.\n   Recommended: script tool_use scenario as: bash tool call 'echo hello'. The harness_driver creates a Local_env with a temp cwd (Pera_env.Local_env.create ~env ~cwd) and passes it as config.exec_env. The bash tool executes and produces a result. Verify 6 entries (ONE leaf per send, at AE_agent_end — not per turn): session_info + user + assistant(ToolUse) + tool_result + assistant(EndTurn) + leaf. Check the content chain excludes the leaf and is gap-free; the leaf is childless.\n\n3. subscriber_events:\n   Text-only scenario. Subscribe to collect events. Verify events include AE_agent_start, AE_turn_start, AE_message_start, AE_message_end, AE_turn_end, AE_agent_end in order.\n\nHELPERS:\nparse_session_file: same as session_driver.\ncheck_content_chain + assert_leaves_childless: same as session_driver (chain excludes 'leaf' entries; leaves must be childless).\nget_type_field json: Yojson.Safe.Util.(member \"type\" json |> to_string).\nmake_temp_dir env: same as tool_driver.\n\nFor Faux_provider events: build minimal assistant_message values (same pattern as loop_driver.make_assistant_message).\n\nPRINT: '[harness] <scenario_name> ... PASS/FAIL: <reason>'\nEXIT: 0 if all pass, 1 otherwise.",
+          "coding_guidelines_to_emphasize": [
+            "test-patterns.md \u2014 driver exercises public interface; if driver is hard to write, seam is leaking",
+            "eio.md \u2014 all IO under Eio_main.run and Eio.Switch.run"
+          ],
+          "test_requirements": {
+            "existing_tests": [],
+            "new_tests": [],
+            "test_command": "./_build/default/bin/drivers/harness_driver.exe",
+            "notes": "Drivers are not Alcotest tests. Expected output:\n[harness] text_only ... PASS\n[harness] tool_use ... PASS\n[harness] subscriber_events ... PASS\nThe tool_use scenario requires the bash tool to actually execute (real Local_env). Ensure the temp dir is writable and /bin/sh is available."
+          },
+          "acceptance_criteria": [
+            "harness_driver compiles and links",
+            "text_only: session file has 4 entries in correct order",
+            "tool_use: session file includes tool_result message entry",
+            "subscriber_events: collected events include AE_agent_start and AE_agent_end",
+            "All scenarios print PASS, exit 0"
+          ]
+        }
+      ]
+    },
+    {
+      "epoch": 4,
+      "title": "Incidental refactor (not M5-scoped)",
+      "status": "pending",
+      "description": "Isolated, self-contained change carried alongside M5 but unrelated to session logging. Has no dependency on any M5 stage and nothing in M5 depends on it; sequence it whenever convenient.",
+      "stages": [
+        {
+          "stage": 7,
+          "title": "HTTP connect_timeout configuration",
+          "status": "pending",
+          "description": "Set an explicit connection timeout on the piaf client config in Http_client.post_sse so a hung TCP connect fails fast instead of blocking indefinitely. Pure provider-layer change; does not touch the Provider.S seam.",
+          "files_to_create": [],
+          "files_to_modify": [
+            "lib/pera_provider/http_client.ml"
+          ],
+          "depends_on": [],
+          "implementation_notes": "In lib/pera_provider/http_client.ml, the post_sse config record currently is:\n  { Piaf.Config.default with follow_redirects = true; max_redirects = 3; allow_insecure = false }\nAdd an explicit connect_timeout (seconds, float) field:\n  { Piaf.Config.default with follow_redirects = true; max_redirects = 3; allow_insecure = false; connect_timeout = 10.0 }\nVerify the exact field name against the installed piaf version (Piaf.Config.t) at build time — some versions name it `connect_timeout`, confirm via `dune build` and the piaf .mli. If the field is absent in this piaf version, drop the stage (no-op) rather than inventing it. Do NOT change http_client.mli (the timeout is an internal config detail; the public seam is unchanged).",
+          "coding_guidelines_to_emphasize": [
+            "module-boundaries.md — do not widen http_client.mli; timeout stays an internal detail",
+            "pera-specific.md — name the timeout constant rather than inlining a bare literal"
+          ],
+          "test_requirements": {
+            "existing_tests": [
+              "all existing pera_provider tests still pass"
+            ],
+            "new_tests": [],
+            "test_command": "dune build && dune runtest lib/pera_provider",
+            "notes": "No new test: this is a timeout knob with no deterministic unit-testable behaviour without a network fault injector. Covered by build + existing provider tests + manual provider_driver run."
+          },
+          "acceptance_criteria": [
+            "dune build passes with the connect_timeout field set (or the stage is dropped as a no-op if the field is absent in the installed piaf)",
+            "http_client.mli is unchanged",
+            "All existing pera_provider tests pass"
+          ]
+        }
+      ]
+    }
+  ]
+}
