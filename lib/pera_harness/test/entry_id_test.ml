@@ -11,8 +11,14 @@ let test_generate_returns_lowercase_hex_and_hyphens () =
     || (Char.compare c 'a' >= 0 && Char.compare c 'f' <= 0)
     || Char.equal c '-'
   in
-  let valid = String.for_all is_hex_or_hyphen id in
-  Alcotest.(check bool) "only lowercase hex and hyphens" true valid
+  Alcotest.(check bool) "only lowercase hex and hyphens" true
+    (String.for_all is_hex_or_hyphen id);
+  (* UUIDv7: position 14 must be '7' (version nibble),
+     position 19 must be in [89ab] (variant bits) *)
+  Alcotest.(check char) "version nibble is 7" '7' (String.get id 14);
+  let variant = String.get id 19 in
+  Alcotest.(check bool) "variant nibble is [89ab]" true
+    (List.mem ~eq:Char.equal variant [ '8'; '9'; 'a'; 'b' ])
 
 let test_generate_ids_are_unique () =
   let ids = List.init 1000 (fun _ -> Pera_harness.Entry_id.generate ()) in

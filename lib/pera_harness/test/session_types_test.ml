@@ -4,7 +4,13 @@ open Yojson.Safe.Util
 
 let get_str json key = member key json |> to_string
 let get_bool json key = member key json |> to_bool
-let has_key json key = not (Yojson.Safe.equal (member key json) `Null)
+(* Check that the key is genuinely absent (not merely set to null).
+   Yojson.Safe.Util.member returns `Null for both, so we use the assoc list. *)
+let has_key json key =
+  match json with
+  | `Assoc fields ->
+    Option.is_some (List.assoc_opt ~eq:String.equal key fields)
+  | _ -> false
 
 let make_usage ?(cost_usd = None) () =
   Pera_types.Types.
