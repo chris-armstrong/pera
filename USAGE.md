@@ -1,6 +1,6 @@
 # Driver Usage
 
-The `bin/drivers/` directory contains three executable drivers for exercising the provider and agent layers during development. None of them is a production CLI — they are test harnesses.
+The `bin/drivers/` directory contains five executable drivers for exercising the provider, agent, harness, and tool layers during development. None of them is a production CLI — they are test harnesses.
 
 Build everything first:
 
@@ -138,3 +138,55 @@ No API keys are required — the faux provider is configured inline.
 | `follow_up_message` | User follow-up after first assistant turn |
 
 Output is a per-scenario `PASS` / `FAIL` table. Exit code is 0 if all pass.
+
+---
+
+## env_driver
+
+Exercises the **harness layer** (`pera_harness`) standalone against a real OS. Tests `Sh.exec` (stdout, stderr, exit codes, timeout) and `Sh.find_executable`.
+
+```bash
+# Run all scenarios
+./_build/default/bin/drivers/env_driver.exe
+```
+
+No API keys are required.
+
+**Scenarios:**
+
+| Name | What it tests |
+|------|---------------|
+| `exec stdout` | Basic command execution and stdout capture |
+| `exec stderr` | Stdout / stderr separation |
+| `exec exit code` | Non-zero exit code propagation |
+| `exec timeout` | Timeout cancellation |
+| `find sh` | PATH scan for an executable |
+
+Output is a per-scenario `PASS` / `FAIL` / `SKIP` summary. Exit code is 0 if all non-skipped scenarios pass.
+
+---
+
+## tool_driver
+
+Exercises the **tool layer** (`pera_tools`) against a real OS using the harness. Tests all four tools (`read`, `write`, `bash`, `grep`) end-to-end.
+
+```bash
+# Run all scenarios
+./_build/default/bin/drivers/tool_driver.exe
+```
+
+No API keys are required. A temporary directory is created for the test run and cleaned up afterward.
+
+**Scenarios:**
+
+| Tool | Name | What it tests |
+|------|------|---------------|
+| `read` | `basic read` | Write a file, read it back |
+| `read` | `read with offset/limit` | Partial read with offset and line limit |
+| `write` | `create file` | Create a new file |
+| `write` | `overwrite + bytes` | Overwrite existing file, check bytes message |
+| `bash` | `echo hello` | Simple command execution |
+| `bash` | `exit code handling` | Non-zero exit code error message |
+| `grep` | `pattern search` | Regex search with ripgrep (skipped if `rg` absent) |
+
+Output is a per-scenario `PASS` / `FAIL` / `SKIP` summary grouped by tool. Exit code is 0 if all non-skipped scenarios pass.
