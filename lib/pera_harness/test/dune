@@ -9,3 +9,8 @@
  (modules entry_id_test)
  (libraries pera_harness pera_types alcotest containers unix))
 
+(test
+ (name session_types_test)
+ (modules session_types_test)
+ (libraries pera_harness pera_provider pera_types alcotest containers yojson))
+
