@@ -2,6 +2,7 @@
  (name pera_harness)
  (public_name pera-harness)
  (modules entry_id session_types session_writer agent_wrapper)
- (libraries pera_types pera_provider pera_core unix containers yojson uuidm decimal)
+ (libraries pera_types pera_provider pera_core eio eio_main eio_linux unix
+            containers yojson uuidm decimal)
  (preprocess
   (pps ppx_deriving.eq ppx_deriving.show)))
