@@ -26,6 +26,14 @@ let check_response_status (response : Piaf.Response.t) =
     Log.debug (fun m -> m "HTTP failure response body:\n%s" body_str);
     Error (Printf.sprintf "HTTP error %d: %s" status_code body_str)
 
+let connect_timeout = 10.0
+
+let client_config =
+  { Piaf.Config.default with
+    connect_timeout
+  ; max_http_version = Piaf.Versions.HTTP.HTTP_1_1
+  }
+
 let create ~env ~sw base_url =
   let uri = Uri.of_string base_url in
   let base_path =
@@ -33,7 +41,7 @@ let create ~env ~sw base_url =
     | "" | "/" -> ""
     | p -> p
   in
-  Piaf.Client.create ~sw env uri
+  Piaf.Client.create ~config:client_config ~sw env uri
   |> Result.map (fun piaf_client -> { piaf_client; base_path })
   |> Result.map_error (fun piaf_err ->
       Printf.sprintf "HTTP client creation failed: %s"

@@ -4,6 +4,12 @@ open Pera_provider
 (** Spin up a minimal in-process HTTP/1.1 server on a random loopback port,
     issue one [post_stream] call, and return the request-line path the server
     received. *)
+(* piaf's HTTP/1.1 client parks its IO loop in Yield state after each
+   response, waiting for the application to issue a new request. This prevents
+   the switch from completing naturally. We cancel the piaf switch via a watcher
+   fibre that fires as soon as the server has closed the connection. *)
+exception Client_done
+
 let capture_request_path ~env ~sw ~base_url ~path =
   let net = Eio.Stdenv.net env in
   let server =
@@ -16,6 +22,7 @@ let capture_request_path ~env ~sw ~base_url ~path =
     | _ -> failwith "unexpected listening address type"
   in
   let received = ref "" in
+  let server_done, server_done_r = Eio.Promise.create () in
   Eio.Fiber.fork ~sw (fun () ->
       let conn, _addr = Eio.Net.accept ~sw server in
       let reader = Eio.Buf_read.of_flow conn ~max_size:65536 in
@@ -32,14 +39,28 @@ let capture_request_path ~env ~sw ~base_url ~path =
          in
          drain ()
        with _ -> ());
-      Eio.Flow.copy_string "HTTP/1.1 200 OK\r\ncontent-length: 0\r\n\r\n" conn);
+      Eio.Flow.copy_string "HTTP/1.1 200 OK\r\nconnection: close\r\ncontent-length: 0\r\n\r\n" conn;
+      Eio.Net.close conn;
+      Eio.Promise.resolve server_done_r ());
   let url = Printf.sprintf "http://127.0.0.1:%d%s" port base_url in
-  (match Http_client.create ~env ~sw url with
-  | Error e -> failwith (Http_client.error_to_string e)
-  | Ok client ->
-      ignore
-        (Http_client.post_stream ~client ~headers:[] ~body:"{}"
-           ~on_chunk:(fun _ -> ()) path));
+  (* Run the piaf client in a dedicated switch. A watcher fibre cancels the
+     switch once the server has closed its connection, unblocking piaf's IO
+     loop from its HTTP/1.1 keep-alive Yield state. *)
+  (match
+    Eio.Switch.run (fun piaf_sw ->
+        Eio.Fiber.fork ~sw:piaf_sw (fun () ->
+            Eio.Promise.await server_done;
+            Eio.Switch.fail piaf_sw Client_done);
+        (match Http_client.create ~env ~sw:piaf_sw url with
+        | Error e -> failwith (Http_client.error_to_string e)
+        | Ok client ->
+            ignore
+              (Http_client.post_stream ~client ~headers:[] ~body:"{}"
+                 ~on_chunk:(fun _ -> ()) path)))
+  with
+  | exception Client_done -> ()
+  | exception e -> raise e
+  | () -> ());
   !received
 
 (** [post_stream] prepends the path component of [base_url] to [path]. *)
@@ -64,18 +85,26 @@ let test_no_base_path () =
     result is [Error] with a non-empty [error_to_string]. *)
 let test_error_to_string_is_total_and_nonempty () =
   Eio_main.run @@ fun env ->
-  Eio.Switch.run @@ fun sw ->
-  let result =
-    match Http_client.create ~env ~sw "http://127.0.0.1:1/" with
-    | Error e -> Error e
-    | Ok client ->
-        Http_client.post_stream ~client ~headers:[] ~body:"{}"
-          ~on_chunk:(fun _ -> ())
-          "/"
-  in
-  match result with
-  | Ok () -> Alcotest.fail "expected an Error for an unroutable address"
-  | Error e ->
+  let result : (unit, Http_client.error) result option ref = ref None in
+  (match
+    Eio.Switch.run (fun sw ->
+        result :=
+          Some
+            (match Http_client.create ~env ~sw "http://127.0.0.1:1/" with
+            | Error e -> Error e
+            | Ok client ->
+                Http_client.post_stream ~client ~headers:[] ~body:"{}"
+                  ~on_chunk:(fun _ -> ())
+                  "/");
+        Eio.Switch.fail sw Client_done)
+  with
+  | exception Client_done -> ()
+  | exception e -> raise e
+  | () -> ());
+  match !result with
+  | None -> Alcotest.fail "result not set"
+  | Some (Ok ()) -> Alcotest.fail "expected an Error for an unroutable address"
+  | Some (Error e) ->
       let msg = Http_client.error_to_string e in
       Alcotest.(check bool)
         "error_to_string returns a non-empty string" true
@@ -85,28 +114,30 @@ let test_error_to_string_is_total_and_nonempty () =
     [error_to_string]. *)
 let test_create_error_gives_nonempty_message () =
   Eio_main.run @@ fun env ->
-  Eio.Switch.run @@ fun sw ->
-  let result = Http_client.create ~env ~sw "http://127.0.0.1:1/" in
-  match result with
-  | Ok _ -> (
-      (* create may succeed (connection is lazy in some Piaf versions);
-         in that case drive post_stream to force the failure *)
-      let client = Result.get_exn result in
-      let post_result =
-        Http_client.post_stream ~client ~headers:[] ~body:"{}"
-          ~on_chunk:(fun _ -> ())
-          "/"
-      in
-      match post_result with
-      | Ok () ->
-          Alcotest.fail
-            "expected an Error from post_stream against an unroutable address"
-      | Error e ->
-          let msg = Http_client.error_to_string e in
-          Alcotest.(check bool)
-            "error_to_string returns a non-empty string" true
-            (not (String.is_empty msg)))
-  | Error e ->
+  let result = ref None in
+  (match
+    Eio.Switch.run (fun sw ->
+        let create_result = Http_client.create ~env ~sw "http://127.0.0.1:1/" in
+        result :=
+          Some
+            (match create_result with
+            | Error e -> Error e
+            | Ok client ->
+                (* create may succeed (connection is lazy in some Piaf versions);
+                   in that case drive post_stream to force the failure *)
+                Http_client.post_stream ~client ~headers:[] ~body:"{}"
+                  ~on_chunk:(fun _ -> ())
+                  "/");
+        Eio.Switch.fail sw Client_done)
+  with
+  | exception Client_done -> ()
+  | exception e -> raise e
+  | () -> ());
+  match !result with
+  | None -> Alcotest.fail "result not set"
+  | Some (Ok ()) ->
+      Alcotest.fail "expected an Error from post_stream against an unroutable address"
+  | Some (Error e) ->
       let msg = Http_client.error_to_string e in
       Alcotest.(check bool)
         "error_to_string returns a non-empty string" true
