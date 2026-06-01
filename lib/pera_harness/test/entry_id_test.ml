@@ -29,11 +29,9 @@ let test_generate_ids_are_unique () =
     else (Hashtbl.add seen id (); true)) ids in
   Alcotest.(check bool) "1000 ids are distinct" true all_unique
 
-let consecutive_pairs = function
+let rec consecutive_pairs = function
   | [] | [_] -> []
-  | lst ->
-    let n = List.length lst - 1 in
-    List.init n (fun i -> (List.nth lst i, List.nth lst (i + 1)))
+  | a :: (b :: _ as rest) -> (a, b) :: consecutive_pairs rest
 
 let test_generate_ids_are_lexicographically_ordered_over_time () =
   let ids = List.init 10 (fun _ ->

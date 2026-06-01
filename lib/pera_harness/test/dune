@@ -2,7 +2,7 @@
  (name pera_harness_test_util)
  (wrapped false)
  (modules harness_test_util)
- (libraries eio cstruct))
+ (libraries eio cstruct containers))
 
 (test
  (name entry_id_test)

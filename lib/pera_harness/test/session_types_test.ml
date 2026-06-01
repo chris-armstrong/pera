@@ -130,7 +130,7 @@ let test_user_message_content_serialised_as_array () =
   Alcotest.(check string) "role" "user" (get_str json "role");
   let content = member "content" json |> to_list in
   Alcotest.(check int) "content length" 1 (List.length content);
-  Alcotest.(check string) "content[0].text" "hi" (get_str (List.hd content) "text")
+  Alcotest.(check string) "content[0].text" "hi" (get_str (List.get_at_idx 0 content |> Option.get_exn_or "expected content block") "text")
 
 let test_assistant_message_stop_reason_strings () =
   let check_stop_reason sr expected =
@@ -151,7 +151,7 @@ let test_assistant_thinking_block_serialised () =
       [ AThinking { text = "t"; signature = Some "s" } ]
   in
   let json = message_to_json msg in
-  let block = member "content" json |> to_list |> List.hd in
+  let block = member "content" json |> to_list |> (fun l -> List.get_at_idx 0 l |> Option.get_exn_or "expected content block") in
   Alcotest.(check string) "type" "thinking" (get_str block "type");
   Alcotest.(check string) "text" "t" (get_str block "text");
   Alcotest.(check string) "signature" "s" (get_str block "signature")
@@ -163,7 +163,7 @@ let test_tool_call_arguments_embedded_as_json () =
       [ AToolCall { id = "tc1"; name = "my_tool"; arguments = args } ]
   in
   let json = message_to_json msg in
-  let block = member "content" json |> to_list |> List.hd in
+  let block = member "content" json |> to_list |> (fun l -> List.get_at_idx 0 l |> Option.get_exn_or "expected content block") in
   Alcotest.(check string) "type" "tool_call" (get_str block "type");
   let arguments = member "arguments" block in
   Alcotest.(check string) "arguments.k" "v"
