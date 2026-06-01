@@ -19,11 +19,12 @@ Target runtime: **OCaml 5.4+** with **Eio** (structured concurrency).
 | `piaf` | HTTP client for provider SSE streams |
 | `yojson` | JSON encoding/decoding |
 | `re` | Regular expressions (fallback for `grep` tool) |
+| `fpath` | Cross-platform path handling |
 | `ppx_deriving` | Deriving show, eq, etc. |
 | `alcotest` | Unit testing framework |
 | `qcheck-core`, `qcheck-alcotest` | Property-based testing |
 
-**Future / planned:** `fmt`, `fpath`, `uuidm` (mentioned in guidelines; may already be referenced in uncommitted code).
+**Future / planned:** `fmt`, `uuidm` (mentioned in guidelines; may already be referenced in uncommitted code).
 
 Dune version: **3.16**.  
 Opam packages generated from `dune-project`.
@@ -57,11 +58,24 @@ lib/
 │   ├── agent_loop.{ml,mli}       # The turn loop, tool execution, cancellation
 │   └── provider_adapter.{ml,mli} # Adapter between provider event stream and agent core
 │
-└── pera_core_test_util/  # Test doubles and Alcotest testables
-    ├── faux_provider.{ml,mli}    # Fake provider for testing agent_loop
-    └── pera_core_test_util.ml   # Re-exports
+├── pera_core_test_util/  # Test doubles and Alcotest testables
+│   ├── faux_provider.{ml,mli}    # Fake provider for testing agent_loop
+│   └── pera_core_test_util.ml   # Re-exports
+│
+├── pera_harness/         # Execution environment abstraction and OS-backed implementation
+│   ├── execution_env.{ml,mli}    # Module types for FS, process, and env abstractions
+│   └── local_env.{ml,mli}      # Local (real OS) implementation of Execution_env
+│
+└── pera_tools/           # Tool implementations (read, write, bash, grep)
+    ├── read_tool.{ml,mli}        # Read file contents with line/offset limits
+    ├── write_tool.{ml,mli}       # Write or overwrite files
+    ├── bash_tool.{ml,mli}        # Execute shell commands
+    ├── grep_tool.{ml,mli}        # Regex search (ripgrep-backed, named 'grep')
+    ├── truncate.{ml,mli}         # Smart truncation for file listings and command output
+    ├── tool_util.{ml,mli}        # Shared tool helpers (schema builders, text splitting)
+    └── tools.{ml,mli}            # Assembly: all tool schemas + dispatch
 
-bin/drivers/              # Thin drivers / CLI entry points (conversation, loop, provider)
+bin/drivers/              # Thin drivers / CLI entry points (conversation, loop, provider, env, tool)
 ```
 
 ### Package dependency graph
@@ -74,6 +88,10 @@ pera-provider  (depends on pera-types)
 pera-core  (depends on pera-types, pera-provider)
     ↑
 pera-core-test-util  (depends on all three)
+    ↑
+pera-harness  (depends on pera-types)
+    ↑
+pera-tools  (depends on pera-types, pera-harness, pera-core, pera-provider)
 ```
 
 ---
@@ -142,7 +160,8 @@ ln -sf ../../scripts/pre-commit .git/hooks/pre-commit
 
 - **New types** (messages, events, errors) → `pera_types`
 - **New provider** (e.g. a third LLM API) → `pera_provider`, implement `Provider.S`, add to `provider_registry`
-- **New tool** → depends on the harness layer (not yet in `lib/` as of this writing; see `SPECIFICATION.md` §9)
+- **New tool** → `pera_tools`, depends on `pera_harness`
+- **New execution environment** → `pera_harness`
 - **Agent loop changes** → `pera_core`
 - **Test doubles / testables** → `pera_core_test_util`
 
@@ -165,7 +184,7 @@ These are part of the project's workflow, not runtime code.
 | Document | What it covers |
 |----------|---------------|
 | `SPECIFICATION.md` | Full architectural specification (layers, data model, provider layer, agent core, harness, compaction, tools, CLI) |
-| `USAGE.md` | How to run the development drivers (`provider_driver`, `conversation_driver`, `loop_driver`) |
+| `USAGE.md` | How to run the development drivers (`provider_driver`, `conversation_driver`, `loop_driver`, `env_driver`, `tool_driver`) |
 | `docs/guidelines/index.md` | Mandatory coding guidelines index |
 | `dune-project` | Package definitions and dependencies |
 
