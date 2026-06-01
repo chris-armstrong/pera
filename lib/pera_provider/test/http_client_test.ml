@@ -65,7 +65,9 @@ let test_no_base_path () =
 let test_error_to_string_is_total_and_nonempty () =
   Eio_main.run @@ fun env ->
   Eio.Switch.run @@ fun sw ->
+  let clock = Eio.Stdenv.clock env in
   let result =
+    Eio.Time.with_timeout_exn clock 5.0 @@ fun () ->
     match Http_client.create ~env ~sw "http://127.0.0.1:1/" with
     | Error e -> Error e
     | Ok client ->
@@ -86,6 +88,8 @@ let test_error_to_string_is_total_and_nonempty () =
 let test_create_error_gives_nonempty_message () =
   Eio_main.run @@ fun env ->
   Eio.Switch.run @@ fun sw ->
+  let clock = Eio.Stdenv.clock env in
+  Eio.Time.with_timeout_exn clock 5.0 @@ fun () ->
   let result = Http_client.create ~env ~sw "http://127.0.0.1:1/" in
   match result with
   | Ok _ -> (
