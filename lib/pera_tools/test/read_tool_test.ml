@@ -46,17 +46,12 @@ let test_truncate_tail_shows_end () =
 let run_read_test (body : (module Execution_env.S) -> Eio.Switch.t -> unit) =
   Eio_main.run @@ fun env ->
   let tmpdir = make_temp_dir env in
-  (try
-     Eio.Switch.run @@ fun sw ->
-     let module E =
-       (val Pera_harness.Local_env.create ~env ~cwd:tmpdir
-           : Pera_harness.Execution_env.S)
-     in
-     body (module E) sw
-   with e ->
-     cleanup tmpdir;
-     raise e);
-  cleanup tmpdir
+  Eio.Switch.run @@ fun sw ->
+  let module E =
+    (val Pera_harness.Local_env.create ~env ~cwd:tmpdir
+        : Pera_harness.Execution_env.S)
+  in
+  body (module E) sw
 
 let test_read_returns_file_content () =
   run_read_test (fun (module E) sw ->
@@ -68,7 +63,7 @@ let test_read_returns_file_content () =
           | Ok (Tool_text s) ->
               Alcotest.(check bool)
                 "contains hello world" true
-                (is_substring ~sub:"hello world" s)
+                (String.find ~sub:"hello world" s >= 0)
           | Ok _ -> Alcotest.fail "expected Tool_text"
           | Error e -> Alcotest.failf "read failed: %s" e.message))
 
@@ -111,7 +106,7 @@ let test_read_with_limit_caps_output () =
                 "5 lines of content" 5 (List.length output_lines);
               Alcotest.(check bool)
                 "footer mentions remaining" true
-                (is_substring ~sub:"remaining" s)
+                (String.find ~sub:"remaining" s >= 0)
           | Ok _ -> Alcotest.fail "expected Tool_text"
           | Error e -> Alcotest.failf "read failed: %s" e.message))
 
@@ -137,7 +132,7 @@ let test_read_truncates_at_line_limit () =
           | Ok (Tool_text s) ->
               Alcotest.(check bool)
                 "contains Use offset=" true
-                (is_substring ~sub:"Use offset=" s)
+                (String.find ~sub:"Use offset=" s >= 0)
           | Ok _ -> Alcotest.fail "expected Tool_text"
           | Error e -> Alcotest.failf "read failed: %s" e.message))
 

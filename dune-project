@@ -112,8 +112,6 @@
    (>= 1.0))
   (eio_linux
    (>= 1.0))
-  (unix
-   (>= 5.4))
   (fpath
    (>= 0.7))
   (ppx_deriving

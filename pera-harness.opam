@@ -15,7 +15,6 @@ depends: [
   "eio" {>= "1.0"}
   "eio_main" {>= "1.0"}
   "eio_linux" {>= "1.0"}
-  "unix" {>= "5.4"}
   "fpath" {>= "0.7"}
   "ppx_deriving" {>= "1.6"}
   "alcotest" {>= "1.7" & with-test}
