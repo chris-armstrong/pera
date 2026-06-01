@@ -2,7 +2,7 @@
  (name pera_tools_test_util)
  (wrapped false)
  (modules test_util)
- (libraries containers eio cstruct pera_harness alcotest))
+ (libraries pera_harness_test_util pera_harness alcotest eio))
 
 (tests
  (names read_tool_test write_tool_test bash_tool_test grep_tool_test)

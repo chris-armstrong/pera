@@ -9,17 +9,12 @@ open Test_util
 let run_write_test (body : (module Execution_env.S) -> Eio.Switch.t -> unit) =
   Eio_main.run @@ fun env ->
   let tmpdir = make_temp_dir env in
-  (try
-     Eio.Switch.run @@ fun sw ->
-     let module E =
-       (val Pera_harness.Local_env.create ~env ~cwd:tmpdir
-           : Pera_harness.Execution_env.S)
-     in
-     body (module E) sw
-   with e ->
-     cleanup tmpdir;
-     raise e);
-  cleanup tmpdir
+  Eio.Switch.run @@ fun sw ->
+  let module E =
+    (val Pera_harness.Local_env.create ~env ~cwd:tmpdir
+        : Pera_harness.Execution_env.S)
+  in
+  body (module E) sw
 
 (* ── Write tool tests ──────────────────────────────────────────────────── *)
 
@@ -97,7 +92,7 @@ let test_write_returns_bytes_written () =
           | Ok (Tool_text s) ->
               Alcotest.(check bool)
                 "reports 5 bytes written" true
-                (is_substring ~sub:"5 bytes written" s)
+                (String.find ~sub:"5 bytes written" s >= 0)
           | Ok _ -> Alcotest.fail "expected Tool_text"
           | Error e -> Alcotest.failf "write failed: %s" e.message))
 

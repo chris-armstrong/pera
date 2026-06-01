@@ -17,18 +17,13 @@ let require_rg (module E : Execution_env.S) =
 let run_grep_test (body : (module Execution_env.S) -> Eio.Switch.t -> unit) =
   Eio_main.run @@ fun env ->
   let tmpdir = make_temp_dir env in
-  (try
-     Eio.Switch.run @@ fun sw ->
-     let module E =
-       (val Pera_harness.Local_env.create ~env ~cwd:tmpdir
-           : Pera_harness.Execution_env.S)
-     in
-     require_rg (module E);
-     body (module E) sw
-   with e ->
-     cleanup tmpdir;
-     raise e);
-  cleanup tmpdir
+  Eio.Switch.run @@ fun sw ->
+  let module E =
+    (val Pera_harness.Local_env.create ~env ~cwd:tmpdir
+        : Pera_harness.Execution_env.S)
+  in
+  require_rg (module E);
+  body (module E) sw
 
 (* ── Grep tool tests ────────────────────────────────────────────────────── *)
 
@@ -42,10 +37,10 @@ let test_grep_finds_pattern_in_file () =
           | Ok (Tool_text s) ->
               Alcotest.(check bool)
                 "output contains test.ml" true
-                (is_substring ~sub:"test.ml" s);
+                (String.find ~sub:"test.ml" s >= 0);
               Alcotest.(check bool)
                 "output contains matched line" true
-                (is_substring ~sub:"foo bar baz" s)
+                (String.find ~sub:"foo bar baz" s >= 0)
           | Ok _ -> Alcotest.fail "expected Tool_text"
           | Error e -> Alcotest.failf "grep failed: %s" e.message))
 
@@ -76,14 +71,14 @@ let test_grep_caps_at_100_matches () =
                 String.trim s |> String.split_on_char '\n'
                 |> List.filter (fun line ->
                     (not (String.is_empty line))
-                    && not (is_substring ~sub:"Match limit" line))
+                    && not (String.find ~sub:"Match limit" line >= 0))
               in
               Alcotest.(check bool)
                 "at most 100 match lines" true
                 (List.length output_lines <= 100);
               Alcotest.(check bool)
                 "contains cap notice" true
-                (is_substring ~sub:"Match limit" s)
+                (String.find ~sub:"Match limit" s >= 0)
           | Ok _ -> Alcotest.fail "expected Tool_text"
           | Error e -> Alcotest.failf "grep failed: %s" e.message))
 
@@ -100,10 +95,10 @@ let test_grep_glob_filters_file_types () =
           | Ok (Tool_text s) ->
               Alcotest.(check bool)
                 "file.ml found" true
-                (is_substring ~sub:"file.ml" s);
+                (String.find ~sub:"file.ml" s >= 0);
               Alcotest.(check bool)
                 "file.py absent" false
-                (is_substring ~sub:"file.py" s)
+                (String.find ~sub:"file.py" s >= 0)
           | Ok _ -> Alcotest.fail "expected Tool_text"
           | Error e -> Alcotest.failf "grep failed: %s" e.message))
 
@@ -130,7 +125,7 @@ let test_grep_ripgrep_not_found_returns_error () =
           Alcotest.(check bool) "is_user_error false" false e.is_user_error;
           Alcotest.(check bool)
             "message contains ripgrep" true
-            (is_substring ~sub:"ripgrep" e.message)
+            (String.find ~sub:"ripgrep" e.message >= 0)
       | Ok _ -> Alcotest.fail "expected Error for rg not found")
 
 let () =

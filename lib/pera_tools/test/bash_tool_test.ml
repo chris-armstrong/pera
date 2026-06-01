@@ -7,17 +7,12 @@ open Test_util
 let run_bash_test (body : (module Execution_env.S) -> Eio.Switch.t -> unit) =
   Eio_main.run @@ fun env ->
   let tmpdir = make_temp_dir env in
-  (try
-     Eio.Switch.run @@ fun sw ->
-     let module E =
-       (val Pera_harness.Local_env.create ~env ~cwd:tmpdir
-           : Pera_harness.Execution_env.S)
-     in
-     body (module E) sw
-   with e ->
-     cleanup tmpdir;
-     raise e);
-  cleanup tmpdir
+  Eio.Switch.run @@ fun sw ->
+  let module E =
+    (val Pera_harness.Local_env.create ~env ~cwd:tmpdir
+        : Pera_harness.Execution_env.S)
+  in
+  body (module E) sw
 
 (* ── Bash tool tests ────────────────────────────────────────────────────── *)
 
@@ -30,7 +25,7 @@ let test_bash_returns_stdout_on_success () =
           | Ok (Tool_text s) ->
               Alcotest.(check bool)
                 "contains hello" true
-                (is_substring ~sub:"hello" s)
+                (String.find ~sub:"hello" s >= 0)
           | Ok _ -> Alcotest.fail "expected Tool_text"
           | Error e -> Alcotest.failf "bash failed: %s" e.message))
 
@@ -44,7 +39,7 @@ let test_bash_nonzero_exit_returns_error () =
               Alcotest.(check bool) "is_user_error false" false e.is_user_error;
               Alcotest.(check bool)
                 "message contains 42" true
-                (is_substring ~sub:"42" e.message)
+                (String.find ~sub:"42" e.message >= 0)
           | Ok _ -> Alcotest.fail "expected Error for non-zero exit"))
 
 let test_bash_stderr_in_combined_output () =
@@ -56,7 +51,7 @@ let test_bash_stderr_in_combined_output () =
           | Ok (Tool_text s) ->
               Alcotest.(check bool)
                 "stderr content in combined output" true
-                (is_substring ~sub:"err" s)
+                (String.find ~sub:"err" s >= 0)
           | Ok _ -> Alcotest.fail "expected Tool_text"
           | Error e -> Alcotest.failf "bash failed: %s" e.message))
 
@@ -94,7 +89,7 @@ let test_bash_tail_truncation_preserves_end () =
           | Ok (Tool_text s) ->
               Alcotest.(check bool)
                 "contains last line 2001" true
-                (is_substring ~sub:"2001" s);
+                (String.find ~sub:"2001" s >= 0);
               Alcotest.(check bool)
                 "first line is NOT 1 (tail truncation)" false
                 (String.starts_with ~prefix:"1" (String.trim s))
