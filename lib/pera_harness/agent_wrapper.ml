@@ -52,6 +52,10 @@ let create ~config ~sw =
       sub_mutex = Eio.Mutex.create ();
     }
   in
+  (* fork_daemon: the actor runs an infinite loop; using fork would cause the
+     switch to block forever waiting for a fibre that never terminates. The
+     daemon is cancelled automatically when all non-daemon fibres under [sw]
+     complete, giving it the correct lifetime relative to its callers. *)
   Eio.Fiber.fork_daemon ~sw (fun () ->
       let rec loop () =
         let (Run { messages; reply }) = Eio.Stream.take t.mailbox in
@@ -74,7 +78,11 @@ let create ~config ~sw =
                    List.iter (fun sub -> sub event) subs)));
         loop ()
       in
-      (try loop () with _ -> ());
+      (try loop () with
+       | Eio.Cancel.Cancelled _ -> ()
+       | exn ->
+         Printf.eprintf "agent_wrapper: actor loop terminated: %s\n%!"
+           (Printexc.to_string exn));
       `Stop_daemon);
   t
 

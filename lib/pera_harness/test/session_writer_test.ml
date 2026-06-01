@@ -39,7 +39,7 @@ let test_write_session_info_creates_file_with_valid_jsonl env () =
   in
   let lines = read_jsonl_lines env path in
   Alcotest.(check int) "one line" 1 (List.length lines);
-  let first = List.hd lines in
+  let first = List.get_at_idx 0 lines |> Option.get_exn_or "first line" in
   Alcotest.(check string) "type is session_info" "session_info"
     (get_str first "type")
 
@@ -163,12 +163,11 @@ let test_session_id_is_uuid env () =
   Alcotest.(check bool) "session_id contains only hex and dashes" true
     all_uuid_chars;
   (* Check the dash positions: positions 8, 13, 18, 23 *)
-  let dashes_ok =
-    Char.equal sid.[8] '-'
-    && Char.equal sid.[13] '-'
-    && Char.equal sid.[18] '-'
-    && Char.equal sid.[23] '-'
+  let sid_bytes = Bytes.of_string sid in
+  let dash_at n =
+    n < Bytes.length sid_bytes && Char.equal (Bytes.get sid_bytes n) '-'
   in
+  let dashes_ok = dash_at 8 && dash_at 13 && dash_at 18 && dash_at 23 in
   Alcotest.(check bool) "dashes at correct positions" true dashes_ok
 
 let test_multiple_appends_accumulate_lines env () =
