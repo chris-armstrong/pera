@@ -1,11 +1,11 @@
 open Containers
 
 let test_generate_returns_36_chars () =
-  let id = Pera_harness.Entry_id.generate () in
+  let id = Pera_harness.Entry_id.(generate () |> to_string) in
   Alcotest.(check int) "length is 36" 36 (String.length id)
 
 let test_generate_returns_lowercase_hex_and_hyphens () =
-  let id = Pera_harness.Entry_id.generate () in
+  let id = Pera_harness.Entry_id.(generate () |> to_string) in
   let is_hex_or_hyphen c =
     (Char.compare c '0' >= 0 && Char.compare c '9' <= 0)
     || (Char.compare c 'a' >= 0 && Char.compare c 'f' <= 0)
@@ -21,7 +21,8 @@ let test_generate_returns_lowercase_hex_and_hyphens () =
     (List.mem ~eq:Char.equal variant [ '8'; '9'; 'a'; 'b' ])
 
 let test_generate_ids_are_unique () =
-  let ids = List.init 1000 (fun _ -> Pera_harness.Entry_id.generate ()) in
+  let ids = List.init 1000 (fun _ ->
+      Pera_harness.Entry_id.(generate () |> to_string)) in
   let seen = Hashtbl.create 1000 in
   let all_unique = List.for_all (fun id ->
     if Hashtbl.mem seen id then false
@@ -36,7 +37,7 @@ let consecutive_pairs = function
 
 let test_generate_ids_are_lexicographically_ordered_over_time () =
   let ids = List.init 10 (fun _ ->
-    let id = Pera_harness.Entry_id.generate () in
+    let id = Pera_harness.Entry_id.(generate () |> to_string) in
     Unix.sleepf 0.002;
     id) in
   let pairs = consecutive_pairs ids in

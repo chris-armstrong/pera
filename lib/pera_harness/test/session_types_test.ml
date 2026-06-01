@@ -37,7 +37,10 @@ let make_assistant_message ?(stop_reason = Pera_types.Types.EndTurn) ?(cost_usd 
         usage = make_usage ~cost_usd ();
       }
 
-let fake_id = "00000000-0000-7000-8000-000000000001"
+let fake_id = Pera_harness.Entry_id.generate ()
+let fake_id_str = Pera_harness.Entry_id.to_string fake_id
+let fake_parent_id = Pera_harness.Entry_id.generate ()
+let fake_parent_id_str = Pera_harness.Entry_id.to_string fake_parent_id
 let fake_ts = 1700000000.0
 let fake_model = Pera_types.Types.{ id = "claude-3-5"; api = "anthropic" }
 
@@ -56,7 +59,7 @@ let test_session_info_serialises_required_fields () =
       }
   in
   let json = entry_to_json e in
-  Alcotest.(check string) "id" fake_id (get_str json "id");
+  Alcotest.(check string) "id" fake_id_str (get_str json "id");
   Alcotest.(check string) "type" "session_info" (get_str json "type");
   Alcotest.(check (float 0.0001)) "timestamp" fake_ts (member "timestamp" json |> to_float);
   Alcotest.(check string) "session_id" "sess-123" (get_str json "session_id");
@@ -86,14 +89,14 @@ let test_message_entry_serialises_parent_id () =
     Message
       {
         id = fake_id;
-        parent_id = Some "parent-abc";
+        parent_id = Some fake_parent_id;
         timestamp = fake_ts;
         message = Pera_provider.Provider.UserMessage
             Pera_types.Types.{ role = "user"; content = [] };
       }
   in
   let json = entry_to_json e in
-  Alcotest.(check string) "parent_id" "parent-abc" (get_str json "parent_id")
+  Alcotest.(check string) "parent_id" fake_parent_id_str (get_str json "parent_id")
 
 let test_message_entry_omits_parent_id_when_none () =
   let e =
@@ -202,13 +205,13 @@ let test_entry_to_json_wraps_message_entry () =
     Message
       {
         id = fake_id;
-        parent_id = Some "parent-id-xyz";
+        parent_id = Some fake_parent_id;
         timestamp = fake_ts;
         message = inner_msg;
       }
   in
   let json = entry_to_json e in
-  Alcotest.(check string) "id" fake_id (get_str json "id");
+  Alcotest.(check string) "id" fake_id_str (get_str json "id");
   Alcotest.(check string) "type" "message" (get_str json "type");
   Alcotest.(check bool) "has parent_id" true (has_key json "parent_id");
   let msg_json = member "message" json in

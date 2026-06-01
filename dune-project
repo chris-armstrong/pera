@@ -133,22 +133,10 @@
    (>= 5.4))
   (pera-types
    (= :version))
-  (pera-env
-   (= :version))
-  (pera-core
-   (= :version))
   (pera-provider
    (= :version))
   (containers
    (>= 3.0))
-  (eio
-   (>= 1.0))
-  (eio_main
-   (>= 1.0))
-  (eio_linux
-   (>= 1.0))
-  (fpath
-   (>= 0.7))
   (yojson
    (>= 2.0))
   (uuidm

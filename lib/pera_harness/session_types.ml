@@ -148,10 +148,13 @@ let message_to_json = function
 
 let maybe_parent_id_field = function
   | None -> []
-  | Some pid -> [ ("parent_id", `String pid) ]
+  | Some pid -> [ ("parent_id", `String (Entry_id.to_string pid)) ]
 
-let base_fields ~id ~type_str ~timestamp parent_id =
-  [ ("id", `String id); ("type", `String type_str); ("timestamp", `Float timestamp) ]
+let base_fields ~id ~type_str ~timestamp ~parent_id =
+  [ ("id", `String (Entry_id.to_string id))
+  ; ("type", `String type_str)
+  ; ("timestamp", `Float timestamp)
+  ]
   @ maybe_parent_id_field parent_id
 
 let entry_to_json = function
@@ -159,7 +162,7 @@ let entry_to_json = function
     let model_json =
       `Assoc [ ("id", `String e.model.id); ("api", `String e.model.api) ]
     in
-    let base = base_fields ~id:e.id ~type_str:"session_info" ~timestamp:e.timestamp None in
+    let base = base_fields ~id:e.id ~type_str:"session_info" ~timestamp:e.timestamp ~parent_id:None in
     let extra =
       [ ("session_id", `String e.session_id); ("cwd", `String e.cwd); ("model", model_json) ]
       @ Option.map_or ~default:[]
@@ -168,28 +171,28 @@ let entry_to_json = function
     in
     `Assoc (base @ extra)
   | Message e ->
-    let base = base_fields ~id:e.id ~type_str:"message" ~timestamp:e.timestamp e.parent_id in
+    let base = base_fields ~id:e.id ~type_str:"message" ~timestamp:e.timestamp ~parent_id:e.parent_id in
     let msg_json = message_to_json e.message in
     `Assoc (base @ [ ("message", msg_json) ])
   | Leaf e ->
-    let base = base_fields ~id:e.id ~type_str:"leaf" ~timestamp:e.timestamp e.parent_id in
+    let base = base_fields ~id:e.id ~type_str:"leaf" ~timestamp:e.timestamp ~parent_id:e.parent_id in
     `Assoc base
   | ModelChange e ->
     let model_json =
       `Assoc [ ("id", `String e.model.id); ("api", `String e.model.api) ]
     in
-    let base = base_fields ~id:e.id ~type_str:"model_change" ~timestamp:e.timestamp e.parent_id in
+    let base = base_fields ~id:e.id ~type_str:"model_change" ~timestamp:e.timestamp ~parent_id:e.parent_id in
     `Assoc (base @ [ ("model", model_json) ])
   | ThinkingLevelChange e ->
     let base =
-      base_fields ~id:e.id ~type_str:"thinking_level_change" ~timestamp:e.timestamp e.parent_id
+      base_fields ~id:e.id ~type_str:"thinking_level_change" ~timestamp:e.timestamp ~parent_id:e.parent_id
     in
     `Assoc (base @ [ ("thinking_enabled", `Bool e.thinking_enabled) ])
   | Compaction e ->
-    let base = base_fields ~id:e.id ~type_str:"compaction" ~timestamp:e.timestamp e.parent_id in
+    let base = base_fields ~id:e.id ~type_str:"compaction" ~timestamp:e.timestamp ~parent_id:e.parent_id in
     `Assoc
       (base
       @ [
           ("summary", `String e.summary);
-          ("first_kept_entry_id", `String e.first_kept_entry_id);
+          ("first_kept_entry_id", `String (Entry_id.to_string e.first_kept_entry_id));
         ])

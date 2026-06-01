@@ -6,9 +6,22 @@ open Pera_provider
     received. *)
 (* piaf's HTTP/1.1 client parks its IO loop in Yield state after each
    response, waiting for the application to issue a new request. This prevents
-   the switch from completing naturally. We cancel the piaf switch via a watcher
-   fibre that fires as soon as the server has closed the connection. *)
+   the switch from completing naturally. [with_piaf_client] runs [f] inside a
+   dedicated sub-switch and cancels the switch via the [done_p] promise once
+   the caller signals completion, unblocking piaf's keep-alive fibre. *)
 exception Client_done
+
+let with_piaf_client ~env ~done_p url f =
+  match
+    Eio.Switch.run (fun piaf_sw ->
+        Eio.Fiber.fork ~sw:piaf_sw (fun () ->
+            Eio.Promise.await done_p;
+            Eio.Switch.fail piaf_sw Client_done);
+        f ~env ~sw:piaf_sw url)
+  with
+  | exception Client_done -> ()
+  | exception e -> raise e
+  | () -> ()
 
 let capture_request_path ~env ~sw ~base_url ~path =
   let net = Eio.Stdenv.net env in
@@ -43,24 +56,14 @@ let capture_request_path ~env ~sw ~base_url ~path =
       Eio.Net.close conn;
       Eio.Promise.resolve server_done_r ());
   let url = Printf.sprintf "http://127.0.0.1:%d%s" port base_url in
-  (* Run the piaf client in a dedicated switch. A watcher fibre cancels the
-     switch once the server has closed its connection, unblocking piaf's IO
-     loop from its HTTP/1.1 keep-alive Yield state. *)
-  (match
-    Eio.Switch.run (fun piaf_sw ->
-        Eio.Fiber.fork ~sw:piaf_sw (fun () ->
-            Eio.Promise.await server_done;
-            Eio.Switch.fail piaf_sw Client_done);
-        (match Http_client.create ~env ~sw:piaf_sw url with
-        | Error e -> failwith (Http_client.error_to_string e)
-        | Ok client ->
-            ignore
-              (Http_client.post_stream ~client ~headers:[] ~body:"{}"
-                 ~on_chunk:(fun _ -> ()) path)))
-  with
-  | exception Client_done -> ()
-  | exception e -> raise e
-  | () -> ());
+  let run_request ~env ~sw:piaf_sw url =
+    match Http_client.create ~env ~sw:piaf_sw url with
+    | Error e -> failwith (Http_client.error_to_string e)
+    | Ok client ->
+        ignore (Http_client.post_stream ~client ~headers:[] ~body:"{}"
+            ~on_chunk:(fun _ -> ()) path)
+  in
+  with_piaf_client ~env ~done_p:server_done url run_request;
   !received
 
 (** [post_stream] prepends the path component of [base_url] to [path]. *)
@@ -86,21 +89,18 @@ let test_no_base_path () =
 let test_error_to_string_is_total_and_nonempty () =
   Eio_main.run @@ fun env ->
   let result : (unit, Http_client.error) result option ref = ref None in
-  (match
-    Eio.Switch.run (fun sw ->
-        result :=
-          Some
-            (match Http_client.create ~env ~sw "http://127.0.0.1:1/" with
-            | Error e -> Error e
-            | Ok client ->
-                Http_client.post_stream ~client ~headers:[] ~body:"{}"
-                  ~on_chunk:(fun _ -> ())
-                  "/");
-        Eio.Switch.fail sw Client_done)
-  with
-  | exception Client_done -> ()
-  | exception e -> raise e
-  | () -> ());
+  let done_p, done_r = Eio.Promise.create () in
+  let run ~env ~sw url =
+    result :=
+      Some
+        (match Http_client.create ~env ~sw url with
+        | Error e -> Error e
+        | Ok client ->
+            Http_client.post_stream ~client ~headers:[] ~body:"{}"
+              ~on_chunk:(fun _ -> ()) "/");
+    Eio.Promise.resolve done_r ()
+  in
+  with_piaf_client ~env ~done_p "http://127.0.0.1:1/" run;
   match !result with
   | None -> Alcotest.fail "result not set"
   | Some (Ok ()) -> Alcotest.fail "expected an Error for an unroutable address"
@@ -115,24 +115,20 @@ let test_error_to_string_is_total_and_nonempty () =
 let test_create_error_gives_nonempty_message () =
   Eio_main.run @@ fun env ->
   let result = ref None in
-  (match
-    Eio.Switch.run (fun sw ->
-        let create_result = Http_client.create ~env ~sw "http://127.0.0.1:1/" in
-        result :=
-          Some
-            (match create_result with
-            | Error e -> Error e
-            | Ok client ->
-                (* create may succeed (connection is lazy in some Piaf versions);
-                   in that case drive post_stream to force the failure *)
-                Http_client.post_stream ~client ~headers:[] ~body:"{}"
-                  ~on_chunk:(fun _ -> ())
-                  "/");
-        Eio.Switch.fail sw Client_done)
-  with
-  | exception Client_done -> ()
-  | exception e -> raise e
-  | () -> ());
+  let done_p, done_r = Eio.Promise.create () in
+  let run ~env ~sw url =
+    result :=
+      Some
+        (match Http_client.create ~env ~sw url with
+        | Error e -> Error e
+        | Ok client ->
+            (* create may succeed (connection is lazy in some Piaf versions);
+               in that case drive post_stream to force the failure *)
+            Http_client.post_stream ~client ~headers:[] ~body:"{}"
+              ~on_chunk:(fun _ -> ()) "/");
+    Eio.Promise.resolve done_r ()
+  in
+  with_piaf_client ~env ~done_p "http://127.0.0.1:1/" run;
   match !result with
   | None -> Alcotest.fail "result not set"
   | Some (Ok ()) ->
