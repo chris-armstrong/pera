@@ -22,6 +22,8 @@
    (>= 3.0))
   (yojson
    (>= 2.0))
+  (decimal
+   (>= 1.0))
   (ppx_deriving
    (>= 1.6))))
 
@@ -95,7 +97,7 @@
      :with-test))))
 
 (package
- (name pera-harness)
+ (name pera-env)
  (synopsis "Execution environment for Pera")
  (description
    "Execution environment abstraction and OS-backed implementation for the Pera AI agent framework")
@@ -114,6 +116,45 @@
    (>= 1.0))
   (fpath
    (>= 0.7))
+  (ppx_deriving
+   (>= 1.6))
+  (alcotest
+   (and
+    (>= 1.7)
+    :with-test))))
+
+(package
+ (name pera-harness)
+ (synopsis "Session logging infrastructure for Pera")
+ (description
+   "Entry ID generation, session type definitions, JSONL writer, and agent wrapper for the Pera AI agent framework")
+ (depends
+  (ocaml
+   (>= 5.4))
+  (pera-types
+   (= :version))
+  (pera-env
+   (= :version))
+  (pera-core
+   (= :version))
+  (pera-provider
+   (= :version))
+  (containers
+   (>= 3.0))
+  (eio
+   (>= 1.0))
+  (eio_main
+   (>= 1.0))
+  (eio_linux
+   (>= 1.0))
+  (fpath
+   (>= 0.7))
+  (yojson
+   (>= 2.0))
+  (uuidm
+   (>= 0.9))
+  (decimal
+   (>= 1.0))
   (ppx_deriving
    (>= 1.6))
   (alcotest
@@ -158,7 +199,7 @@
    (>= 5.4))
   (pera-types
    (= :version))
-  (pera-harness
+  (pera-env
    (= :version))
   (pera-core
    (= :version))
@@ -177,6 +218,41 @@
    (ppx_deriving
     (>= 1.6))
    (alcotest
+   (and
+    (>= 1.7)
+    :with-test))))
+
+(package
+ (name pera-agent)
+ (synopsis "Assembled agent harness for Pera")
+ (description
+   "Top-level assembly combining session writer, agent wrapper, and tool execution for the Pera AI agent framework")
+ (depends
+  (ocaml
+   (>= 5.4))
+  (pera-types
+   (= :version))
+  (pera-env
+   (= :version))
+  (pera-core
+   (= :version))
+  (pera-provider
+   (= :version))
+  (pera-harness
+   (= :version))
+  (pera-tools
+   (= :version))
+  (containers
+   (>= 3.0))
+  (yojson
+   (>= 2.0))
+  (eio
+   (>= 1.0))
+  (eio_main
+   (>= 1.0))
+  (eio_linux
+   (>= 1.0))
+  (alcotest
    (and
     (>= 1.7)
     :with-test))))

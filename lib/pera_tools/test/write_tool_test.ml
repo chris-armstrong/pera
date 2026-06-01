@@ -2,7 +2,7 @@
 
 open Containers
 open Pera_tools
-open Pera_harness
+open Pera_env
 open Pera_core.Agent_types
 open Test_util
 
@@ -11,8 +11,8 @@ let run_write_test (body : (module Execution_env.S) -> Eio.Switch.t -> unit) =
   let tmpdir = make_temp_dir env in
   Eio.Switch.run @@ fun sw ->
   let module E =
-    (val Pera_harness.Local_env.create ~env ~cwd:tmpdir
-        : Pera_harness.Execution_env.S)
+    (val Pera_env.Local_env.create ~env ~cwd:tmpdir
+        : Pera_env.Execution_env.S)
   in
   body (module E) sw
 

@@ -5,7 +5,7 @@
     Overwrites existing files. Returns the number of bytes written. *)
 
 val write :
-  (module Pera_harness.Execution_env.S) -> unit Pera_core.Agent_types.tool
+  (module Pera_env.Execution_env.S) -> unit Pera_core.Agent_types.tool
 (** [write env] constructs a write tool that writes files through [env].
 
     Schema arguments:

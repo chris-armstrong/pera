@@ -10,7 +10,7 @@
     Exit code: 0 if all non-skipped scenarios pass, 1 otherwise. *)
 
 open Containers
-open Pera_harness
+open Pera_env
 
 (* ── Types ────────────────────────────────────────────────────────────────── *)
 

@@ -16,8 +16,8 @@ let bash_schema =
       ]
     ()
 
-let bash (env : (module Pera_harness.Execution_env.S)) =
-  let module E = (val env : Pera_harness.Execution_env.S) in
+let bash (env : (module Pera_env.Execution_env.S)) =
+  let module E = (val env : Pera_env.Execution_env.S) in
   let process_error ~error_msg buf =
     let partial = Buffer.contents buf in
     let msg =
@@ -27,7 +27,7 @@ let bash (env : (module Pera_harness.Execution_env.S)) =
     Error { Pera_types.Types.message = msg; is_user_error = false }
   in
   let process_ok_result raw result =
-    if Int.equal result.Pera_harness.Execution_env.exit_code 0 then
+    if Int.equal result.Pera_env.Execution_env.exit_code 0 then
       let truncated, _info = Truncate.truncate_tail raw in
       let text =
         if String.is_empty truncated then "(no output)" else truncated
@@ -36,7 +36,7 @@ let bash (env : (module Pera_harness.Execution_env.S)) =
     else
       let msg =
         Printf.sprintf "%s\n\nCommand exited with code %d." raw
-          result.Pera_harness.Execution_env.exit_code
+          result.Pera_env.Execution_env.exit_code
       in
       Error { Pera_types.Types.message = msg; is_user_error = false }
   in

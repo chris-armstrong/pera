@@ -1,0 +1,10 @@
+(library
+ (name pera_env_test_util)
+ (wrapped false)
+ (modules harness_test_util)
+ (libraries eio cstruct))
+
+(tests
+ (names local_env_fs_test local_env_sh_test)
+ (modules local_env_fs_test local_env_sh_test)
+ (libraries pera_env_test_util pera_env pera_types eio eio_main eio_linux alcotest containers fpath cstruct unix))
