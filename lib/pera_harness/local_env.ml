@@ -101,25 +101,10 @@ let create ~env ~cwd =
       in
       try loop () with End_of_file -> ()
 
-    let await_process_and_set_result proc ~stdout_buf ~stderr_buf result_ref =
+    let await_process proc result_ref =
       match Eio.Process.await proc with
-      | `Exited code ->
-          result_ref :=
-            Some
-              (Ok
-                 {
-                   Execution_env.stdout = Buffer.contents stdout_buf;
-                   stderr = Buffer.contents stderr_buf;
-                   exit_code = code;
-                 })
-      | `Signaled n ->
-          result_ref :=
-            Some
-              (Error
-                 {
-                   Pera_types.Types.code = Aborted;
-                   message = Printf.sprintf "Process was killed by signal %d" n;
-                 })
+      | `Exited code -> result_ref := Some (Ok code)
+      | `Signaled n -> result_ref := Some (Error n)
 
     let exec ~command ?cwd ?env:extra_env ?timeout ?on_stdout ?on_stderr ~sw
         ~cancel =
@@ -171,12 +156,22 @@ let create ~env ~cwd =
               [
                 (fun () -> read_stream stdout_src stdout_buf on_stdout);
                 (fun () -> read_stream stderr_src stderr_buf on_stderr);
-                (fun () ->
-                  await_process_and_set_result proc ~stdout_buf ~stderr_buf
-                    result);
+                (fun () -> await_process proc result);
               ];
             match !result with
-            | Some r -> r
+            | Some (Ok code) ->
+                Ok
+                  {
+                    Execution_env.stdout = Buffer.contents stdout_buf;
+                    stderr = Buffer.contents stderr_buf;
+                    exit_code = code;
+                  }
+            | Some (Error n) ->
+                Error
+                  {
+                    Pera_types.Types.code = Aborted;
+                    message = Printf.sprintf "Process was killed by signal %d" n;
+                  }
             | None -> failwith "exec: process awaiter did not produce a result")
       in
       let run_with_timeout t =
