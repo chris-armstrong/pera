@@ -1,0 +1,8 @@
+(library
+ (name pera_tools)
+ (public_name pera-tools)
+ (modules truncate tool_util read_tool write_tool bash_tool grep_tool tools)
+ (private_modules truncate tool_util)
+ (libraries pera_harness pera_core pera_types pera_provider eio eio_main eio_linux containers yojson)
+ (preprocess
+  (pps ppx_deriving.eq ppx_deriving.show)))
