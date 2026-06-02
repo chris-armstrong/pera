@@ -17,3 +17,9 @@
  (name session_driver)
  (libraries pera_harness pera_provider pera_types eio eio_main eio_linux
             containers yojson unix))
+
+(executable
+ (name harness_driver)
+ (libraries pera_agent pera_tools pera_harness pera_core pera_core_test_util
+            pera_provider pera_env pera_types eio eio_main eio_linux
+            containers yojson unix))
