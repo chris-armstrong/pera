@@ -32,11 +32,13 @@ let make_tls_config () =
 let peer_name uri =
   Uri.host uri
   |> Option.flat_map (fun s ->
-         match Domain_name.of_string s with
-         | Error _ -> None
-         | Ok d -> Domain_name.host d |> Result.to_opt)
+      match Domain_name.of_string s with
+      | Error _ -> None
+      | Ok d -> Domain_name.host d |> Result.to_opt)
 
-let open_conn ~sw net tls_config_opt uri : connection =
+let connect_timeout_s = 10.0
+
+let open_conn ~sw ~clock net tls_config_opt uri : connection =
   let service =
     match Uri.port uri with
     | Some p -> Int.to_string p
@@ -48,20 +50,23 @@ let open_conn ~sw net tls_config_opt uri : connection =
     | addr :: _ -> addr
     | [] -> failwith (Printf.sprintf "DNS lookup failed for %s" host)
   in
-  let raw = Eio.Net.connect ~sw net addr in
+  let raw =
+    Eio.Time.with_timeout_exn clock connect_timeout_s (fun () ->
+        Eio.Net.connect ~sw net addr)
+  in
   Log.debug (fun m -> m "opened TCP connection to %s" host);
   match tls_config_opt with
   | Some cfg ->
       (Tls_eio.client_of_flow cfg ?host:(peer_name uri) raw :> connection)
   | None -> (raw :> connection)
 
-let make_persistent_client ~sw net tls_config_opt base_uri =
+let make_persistent_client ~sw ~clock net tls_config_opt base_uri =
   let conn : connection option ref = ref None in
   let factory ~sw:_ _uri =
     match !conn with
     | Some c -> (c :> _ Eio.Flow.two_way)
     | None ->
-        let c = open_conn ~sw net tls_config_opt base_uri in
+        let c = open_conn ~sw ~clock net tls_config_opt base_uri in
         conn := Some c;
         (c :> _ Eio.Flow.two_way)
   in
@@ -72,6 +77,7 @@ let create ~env ~sw base_url =
   let base_uri = Uri.of_string base_url in
   let base_path = match Uri.path base_uri with "" | "/" -> "" | p -> p in
   let net = Eio.Stdenv.net env in
+  let clock = Eio.Stdenv.clock env in
   let tls_result =
     match Uri.scheme base_uri with
     | Some "https" -> Result.map Option.some (make_tls_config ())
@@ -81,13 +87,13 @@ let create ~env ~sw base_url =
   | Error m -> Error m
   | Ok tls_config_opt ->
       let client, conn =
-        make_persistent_client ~sw net tls_config_opt base_uri
+        make_persistent_client ~sw ~clock net tls_config_opt base_uri
       in
       Ok { client; base_uri; base_path; conn }
 
 let invalidate t =
   (match !(t.conn) with
-  | Some c -> (try Eio.Flow.close c with _ -> ())
+  | Some c -> ( try Eio.Flow.close c with _ -> ())
   | None -> ());
   t.conn := None
 
@@ -99,14 +105,14 @@ let check_response_status (resp : Cohttp.Response.t) =
 
 let read_body_chunks body ~on_chunk =
   let reader = Eio.Buf_read.of_flow body ~max_size:max_int in
-  (try
-     while true do
-       Eio.Buf_read.ensure reader 1;
-       let n = Eio.Buf_read.buffered_bytes reader in
-       let chunk = Eio.Buf_read.take n reader in
-       on_chunk chunk
-     done
-   with End_of_file -> ())
+  try
+    while true do
+      Eio.Buf_read.ensure reader 1;
+      let n = Eio.Buf_read.buffered_bytes reader in
+      let chunk = Eio.Buf_read.take n reader in
+      on_chunk chunk
+    done
+  with End_of_file -> ()
 
 let do_request ~client ~headers ~body ~on_chunk path =
   let open Result.Syntax in
@@ -116,8 +122,8 @@ let do_request ~client ~headers ~body ~on_chunk path =
   let body_src = Cohttp_eio.Body.of_string body in
   Eio.Switch.run @@ fun sw ->
   let resp, resp_body =
-    Cohttp_eio.Client.post ~headers:cohttp_headers ~body:body_src
-      client.client ~sw uri
+    Cohttp_eio.Client.post ~headers:cohttp_headers ~body:body_src client.client
+      ~sw uri
   in
   let* () = check_response_status resp in
   read_body_chunks resp_body ~on_chunk;
@@ -126,13 +132,13 @@ let do_request ~client ~headers ~body ~on_chunk path =
 let post_stream ~client ~headers ~body ~on_chunk path =
   match do_request ~client ~headers ~body ~on_chunk path with
   | r -> r
-  | exception exn ->
+  | exception exn -> (
       Log.debug (fun m ->
           m "transport error (will reconnect): %s" (Printexc.to_string exn));
       invalidate client;
-      (match do_request ~client ~headers ~body ~on_chunk path with
+      match do_request ~client ~headers ~body ~on_chunk path with
       | r -> r
       | exception exn2 ->
           Error
-            (Printf.sprintf "HTTP request failed: %s"
-               (Printexc.to_string exn2)))
+            (Printf.sprintf "HTTP request failed: %s" (Printexc.to_string exn2))
+      )
