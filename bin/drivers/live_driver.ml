@@ -3,14 +3,14 @@
 
     Requires ANTHROPIC_API_KEY. Skipped if absent.
 
-    Three scenarios:
-    1. bash_echo   — run a sentinel echo command; validate the tool result and
-                     assistant response both contain the sentinel string.
-    2. file_write  — ask the agent to write a file; validate the file on disk
-                     and the session tool_result entry both carry the sentinel.
-    3. multi_turn  — two sequential sends; validate the second response
-                     references output from the first (proves conversation
-                     history threads through send calls).
+    Three scenarios (each tests a distinct tool and property):
+    1. bash_echo      — bash tool; stdout captured in session tool result.
+    2. read_preseeded — read tool; we write the file before the harness runs
+                        so the sentinel is fully deterministic and no write
+                        tool is involved.
+    3. multi_turn     — two sequential sends; send 1 writes a file, send 2
+                        reads it back; sentinel in the read tool result proves
+                        the model used the tool rather than recalling context.
 
     Exit code: 0 if all pass, 1 otherwise. *)
 
@@ -96,17 +96,13 @@ let verify_bash_echo sentinel entries =
          sentinel)
   else verify_chain_and_leaves entries
 
-let verify_file_write ~output_file ~sentinel entries =
-  if not (Sys.file_exists output_file) then Fail "output file was not created"
-  else
-    let content = Stdlib.In_channel.(with_open_text output_file input_all) in
-    if not (contains_sub ~needle:sentinel content) then
-      Fail
-        (Printf.sprintf "file missing sentinel '%s'; first 80 chars: '%s'"
-           sentinel (String.take 80 content))
-    else if not (has_tool_results entries) then
-      Fail "no tool_result entries in session"
-    else verify_chain_and_leaves entries
+let verify_read_preseeded ~sentinel entries =
+  if not (has_tool_results entries) then Fail "no tool_result entries in session"
+  else if not (session_output_contains ~needle:sentinel entries) then
+    Fail
+      (Printf.sprintf "sentinel '%s' not found in tool result or assistant response"
+         sentinel)
+  else verify_chain_and_leaves entries
 
 let verify_multi_turn ~sentinel entries =
   (* The read tool result from send 2 must contain the sentinel — this can only
@@ -157,18 +153,14 @@ let scenario_bash_echo ~model ~tmpdir ~env ~registry =
            sentinel);
       verify_bash_echo sentinel (parse_session_file session_path)
 
-let scenario_file_write ~model ~tmpdir ~env ~registry =
-  Eio.Switch.run @@ fun sw ->
-  let session_path = Filename.concat tmpdir "file_write.jsonl" in
-  let output_file = Filename.concat tmpdir "live_output.txt" in
+let scenario_read_preseeded ~model ~tmpdir ~env ~registry =
+  (* Write the sentinel ourselves before the harness runs — the model's only
+     job is to call the read tool and report the contents. *)
+  let seed_file = Filename.concat tmpdir "preseeded.txt" in
   let sentinel = "pera_sentinel_xyz" in
-  let prompt =
-    Printf.sprintf
-      "Use the write tool to create the file %s. \
-       The file must contain exactly the text `%s` — no extra content, \
-       no newline, no explanation."
-      output_file sentinel
-  in
+  Stdlib.Out_channel.(with_open_text seed_file (fun oc -> output_string oc sentinel));
+  Eio.Switch.run @@ fun sw ->
+  let session_path = Filename.concat tmpdir "read_preseeded.jsonl" in
   let adapter = Provider_adapter.create ~registry ~env ~sw in
   let stream_fn = Provider_adapter.stream_fn adapter in
   let exec_env = Pera_env.Local_env.create ~env ~cwd:tmpdir in
@@ -176,8 +168,9 @@ let scenario_file_write ~model ~tmpdir ~env ~registry =
   match Pera_agent.Agent_harness.create ~config ~env ~sw with
   | Error e -> Fail (Printf.sprintf "create failed: %s" e.Types.message)
   | Ok h ->
-      Pera_agent.Agent_harness.send h prompt;
-      verify_file_write ~output_file ~sentinel (parse_session_file session_path)
+      Pera_agent.Agent_harness.send h
+        (Printf.sprintf "Use the read tool to read %s and tell me its contents." seed_file);
+      verify_read_preseeded ~sentinel (parse_session_file session_path)
 
 let scenario_multi_turn ~model ~tmpdir ~env ~registry =
   (* Send 1: write a sentinel to disk. Send 2: use the read tool to read it
@@ -225,8 +218,8 @@ let () =
               [
                 ( "bash_echo",
                   scenario_bash_echo ~model ~tmpdir ~env ~registry );
-                ( "file_write",
-                  scenario_file_write ~model ~tmpdir ~env ~registry );
+                ( "read_preseeded",
+                  scenario_read_preseeded ~model ~tmpdir ~env ~registry );
                 ( "multi_turn",
                   scenario_multi_turn ~model ~tmpdir ~env ~registry );
               ]
