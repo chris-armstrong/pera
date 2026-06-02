@@ -109,19 +109,26 @@ let verify_file_write ~output_file ~sentinel entries =
     else verify_chain_and_leaves entries
 
 let verify_multi_turn ~sentinel entries =
-  if not (session_output_contains ~needle:sentinel entries) then
+  (* The read tool result from send 2 must contain the sentinel — this can only
+     come from the file on disk, not from context recall. *)
+  let tool_results = collect_tool_result_strings entries in
+  let read_result_has_sentinel =
+    List.exists (contains_sub ~needle:sentinel) tool_results
+  in
+  if not read_result_has_sentinel then
     Fail
-      (Printf.sprintf "sentinel '%s' absent after send 1 — tool did not run or output discarded"
+      (Printf.sprintf
+         "sentinel '%s' not found in any tool result — read tool did not execute or \
+          returned wrong content"
          sentinel)
   else
-    let all_texts = collect_assistant_texts entries in
-    match List.last_opt all_texts with
+    match List.last_opt (collect_assistant_texts entries) with
     | None -> Fail "no assistant text found after send 2"
     | Some last ->
         if not (contains_sub ~needle:sentinel last) then
           Fail
             (Printf.sprintf
-               "send-2 response does not reference sentinel '%s'; got: '%s'"
+               "send-2 response does not contain sentinel '%s'; got: '%s'"
                sentinel (String.take 100 last))
         else verify_chain_and_leaves entries
 
@@ -173,11 +180,13 @@ let scenario_file_write ~model ~tmpdir ~env ~registry =
       verify_file_write ~output_file ~sentinel (parse_session_file session_path)
 
 let scenario_multi_turn ~model ~tmpdir ~env ~registry =
-  (* Two sends. Send 1 runs echo with a sentinel; send 2 asks the agent to
-     repeat what was output. The second response must contain the sentinel,
-     proving conversation history threads correctly across send calls. *)
+  (* Send 1: write a sentinel to disk. Send 2: use the read tool to read it
+     back and reproduce the value. The sentinel in the send-2 tool result can
+     only come from the file — the model cannot fabricate it from context
+     without actually calling the read tool. *)
   Eio.Switch.run @@ fun sw ->
   let session_path = Filename.concat tmpdir "multi_turn.jsonl" in
+  let data_file = Filename.concat tmpdir "mt_data.txt" in
   let sentinel = "pera_token_789" in
   let adapter = Provider_adapter.create ~registry ~env ~sw in
   let stream_fn = Provider_adapter.stream_fn adapter in
@@ -188,10 +197,12 @@ let scenario_multi_turn ~model ~tmpdir ~env ~registry =
   | Ok h ->
       Pera_agent.Agent_harness.send h
         (Printf.sprintf
-           "Use bash to run `echo %s` and tell me the exact output." sentinel);
+           "Use the write tool to write exactly `%s` to the file %s."
+           sentinel data_file);
       Pera_agent.Agent_harness.send h
-        "What was the exact text output by the echo command in our previous exchange? \
-         Quote it precisely.";
+        (Printf.sprintf
+           "Use the read tool to read the file %s and tell me exactly what it contains."
+           data_file);
       verify_multi_turn ~sentinel (parse_session_file session_path)
 
 (* ── Main ─────────────────────────────────────────────────────────────────── *)
