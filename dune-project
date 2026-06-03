@@ -50,6 +50,7 @@
    (>= 0.7))
   (re
    (>= 1.10))
+  (uri (>= 4.0.0))
   (ppx_deriving
    (>= 1.6))
   (qcheck-alcotest

@@ -18,6 +18,7 @@ depends: [
   "eio_linux" {>= "1.0"}
   "logs" {>= "0.7"}
   "re" {>= "1.10"}
+  "uri" {>= "4.0.0"}
   "ppx_deriving" {>= "1.6"}
   "qcheck-alcotest" {>= "0.21" & with-test}
   "mirage-crypto-rng.unix" {>= "2.02"}
