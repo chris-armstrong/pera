@@ -46,8 +46,6 @@
    (>= 1.0))
   (eio_linux
    (>= 1.0))
-  (piaf
-   (>= 0.2))
   (logs
    (>= 0.7))
   (re
@@ -58,6 +56,7 @@
    (and
     (>= 0.21)
     :with-test))
+  (mirage-crypto-rng.unix ( >= 2.02))
   (qcheck-core
    (and
     (>= 0.21)
@@ -244,3 +243,13 @@
    (and
     (>= 1.7)
     :with-test))))
+
+(package
+ (name pera_drivers)
+ (synopsis "Driver executables for Pera")
+ (allow_empty)
+ (description
+   "Driver executables for Pera - examples of how to use the Pera AI agent framework")
+ (depends (cmarkit (>= 0.4.0))
+           )
+ )
