@@ -30,7 +30,7 @@ let opencode_zen_compat =
 let opencode_go_compat =
   {
     base_url = "https://opencode.ai/zen/go";
-    reasoning_field = "reasoning";
+    reasoning_field = "reasoning_content";
     max_tokens_field = "max_completion_tokens";
     require_tool_result_name = false;
     enable_thinking_field = Some "enable_thinking";
