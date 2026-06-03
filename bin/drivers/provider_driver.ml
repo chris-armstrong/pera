@@ -227,6 +227,7 @@ let run_openai_completions_scenario ~model_id ~prompt_text ~max_tokens ~thinking
          let should_dot = ref true in
          let in_thinking = ref false in
          let first_event = ref true in
+         let md = Markdown_renderer.create () in
          (* Dot-printer: fires every 5 s from the moment we start waiting.
             Killed by exit once streaming completes. *)
          Eio.Fiber.fork ~sw (fun () ->
@@ -236,6 +237,13 @@ let run_openai_completions_scenario ~model_id ~prompt_text ~max_tokens ~thinking
                loop ()
              in
              try loop () with _ -> ());
+         let end_dot () =
+           if !should_dot then begin
+             should_dot := false;
+             in_thinking := false;
+             Printf.printf "\n%!"
+           end
+         in
          let result =
            try
              Eio.Time.with_timeout_exn clock 300.0 (fun () ->
@@ -251,12 +259,13 @@ let run_openai_completions_scenario ~model_id ~prompt_text ~max_tokens ~thinking
                          in_thinking := true
                      | Types.AME_thinking_delta _ ->
                          () (* dots still printing; content suppressed *)
+                     | Types.AME_text_start _ -> end_dot ()
+                     | Types.AME_text_delta { text; _ } ->
+                         end_dot ();
+                         Markdown_renderer.push md text
+                     | Types.AME_done _ -> ()
                      | _ ->
-                         if !should_dot then begin
-                           should_dot := false;
-                           in_thinking := false;
-                           Printf.printf "\n%!" (* end dot/reasoning line *)
-                         end;
+                         end_dot ();
                          Printf.printf "%s\n%!" (describe_event event))))
            with Eio.Time.Timeout ->
              Printf.printf
@@ -264,6 +273,7 @@ let run_openai_completions_scenario ~model_id ~prompt_text ~max_tokens ~thinking
                 (check OPENAI_BASE_URL — should not include /v1 suffix)\n";
              exit 1
          in
+         Markdown_renderer.finish md;
          (match result with
          | Error msg ->
              Printf.printf "openai-completions scenario: FAIL: stream error: %s\n"
