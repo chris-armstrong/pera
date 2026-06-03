@@ -223,12 +223,34 @@ let run_openai_completions_scenario ~model_id ~prompt_text ~max_tokens ~thinking
          in
          let events = ref [] in
          let clock = Eio.Stdenv.clock env in
+         let in_thinking = ref false in
+         let thinking_ended = ref false in
+         (* Print a dot every 5 s while the model is reasoning. Killed by exit. *)
+         Eio.Fiber.fork ~sw (fun () ->
+             let rec loop () =
+               Eio.Time.sleep clock 5.0;
+               if !in_thinking then Printf.printf ".%!";
+               loop ()
+             in
+             try loop () with _ -> ());
          let result =
            try
              Eio.Time.with_timeout_exn clock 300.0 (fun () ->
                  Event_stream.iter stream ~f:(fun event ->
                      events := event :: !events;
-                     Printf.printf "%s\n%!" (describe_event event)))
+                     (match event with
+                     | Types.AME_thinking_start _ ->
+                         in_thinking := true;
+                         Printf.printf "reasoning%!"
+                     | Types.AME_thinking_delta _ ->
+                         () (* dots show progress; delta content suppressed *)
+                     | _ ->
+                         if !in_thinking && not !thinking_ended then begin
+                           in_thinking := false;
+                           thinking_ended := true;
+                           Printf.printf "\n%!"
+                         end;
+                         Printf.printf "%s\n%!" (describe_event event))))
            with Eio.Time.Timeout ->
              Printf.printf
                "openai-completions scenario: FAIL: no response after 300s\n\
