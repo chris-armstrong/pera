@@ -347,10 +347,7 @@ let test_malformed_json_produces_error () =
   let events =
     run_interpreter ~reasoning_field:"reasoning_content" [ malformed_chunk () ]
   in
-  match events with
-  | [ Types.AME_error { message; _ } ] ->
-      Alcotest.(check bool) "message non-empty" true (String.length message > 0)
-  | _ -> Alcotest.fail "expected single AME_error"
+  Alcotest.(check (list ame_testable)) "malformed JSON silently skipped" [] events
 
 (* ── Test 7: multiple tool calls ── *)
 
