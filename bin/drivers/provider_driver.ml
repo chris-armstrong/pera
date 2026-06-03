@@ -223,13 +223,15 @@ let run_openai_completions_scenario ~model_id ~prompt_text ~max_tokens ~thinking
          in
          let events = ref [] in
          let clock = Eio.Stdenv.clock env in
+         (* should_dot: true until the first non-thinking event arrives *)
+         let should_dot = ref true in
          let in_thinking = ref false in
-         let thinking_ended = ref false in
-         (* Print a dot every 5 s while the model is reasoning. Killed by exit. *)
+         (* Dot-printer: fires every 5 s from the moment we start waiting.
+            Killed by exit once streaming completes. *)
          Eio.Fiber.fork ~sw (fun () ->
              let rec loop () =
                Eio.Time.sleep clock 5.0;
-               if !in_thinking then Printf.printf ".%!";
+               if !should_dot then Printf.printf ".%!";
                loop ()
              in
              try loop () with _ -> ());
@@ -240,15 +242,16 @@ let run_openai_completions_scenario ~model_id ~prompt_text ~max_tokens ~thinking
                      events := event :: !events;
                      (match event with
                      | Types.AME_thinking_start _ ->
-                         in_thinking := true;
-                         Printf.printf "reasoning%!"
+                         (* Print "reasoning" inline on the dot line *)
+                         Printf.printf " reasoning%!";
+                         in_thinking := true
                      | Types.AME_thinking_delta _ ->
-                         () (* dots show progress; delta content suppressed *)
+                         () (* dots still printing; content suppressed *)
                      | _ ->
-                         if !in_thinking && not !thinking_ended then begin
+                         if !should_dot then begin
+                           should_dot := false;
                            in_thinking := false;
-                           thinking_ended := true;
-                           Printf.printf "\n%!"
+                           Printf.printf "\n%!" (* end dot/reasoning line *)
                          end;
                          Printf.printf "%s\n%!" (describe_event event))))
            with Eio.Time.Timeout ->
