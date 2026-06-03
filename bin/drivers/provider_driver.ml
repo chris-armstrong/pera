@@ -174,7 +174,7 @@ let run_thinking_scenario () =
         Printf.printf "thinking scenario: FAIL: no AME_thinking_start events\n";
         exit 1)
 
-let run_openai_completions_scenario ~model_id ~prompt_text ~max_tokens () =
+let run_openai_completions_scenario ~model_id ~prompt_text ~max_tokens ~thinking () =
   match Sys.getenv_opt "OPENAI_API_KEY" with
   | None ->
       Printf.printf "openai-completions scenario: SKIP: OPENAI_API_KEY not set\n";
@@ -189,7 +189,7 @@ let run_openai_completions_scenario ~model_id ~prompt_text ~max_tokens () =
             system = "You are a helpful assistant.";
             messages = [ Provider.UserMessage user_msg ];
             tools = [];
-            thinking = false;
+            thinking;
           }
       in
       let options = Provider.{ max_tokens; temperature = None } in
@@ -276,20 +276,17 @@ let () =
       let default_oc_model = "gpt-4o-mini" in
       let default_oc_prompt = "Say hello in one word." in
       let default_oc_max_tokens = 4096 in
-      let model_id =
-        if Array.length argv > 2 then argv.(2) else default_oc_model
-      in
-      let prompt_text =
-        if Array.length argv > 3 then argv.(3) else default_oc_prompt
-      in
+      let remaining = Array.to_list (Array.sub argv 2 (max 0 (Array.length argv - 2))) in
+      let thinking = List.mem ~eq:String.equal "--thinking" remaining in
+      let positional = List.filter (fun s -> not (String.equal s "--thinking")) remaining in
+      let model_id = match positional with x :: _ -> x | [] -> default_oc_model in
+      let prompt_text = match positional with _ :: x :: _ -> x | _ -> default_oc_prompt in
       let max_tokens =
-        if Array.length argv > 4 then
-          match int_of_string_opt argv.(4) with
-          | Some n -> n
-          | None -> default_oc_max_tokens
-        else default_oc_max_tokens
+        match positional with
+        | _ :: _ :: x :: _ -> (match int_of_string_opt x with Some n -> n | None -> default_oc_max_tokens)
+        | _ -> default_oc_max_tokens
       in
-      run_openai_completions_scenario ~model_id ~prompt_text ~max_tokens ()
+      run_openai_completions_scenario ~model_id ~prompt_text ~max_tokens ~thinking ()
   | _ -> (
       match Sys.getenv_opt "ANTHROPIC_API_KEY" with
       | None ->

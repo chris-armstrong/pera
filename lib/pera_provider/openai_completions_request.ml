@@ -6,6 +6,10 @@ type compat = {
   reasoning_field : string;
   max_tokens_field : string;
   require_tool_result_name : bool;
+  enable_thinking_field : string option;
+      (** If [Some field], send [field: true] in the request body when
+          [context.thinking = true]. Use [None] for providers that enable
+          thinking via model selection (e.g. OpenAI o-series). *)
 }
 (** Per-endpoint compatibility configuration for the OpenAI chat-completions
     API.
@@ -20,6 +24,7 @@ let opencode_zen_compat =
     reasoning_field = "reasoning_content";
     max_tokens_field = "max_completion_tokens";
     require_tool_result_name = false;
+    enable_thinking_field = Some "enable_thinking";
   }
 
 let opencode_go_compat =
@@ -28,6 +33,7 @@ let opencode_go_compat =
     reasoning_field = "reasoning";
     max_tokens_field = "max_completion_tokens";
     require_tool_result_name = false;
+    enable_thinking_field = Some "enable_thinking";
   }
 
 let default_compat =
@@ -36,6 +42,7 @@ let default_compat =
     reasoning_field = "reasoning_content";
     max_tokens_field = "max_completion_tokens";
     require_tool_result_name = false;
+    enable_thinking_field = Some "enable_thinking";
   }
 
 (** Select a compatibility preset by name. Valid values:
@@ -234,10 +241,15 @@ let build_request_body ~model ~context ~options ~compat =
       (compat.max_tokens_field, `Int options.max_tokens);
     ]
   in
+  let with_thinking =
+    match (context.thinking, compat.enable_thinking_field) with
+    | true, Some field -> base_fields @ [ (field, `Bool true) ]
+    | _ -> base_fields
+  in
   let with_tools =
-    if List.is_empty context.tools then base_fields
+    if List.is_empty context.tools then with_thinking
     else
-      base_fields @ [ ("tools", `List (List.map tool_to_json context.tools)) ]
+      with_thinking @ [ ("tools", `List (List.map tool_to_json context.tools)) ]
   in
   let with_temperature =
     match options.temperature with
