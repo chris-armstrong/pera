@@ -10,6 +10,7 @@ bug-reports: "https://github.com/chris-armstrong/pera/issues"
 depends: [
   "dune" {>= "3.16"}
   "cmarkit" {>= "0.4.0"}
+  "logs" {>= "0.7"}
   "odoc" {with-doc}
 ]
 build: [

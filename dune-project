@@ -250,6 +250,9 @@
  (allow_empty)
  (description
    "Driver executables for Pera - examples of how to use the Pera AI agent framework")
- (depends (cmarkit (>= 0.4.0))
-           )
+ (depends 
+  (cmarkit (>= 0.4.0))
+  (logs
+   (>= 0.7))
+  )
  )
