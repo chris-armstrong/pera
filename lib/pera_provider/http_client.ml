@@ -54,7 +54,7 @@ let open_conn ~sw ~clock net tls_config_opt uri : connection =
     Eio.Time.with_timeout_exn clock connect_timeout_s (fun () ->
         Eio.Net.connect ~sw net addr)
   in
-  Log.debug (fun m -> m "opened TCP connection to %s" host);
+  Log.info (fun m -> m "TCP connected to %s" host);
   match tls_config_opt with
   | Some cfg ->
       let tls =
@@ -103,7 +103,7 @@ let invalidate t =
 
 let check_response_status (resp : Cohttp.Response.t) =
   let code = Cohttp.Code.code_of_status (Cohttp.Response.status resp) in
-  Log.debug (fun m -> m "HTTP response status: %d" code);
+  Log.info (fun m -> m "HTTP response status: %d" code);
   if Cohttp.Code.is_success code then Ok ()
   else Error (Printf.sprintf "HTTP error %d" code)
 

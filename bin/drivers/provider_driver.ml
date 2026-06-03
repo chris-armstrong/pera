@@ -226,6 +226,7 @@ let run_openai_completions_scenario ~model_id ~prompt_text ~max_tokens ~thinking
          (* should_dot: true until the first non-thinking event arrives *)
          let should_dot = ref true in
          let in_thinking = ref false in
+         let first_event = ref true in
          (* Dot-printer: fires every 5 s from the moment we start waiting.
             Killed by exit once streaming completes. *)
          Eio.Fiber.fork ~sw (fun () ->
@@ -240,10 +241,13 @@ let run_openai_completions_scenario ~model_id ~prompt_text ~max_tokens ~thinking
              Eio.Time.with_timeout_exn clock 300.0 (fun () ->
                  Event_stream.iter stream ~f:(fun event ->
                      events := event :: !events;
+                     if !first_event then begin
+                       first_event := false;
+                       Printf.printf "\n[streaming]\n%!"
+                     end;
                      (match event with
                      | Types.AME_thinking_start _ ->
-                         (* Print "reasoning" inline on the dot line *)
-                         Printf.printf " reasoning%!";
+                         Printf.printf "reasoning%!";
                          in_thinking := true
                      | Types.AME_thinking_delta _ ->
                          () (* dots still printing; content suppressed *)
