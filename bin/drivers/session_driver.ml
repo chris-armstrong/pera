@@ -240,6 +240,44 @@ let scenario_two_turns ~tmpdir ~env =
       | Error e -> Fail (Printf.sprintf "write failed: %s" e.Types.message)
       | Ok () -> verify_two_turns (parse_session_file path))
 
+let scenario_crash_resilience ~tmpdir ~env =
+  let path = Filename.concat tmpdir "s6.jsonl" in
+  match Pera_harness.Session_writer.create ~path ~env ~model:test_model ~cwd:tmpdir with
+  | Error e -> Fail (Printf.sprintf "create failed: %s" e.Types.message)
+  | Ok w ->
+      let writes =
+        [ Pera_harness.Session_writer.write_session_info;
+          (fun w -> Pera_harness.Session_writer.write_message w (make_user_msg "hello"));
+          (fun w -> Pera_harness.Session_writer.write_message w (make_assistant_msg "world"));
+          Pera_harness.Session_writer.write_leaf ]
+      in
+      (match run_writes w writes with
+      | Error e -> Fail (Printf.sprintf "write failed: %s" e.Types.message)
+      | Ok () ->
+          let oc =
+            Stdlib.Out_channel.open_gen
+              [ Open_append; Open_binary ] 0o644 path
+          in
+          Fun.protect
+            ~finally:(fun () -> Stdlib.Out_channel.close oc)
+            (fun () ->
+              Stdlib.Out_channel.output_string oc
+                "{\"id\":\"partial-line-no-closing\"");
+          let entries = parse_session_file_lenient path in
+          let count = List.length entries in
+          if not (Int.equal count 4) then
+            Fail
+              (Printf.sprintf "expected 4 valid entries, got %d" count)
+          else
+            (match verify_chain_and_leaves entries with
+            | Fail msg -> Fail ("chain check failed: " ^ msg)
+            | Pass ->
+                (match check_types_match entries
+                         [ "session_info"; "message"; "message"; "leaf" ]
+                 with
+                | Some msg -> Fail ("type mismatch: " ^ msg)
+                | None -> Pass)))
+
 let scenario_model_change ~tmpdir ~env =
   let path = Filename.concat tmpdir "s5.jsonl" in
   let new_model : Types.model = { id = "new-model"; api = "test" } in
@@ -272,6 +310,7 @@ let () =
             ("tool_use_turn", scenario_tool_use_turn ~tmpdir ~env);
             ("two_turns", scenario_two_turns ~tmpdir ~env);
             ("model_change", scenario_model_change ~tmpdir ~env);
+            ("crash_resilience", scenario_crash_resilience ~tmpdir ~env);
           ]
         in
         List.iter (fun (name, v) -> print_verdict ~tag:"session" ~scenario:name v) scenarios;

@@ -72,73 +72,205 @@ let get_weather_tool =
           ~required:[ "location" ] ();
     }
 
-let () =
-  Driver_log.setup ();
-  match Sys.getenv_opt "ANTHROPIC_API_KEY" with
-  | None ->
-      print_endline "skipped: no API key";
+let stop_reason_string = function
+  | Types.EndTurn -> "end_turn"
+  | Types.ToolUse -> "tool_use"
+  | Types.MaxTokens -> "max_tokens"
+  | Types.StopSequence -> "stop_sequence"
+  | Types.Error -> "error"
+  | Types.Aborted -> "aborted"
+
+let run_default_scenario ~model_id ~prompt_text ~max_tokens =
+  let model = Types.{ id = model_id; api = "anthropic" } in
+  let user_msg =
+    Types.{ role = "user"; content = [ Types.UText prompt_text ] }
+  in
+  let context =
+    Provider.
+      {
+        system = "You are a helpful assistant.";
+        messages = [ Provider.UserMessage user_msg ];
+        tools = [ get_weather_tool ];
+        thinking = false;
+      }
+  in
+  let options = Provider.{ max_tokens; temperature = None } in
+  Printf.printf "model: %s\n" model_id;
+  Printf.printf "prompt: %s\n" prompt_text;
+  Printf.printf "---\n%!";
+  Eio_main.run @@ fun env ->
+  Eio.Switch.run @@ fun sw ->
+  let provider = Anthropic_provider.create ~env ~sw in
+  let stream =
+    Anthropic_provider.stream_simple provider ~model ~context ~options ~sw
+  in
+  let result =
+    Event_stream.iter stream ~f:(fun event ->
+        Printf.printf "%s\n%!" (describe_event event))
+  in
+  match result with
+  | Ok final_msg ->
+      Printf.printf "---\n";
+      Printf.printf "done: stop_reason=%s content=[%s]\n"
+        (stop_reason_string final_msg.Types.stop_reason)
+        (summarise_content final_msg.Types.content);
       exit 0
-  | Some _ -> (
-      let argv = Sys.argv in
-      let default_model = "claude-3-5-haiku-latest" in
-      let default_prompt = "What is the weather like in Sydney right now?" in
-      let default_max_tokens = 4096 in
-      let model_id =
-        if Array.length argv > 1 then argv.(1) else default_model
+  | Error msg ->
+      Printf.printf "error: %s\n" msg;
+      exit 1
+
+let run_thinking_scenario () =
+  let model = Types.{ id = "claude-sonnet-4-5"; api = "anthropic" } in
+  let user_msg =
+    Types.
+      {
+        role = "user";
+        content =
+          [ Types.UText "What is the 15th prime number? Show your reasoning." ];
+      }
+  in
+  let context =
+    Provider.
+      {
+        system = "You are a helpful assistant.";
+        messages = [ Provider.UserMessage user_msg ];
+        tools = [];
+        thinking = true;
+      }
+  in
+  let options = Provider.{ max_tokens = 16000; temperature = None } in
+  Printf.printf "thinking scenario: model=%s\n%!" model.Types.id;
+  Printf.printf "---\n%!";
+  Eio_main.run @@ fun env ->
+  Eio.Switch.run @@ fun sw ->
+  let provider = Anthropic_provider.create ~env ~sw in
+  let stream =
+    Anthropic_provider.stream_simple provider ~model ~context ~options ~sw
+  in
+  let events = ref [] in
+  let result =
+    Event_stream.iter stream ~f:(fun event ->
+        events := event :: !events;
+        Printf.printf "%s\n%!" (describe_event event))
+  in
+  match result with
+  | Error msg ->
+      Printf.printf "thinking scenario: FAIL: stream error: %s\n" msg;
+      exit 1
+  | Ok final_msg ->
+      Printf.printf "---\n";
+      Printf.printf "done: stop_reason=%s content=[%s]\n"
+        (stop_reason_string final_msg.Types.stop_reason)
+        (summarise_content final_msg.Types.content);
+      let has_thinking_event =
+        List.exists
+          (function Types.AME_thinking_start _ -> true | _ -> false)
+          !events
       in
-      let prompt_text =
-        if Array.length argv > 2 then argv.(2) else default_prompt
-      in
-      let max_tokens =
-        if Array.length argv > 3 then (
-          match int_of_string_opt argv.(3) with
-          | Some n -> n
-          | None ->
-              Log.warn (fun m -> m "invalid max_tokens %S, using %d" argv.(3) default_max_tokens);
-              default_max_tokens)
-        else default_max_tokens
-      in
-      let model = Types.{ id = model_id; api = "anthropic" } in
+      if has_thinking_event then (
+        Printf.printf "thinking scenario: PASS\n";
+        exit 0)
+      else (
+        Printf.printf "thinking scenario: FAIL: no AME_thinking_start events\n";
+        exit 1)
+
+let run_openai_completions_scenario () =
+  match Sys.getenv_opt "OPENAI_API_KEY" with
+  | None ->
+      Printf.printf "openai-completions scenario: SKIP: OPENAI_API_KEY not set\n";
+      exit 0
+  | Some _ ->
       let user_msg =
-        Types.{ role = "user"; content = [ Types.UText prompt_text ] }
+        Types.{ role = "user"; content = [ Types.UText "Say hello in one word." ] }
       in
       let context =
         Provider.
           {
             system = "You are a helpful assistant.";
             messages = [ Provider.UserMessage user_msg ];
-            tools = [ get_weather_tool ];
+            tools = [];
             thinking = false;
           }
       in
-      let options = Provider.{ max_tokens; temperature = None } in
-      Printf.printf "model: %s\n" model_id;
-      Printf.printf "prompt: %s\n" prompt_text;
+      let options = Provider.{ max_tokens = 64; temperature = None } in
+      Printf.printf "openai-completions scenario\n%!";
       Printf.printf "---\n%!";
-      Eio_main.run @@ fun env ->
-      Eio.Switch.run @@ fun sw ->
-      let provider = Anthropic_provider.create ~env ~sw in
-      let stream =
-        Anthropic_provider.stream_simple provider ~model ~context ~options ~sw
-      in
-      let result =
-        Event_stream.iter stream ~f:(fun event ->
-            let description = describe_event event in
-            Printf.printf "%s\n%!" description)
-      in
-      match result with
-      | Ok final_msg ->
-          Printf.printf "---\n";
-          Printf.printf "done: stop_reason=%s content=[%s]\n"
-            (match final_msg.Types.stop_reason with
-            | Types.EndTurn -> "end_turn"
-            | Types.ToolUse -> "tool_use"
-            | Types.MaxTokens -> "max_tokens"
-            | Types.StopSequence -> "stop_sequence"
-            | Types.Error -> "error"
-            | Types.Aborted -> "aborted")
-            (summarise_content final_msg.Types.content);
+      (try
+         Eio_main.run @@ fun env ->
+         Eio.Switch.run @@ fun sw ->
+         let model_id = "gpt-4o-mini" in
+         let model = Types.{ id = model_id; api = "openai-completions" } in
+         let provider = Openai_completions_provider.create ~env ~sw in
+         let stream =
+           Openai_completions_provider.stream_simple provider ~model ~context
+             ~options ~sw
+         in
+         let events = ref [] in
+         let result =
+           Event_stream.iter stream ~f:(fun event ->
+               events := event :: !events;
+               Printf.printf "%s\n%!" (describe_event event))
+         in
+         (match result with
+         | Error msg ->
+             Printf.printf "openai-completions scenario: FAIL: stream error: %s\n"
+               msg;
+             exit 1
+         | Ok final_msg ->
+             Printf.printf "---\n";
+             Printf.printf "done: stop_reason=%s content=[%s]\n"
+               (stop_reason_string final_msg.Types.stop_reason)
+               (summarise_content final_msg.Types.content);
+             let has_text_delta =
+               List.exists
+                 (function Types.AME_text_delta _ -> true | _ -> false)
+                 !events
+             in
+             if has_text_delta then (
+               Printf.printf "openai-completions scenario: PASS\n";
+               exit 0)
+             else (
+               Printf.printf
+                 "openai-completions scenario: FAIL: no AME_text_delta events\n";
+               exit 1))
+       with Failure msg ->
+         Printf.printf "openai-completions scenario: FAIL: %s\n" msg;
+         exit 1)
+
+let () =
+  Driver_log.setup ();
+  let argv = Sys.argv in
+  let argv1 = if Array.length argv > 1 then Some argv.(1) else None in
+  match argv1 with
+  | Some "thinking" -> (
+      match Sys.getenv_opt "ANTHROPIC_API_KEY" with
+      | None ->
+          print_endline "skipped: no API key";
           exit 0
-      | Error msg ->
-          Printf.printf "error: %s\n" msg;
-          exit 1)
+      | Some _ -> run_thinking_scenario ())
+  | Some "openai-completions" -> run_openai_completions_scenario ()
+  | _ -> (
+      match Sys.getenv_opt "ANTHROPIC_API_KEY" with
+      | None ->
+          print_endline "skipped: no API key";
+          exit 0
+      | Some _ ->
+          let default_model = "claude-3-5-haiku-latest" in
+          let default_prompt = "What is the weather like in Sydney right now?" in
+          let default_max_tokens = 4096 in
+          let model_id = Option.value argv1 ~default:default_model in
+          let prompt_text =
+            if Array.length argv > 2 then argv.(2) else default_prompt
+          in
+          let max_tokens =
+            if Array.length argv > 3 then
+              match int_of_string_opt argv.(3) with
+              | Some n -> n
+              | None ->
+                  Log.warn (fun m ->
+                      m "invalid max_tokens %S, using %d" argv.(3)
+                        default_max_tokens);
+                  default_max_tokens
+            else default_max_tokens
+          in
+          run_default_scenario ~model_id ~prompt_text ~max_tokens)

@@ -79,3 +79,13 @@ let print_verdict ~tag ~scenario = function
 let count_passed scenarios =
   List.length
     (List.filter (fun (_, v) -> match v with Pass -> true | Fail _ -> false) scenarios)
+
+let parse_session_file_lenient path =
+  let contents = Stdlib.In_channel.(with_open_text path input_all) in
+  let lines = String.split_on_char '\n' contents in
+  let nonempty = List.filter (fun s -> not (String.is_empty s)) lines in
+  List.filter_map
+    (fun line ->
+      try Some (Yojson.Safe.from_string line)
+      with Yojson.Json_error _ -> None)
+    nonempty

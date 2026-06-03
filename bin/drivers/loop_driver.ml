@@ -88,7 +88,7 @@ let make_config ?(tools = []) ?(tool_execution = `Parallel)
     ?(should_stop_after_turn = None) ?(prepare_next_turn = None)
     ?(get_steering_messages = None) ?(get_follow_up_messages = None)
     ?(before_tool_call = None) ?(after_tool_call = None) ?(get_api_key = None)
-    stream_fn =
+    ?(transform_context = None) stream_fn =
   Agent_loop.
     {
       model = test_model;
@@ -99,7 +99,7 @@ let make_config ?(tools = []) ?(tool_execution = `Parallel)
       tool_ctx = ();
       tools;
       tool_execution;
-      transform_context = None;
+      transform_context;
       get_api_key;
       before_tool_call;
       after_tool_call;
@@ -266,27 +266,7 @@ let scenario_parallel_tool_calls sw =
         }
   in
   (* Echo tool: returns the text argument *)
-  let echo_tool =
-    Agent_types.
-      {
-        name = "echo";
-        description = "Echo the text argument back.";
-        schema =
-          Json_schema.object_
-            ~properties:
-              [ ("text", Json_schema.string ~description:"Text to echo." ()) ]
-            ~required:[ "text" ] ();
-        mode = `Parallel;
-        execute =
-          (fun ~ctx:_ ~args ~sw:_ ~cancel:_ ->
-            let text =
-              match Yojson.Safe.Util.member "text" args with
-              | `String s -> s
-              | _ -> "(no text)"
-            in
-            Ok (Agent_types.Tool_text text));
-      }
-  in
+  let echo_tool = Conversation_driver_helpers.echo_tool in
   let stream_fn = Faux_provider.stream_fn_of_scripts [ script1; script2 ] in
   let config = make_config ~tools:[ echo_tool ] stream_fn in
   let messages = [ make_user_agent_message "Echo foo and bar in parallel." ] in
@@ -628,6 +608,429 @@ let scenario_follow_up_message sw =
       Printf.printf "    turn_starts=%d\n%!" turn_count;
       Int.equal turn_count 2 && agent_end_last)
 
+(** {1 Scenario 8: should_stop_after_turn_halts_loop} *)
+
+(** should_stop_after_turn returning true on the first call halts the inner
+    loop after exactly one turn; the second Faux script is never consumed. *)
+let scenario_should_stop_after_turn_halts_loop sw =
+  let turn1_msg = make_assistant_message "Turn 1." in
+  let turn2_msg = make_assistant_message "Turn 2." in
+  let script1 =
+    Faux_provider.Turn
+      Faux_provider.
+        {
+          events =
+            [
+              Types.AME_text_start { partial = turn1_msg };
+              Types.AME_text_delta { text = "Turn 1."; partial = turn1_msg };
+            ];
+          final = turn1_msg;
+        }
+  in
+  let script2 =
+    Faux_provider.Turn
+      Faux_provider.
+        {
+          events =
+            [
+              Types.AME_text_start { partial = turn2_msg };
+              Types.AME_text_delta { text = "Turn 2."; partial = turn2_msg };
+            ];
+          final = turn2_msg;
+        }
+  in
+  let stop_count = ref 0 in
+  let should_stop_after_turn =
+    Some
+      (fun _ctx ->
+        incr stop_count;
+        true)
+  in
+  let stream_fn = Faux_provider.stream_fn_of_scripts [ script1; script2 ] in
+  let config = make_config ~should_stop_after_turn stream_fn in
+  let messages = [ make_user_agent_message "Go." ] in
+  run_scenario ~name:"should_stop_after_turn_halts_loop" ~messages ~sw config
+    ~check_result:(fun events _final ->
+      let turn_count = count_events is_turn_start events in
+      let agent_end_last = check_agent_end_is_last events in
+      Printf.printf "    turn_starts=%d stop_calls=%d\n%!" turn_count !stop_count;
+      Int.equal turn_count 1 && agent_end_last)
+
+(** {1 Scenario 9: before_tool_call_allow} *)
+
+(** before_tool_call returning Allow lets the tool execute normally. *)
+let scenario_before_tool_call_allow sw =
+  let tc =
+    make_tool_call "allow-1" "echo" (`Assoc [ ("text", `String "hello") ])
+  in
+  let tool_use_msg = make_tool_use_message [ tc ] in
+  let followup_msg = make_assistant_message "Echo done." in
+  let script1 =
+    Faux_provider.Turn
+      Faux_provider.
+        {
+          events =
+            [
+              Types.AME_tool_call_start
+                {
+                  index = 0;
+                  id = "allow-1";
+                  name = "echo";
+                  partial = tool_use_msg;
+                };
+            ];
+          final = tool_use_msg;
+        }
+  in
+  let script2 =
+    Faux_provider.Turn
+      Faux_provider.
+        {
+          events =
+            [
+              Types.AME_text_start { partial = followup_msg };
+              Types.AME_text_delta
+                { text = "Echo done."; partial = followup_msg };
+            ];
+          final = followup_msg;
+        }
+  in
+  let echo_tool = Conversation_driver_helpers.echo_tool in
+  let before_tool_call = Some (fun _ctx -> Agent_types.Allow) in
+  let stream_fn = Faux_provider.stream_fn_of_scripts [ script1; script2 ] in
+  let config = make_config ~tools:[ echo_tool ] ~before_tool_call stream_fn in
+  let messages = [ make_user_agent_message "Echo hello." ] in
+  run_scenario ~name:"before_tool_call_allow" ~messages ~sw config
+    ~check_result:(fun events _final ->
+      let has_success =
+        List.exists
+          (function
+            | Agent_types.AE_tool_execution_end { is_error = false; _ } -> true
+            | _ -> false)
+          events
+      in
+      let agent_end_last = check_agent_end_is_last events in
+      has_success && agent_end_last)
+
+(** {1 Scenario 10: before_tool_call_deny} *)
+
+(** before_tool_call returning Deny emits AE_tool_execution_end with
+    is_error=true and the deny message as result; the loop then continues with
+    the next turn. AE_tool_execution_start is not emitted because the deny
+    short-circuits before step 4. *)
+let scenario_before_tool_call_deny sw =
+  let tc =
+    make_tool_call "deny-1" "echo" (`Assoc [ ("text", `String "hello") ])
+  in
+  let tool_use_msg = make_tool_use_message [ tc ] in
+  let followup_msg = make_assistant_message "Tool was blocked." in
+  let script1 =
+    Faux_provider.Turn
+      Faux_provider.
+        {
+          events =
+            [
+              Types.AME_tool_call_start
+                {
+                  index = 0;
+                  id = "deny-1";
+                  name = "echo";
+                  partial = tool_use_msg;
+                };
+            ];
+          final = tool_use_msg;
+        }
+  in
+  let script2 =
+    Faux_provider.Turn
+      Faux_provider.
+        {
+          events =
+            [
+              Types.AME_text_start { partial = followup_msg };
+              Types.AME_text_delta
+                { text = "Tool was blocked."; partial = followup_msg };
+            ];
+          final = followup_msg;
+        }
+  in
+  let echo_tool = Conversation_driver_helpers.echo_tool in
+  let before_tool_call =
+    Some (fun _ctx -> Agent_types.Deny "blocked by policy")
+  in
+  let stream_fn = Faux_provider.stream_fn_of_scripts [ script1; script2 ] in
+  let config = make_config ~tools:[ echo_tool ] ~before_tool_call stream_fn in
+  let messages = [ make_user_agent_message "Echo hello." ] in
+  run_scenario ~name:"before_tool_call_deny" ~messages ~sw config
+    ~check_result:(fun events _final ->
+      let has_deny_error =
+        List.exists
+          (function
+            | Agent_types.AE_tool_execution_end
+                { is_error = true; result = `String s; _ } ->
+                String.equal s "blocked by policy"
+            | _ -> false)
+          events
+      in
+      let has_no_start = not (List.exists is_tool_start events) in
+      let agent_end_last = check_agent_end_is_last events in
+      Printf.printf "    has_deny_error=%b has_no_start=%b\n%!" has_deny_error
+        has_no_start;
+      has_deny_error && has_no_start && agent_end_last)
+
+(** {1 Scenario 11: after_tool_call_fires} *)
+
+(** after_tool_call is called once after the echo tool executes; the recorded
+    tool_call_id matches. *)
+let scenario_after_tool_call_fires sw =
+  let tc =
+    make_tool_call "after-1" "echo" (`Assoc [ ("text", `String "hi") ])
+  in
+  let tool_use_msg = make_tool_use_message [ tc ] in
+  let followup_msg = make_assistant_message "Done." in
+  let script1 =
+    Faux_provider.Turn
+      Faux_provider.
+        {
+          events =
+            [
+              Types.AME_tool_call_start
+                {
+                  index = 0;
+                  id = "after-1";
+                  name = "echo";
+                  partial = tool_use_msg;
+                };
+            ];
+          final = tool_use_msg;
+        }
+  in
+  let script2 =
+    Faux_provider.Turn
+      Faux_provider.
+        {
+          events =
+            [
+              Types.AME_text_start { partial = followup_msg };
+              Types.AME_text_delta { text = "Done."; partial = followup_msg };
+            ];
+          final = followup_msg;
+        }
+  in
+  let echo_tool = Conversation_driver_helpers.echo_tool in
+  let recorded_ids = ref [] in
+  let after_tool_call =
+    Some
+      (fun (ctx : unit Agent_loop.after_tool_call_ctx) ->
+        recorded_ids := !recorded_ids @ [ ctx.tool_call.Pera_types.Types.id ])
+  in
+  let stream_fn = Faux_provider.stream_fn_of_scripts [ script1; script2 ] in
+  let config = make_config ~tools:[ echo_tool ] ~after_tool_call stream_fn in
+  let messages = [ make_user_agent_message "Echo hi." ] in
+  run_scenario ~name:"after_tool_call_fires" ~messages ~sw config
+    ~check_result:(fun events _final ->
+      let ids = !recorded_ids in
+      Printf.printf "    recorded_ids=[%s]\n%!" (String.concat ";" ids);
+      let agent_end_last = check_agent_end_is_last events in
+      Int.equal (List.length ids) 1
+      && String.equal (List.hd ids) "after-1"
+      && agent_end_last)
+
+(** {1 Scenario 12: transform_context_applied} *)
+
+(** transform_context appends a synthetic user message before every LLM call;
+    the injected message appears in the first recorded provider context. *)
+let scenario_transform_context_applied sw =
+  let final_msg = make_assistant_message "Done." in
+  let script =
+    Faux_provider.Turn
+      Faux_provider.
+        {
+          events =
+            [
+              Types.AME_text_start { partial = final_msg };
+              Types.AME_text_delta { text = "Done."; partial = final_msg };
+            ];
+          final = final_msg;
+        }
+  in
+  let injected =
+    Agent_types.Real
+      (Provider.UserMessage
+         Types.{ role = "user"; content = [ Types.UText "INJECTED" ] })
+  in
+  let transform_context = Some (fun msgs -> msgs @ [ injected ]) in
+  let stream_fn = Faux_provider.stream_fn_of_scripts [ script ] in
+  let config = make_config ~transform_context stream_fn in
+  let messages = [ make_user_agent_message "Test." ] in
+  run_scenario ~name:"transform_context_applied" ~messages ~sw config
+    ~check_result:(fun _events _final ->
+      let contexts = Faux_provider.recorded_contexts () in
+      match contexts with
+      | [] ->
+          Printf.printf "    no recorded contexts\n%!";
+          false
+      | ctx :: _ ->
+          let found =
+            List.exists
+              (function
+                | Provider.UserMessage um ->
+                    List.exists
+                      (function
+                        | Types.UText s -> String.equal s "INJECTED"
+                        | _ -> false)
+                      um.Types.content
+                | _ -> false)
+              ctx.Provider.messages
+          in
+          Printf.printf "    injected_found=%b\n%!" found;
+          found)
+
+(** {1 Scenario 13: prepare_next_turn_update} *)
+
+(** prepare_next_turn returning Some with a model override causes the second
+    LLM call to use the updated model. Verified by wrapping stream_fn to
+    capture each model argument (Faux_provider only records contexts, not
+    models). A steering message forces the second turn so that prepare_next_turn
+    actually fires. *)
+let scenario_prepare_next_turn_update sw =
+  let turn1_msg = make_assistant_message "Turn 1." in
+  let turn2_msg = make_assistant_message "Turn 2." in
+  let script1 =
+    Faux_provider.Turn
+      Faux_provider.
+        {
+          events =
+            [
+              Types.AME_text_start { partial = turn1_msg };
+              Types.AME_text_delta { text = "Turn 1."; partial = turn1_msg };
+            ];
+          final = turn1_msg;
+        }
+  in
+  let script2 =
+    Faux_provider.Turn
+      Faux_provider.
+        {
+          events =
+            [
+              Types.AME_text_start { partial = turn2_msg };
+              Types.AME_text_delta { text = "Turn 2."; partial = turn2_msg };
+            ];
+          final = turn2_msg;
+        }
+  in
+  let recorded_models : Types.model list ref = ref [] in
+  let base_fn = Faux_provider.stream_fn_of_scripts [ script1; script2 ] in
+  let stream_fn ~model ~context ~options ~sw =
+    recorded_models := !recorded_models @ [ model ];
+    base_fn ~model ~context ~options ~sw
+  in
+  let prepare_next_turn =
+    Some
+      (fun _ctx ->
+        Some
+          Agent_types.
+            {
+              messages = None;
+              model = Some Types.{ id = "prepared-model"; api = "faux" };
+              thinking = None;
+            })
+  in
+  let steering_count = ref 0 in
+  let get_steering_messages =
+    Some
+      (fun () ->
+        incr steering_count;
+        if Int.equal !steering_count 1 then
+          [ make_user_agent_message "continue" ]
+        else [])
+  in
+  let config =
+    make_config ~prepare_next_turn ~get_steering_messages stream_fn
+  in
+  let messages = [ make_user_agent_message "Start." ] in
+  run_scenario ~name:"prepare_next_turn_update" ~messages ~sw config
+    ~check_result:(fun events _final ->
+      let models = !recorded_models in
+      Printf.printf "    model_calls=%d\n%!" (List.length models);
+      (match models with
+      | [ _; second ] ->
+          Printf.printf "    second_model=%s\n%!" second.Types.id;
+          let agent_end_last = check_agent_end_is_last events in
+          String.equal second.Types.id "prepared-model" && agent_end_last
+      | _ -> false))
+
+(** {1 Scenario 14: thinking_blocks} *)
+
+(** A Faux turn emitting AME_thinking_start + AME_thinking_delta flows through
+    the loop and appears as AThinking content in AE_message_end. *)
+let scenario_thinking_blocks sw =
+  let partial_msg = make_assistant_message "" in
+  let final_msg =
+    Types.
+      {
+        content =
+          [
+            AThinking { text = "thinking step"; signature = None };
+            AText "answer";
+          ];
+        stop_reason = EndTurn;
+        provenance =
+          {
+            api = "faux";
+            provider = "faux";
+            model = "faux";
+            error_message = None;
+          };
+        usage =
+          {
+            input_tokens = 0;
+            output_tokens = 0;
+            cache_read_tokens = 0;
+            cache_write_tokens = 0;
+            cost_usd = None;
+          };
+      }
+  in
+  let script =
+    Faux_provider.Turn
+      Faux_provider.
+        {
+          events =
+            [
+              Types.AME_thinking_start { partial = partial_msg };
+              Types.AME_thinking_delta
+                { text = "thinking step"; partial = partial_msg };
+              Types.AME_text_start { partial = partial_msg };
+              Types.AME_text_delta { text = "answer"; partial = final_msg };
+            ];
+          final = final_msg;
+        }
+  in
+  let stream_fn = Faux_provider.stream_fn_of_scripts [ script ] in
+  let config = make_config stream_fn in
+  let messages = [ make_user_agent_message "Reason carefully." ] in
+  run_scenario ~name:"thinking_blocks" ~messages ~sw config
+    ~check_result:(fun events _final ->
+      let has_thinking_in_message =
+        List.exists
+          (function
+            | Agent_types.AE_message_end
+                {
+                  message =
+                    Real (Provider.AssistantMessage am);
+                } ->
+                List.exists
+                  (function Types.AThinking _ -> true | _ -> false)
+                  am.content
+            | _ -> false)
+          events
+      in
+      let agent_end_last = check_agent_end_is_last events in
+      Printf.printf "    thinking_in_message=%b\n%!" has_thinking_in_message;
+      has_thinking_in_message && agent_end_last)
+
 (** {1 All scenarios} *)
 
 type scenario_result = { name : string; passed : bool }
@@ -647,6 +1050,31 @@ let run_all_scenarios sw =
     { name = "mid_stream_cancel"; passed = scenario_mid_stream_cancel () };
     { name = "steering_message"; passed = scenario_steering_message sw };
     { name = "follow_up_message"; passed = scenario_follow_up_message sw };
+    {
+      name = "should_stop_after_turn_halts_loop";
+      passed = scenario_should_stop_after_turn_halts_loop sw;
+    };
+    {
+      name = "before_tool_call_allow";
+      passed = scenario_before_tool_call_allow sw;
+    };
+    {
+      name = "before_tool_call_deny";
+      passed = scenario_before_tool_call_deny sw;
+    };
+    {
+      name = "after_tool_call_fires";
+      passed = scenario_after_tool_call_fires sw;
+    };
+    {
+      name = "transform_context_applied";
+      passed = scenario_transform_context_applied sw;
+    };
+    {
+      name = "prepare_next_turn_update";
+      passed = scenario_prepare_next_turn_update sw;
+    };
+    { name = "thinking_blocks"; passed = scenario_thinking_blocks sw };
   ]
 
 (** Run a single named scenario. Returns a list with one result, or an error
@@ -662,12 +1090,30 @@ let run_named_scenario name sw =
   | "mid_stream_cancel" -> [ { name; passed = scenario_mid_stream_cancel () } ]
   | "steering_message" -> [ { name; passed = scenario_steering_message sw } ]
   | "follow_up_message" -> [ { name; passed = scenario_follow_up_message sw } ]
+  | "should_stop_after_turn_halts_loop" ->
+      [ { name; passed = scenario_should_stop_after_turn_halts_loop sw } ]
+  | "before_tool_call_allow" ->
+      [ { name; passed = scenario_before_tool_call_allow sw } ]
+  | "before_tool_call_deny" ->
+      [ { name; passed = scenario_before_tool_call_deny sw } ]
+  | "after_tool_call_fires" ->
+      [ { name; passed = scenario_after_tool_call_fires sw } ]
+  | "transform_context_applied" ->
+      [ { name; passed = scenario_transform_context_applied sw } ]
+  | "prepare_next_turn_update" ->
+      [ { name; passed = scenario_prepare_next_turn_update sw } ]
+  | "thinking_blocks" -> [ { name; passed = scenario_thinking_blocks sw } ]
   | _ ->
       Log.err (fun m -> m "unknown scenario: %s" name);
       Log.err (fun m ->
-          m "available: single_text_turn | parallel_tool_calls | \
+          m
+            "available: single_text_turn | parallel_tool_calls | \
              sequential_tool_calls | tool_error | mid_stream_cancel | \
-             steering_message | follow_up_message");
+             steering_message | follow_up_message | \
+             should_stop_after_turn_halts_loop | before_tool_call_allow | \
+             before_tool_call_deny | after_tool_call_fires | \
+             transform_context_applied | prepare_next_turn_update | \
+             thinking_blocks");
       exit 1
 
 (** {1 Entry point} *)
