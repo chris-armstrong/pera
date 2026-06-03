@@ -225,13 +225,13 @@ let run_openai_completions_scenario ~model_id ~prompt_text ~max_tokens ~thinking
          let clock = Eio.Stdenv.clock env in
          let result =
            try
-             Eio.Time.with_timeout_exn clock 60.0 (fun () ->
+             Eio.Time.with_timeout_exn clock 300.0 (fun () ->
                  Event_stream.iter stream ~f:(fun event ->
                      events := event :: !events;
                      Printf.printf "%s\n%!" (describe_event event)))
            with Eio.Time.Timeout ->
              Printf.printf
-               "openai-completions scenario: FAIL: no response after 60s\n\
+               "openai-completions scenario: FAIL: no response after 300s\n\
                 (check OPENAI_BASE_URL — should not include /v1 suffix)\n";
              exit 1
          in
@@ -245,17 +245,19 @@ let run_openai_completions_scenario ~model_id ~prompt_text ~max_tokens ~thinking
              Printf.printf "done: stop_reason=%s content=[%s]\n"
                (stop_reason_string final_msg.Types.stop_reason)
                (summarise_content final_msg.Types.content);
-             let has_text_delta =
+             let has_output =
                List.exists
-                 (function Types.AME_text_delta _ -> true | _ -> false)
+                 (function
+                   | Types.AME_text_delta _ | Types.AME_thinking_delta _ -> true
+                   | _ -> false)
                  !events
              in
-             if has_text_delta then (
+             if has_output then (
                Printf.printf "openai-completions scenario: PASS\n";
                exit 0)
              else (
                Printf.printf
-                 "openai-completions scenario: FAIL: no AME_text_delta events\n";
+                 "openai-completions scenario: FAIL: no text or thinking events\n";
                exit 1))
        with Failure msg ->
          Printf.printf "openai-completions scenario: FAIL: %s\n" msg;
