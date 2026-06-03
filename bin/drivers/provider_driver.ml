@@ -174,14 +174,14 @@ let run_thinking_scenario () =
         Printf.printf "thinking scenario: FAIL: no AME_thinking_start events\n";
         exit 1)
 
-let run_openai_completions_scenario () =
+let run_openai_completions_scenario ~model_id ~prompt_text ~max_tokens () =
   match Sys.getenv_opt "OPENAI_API_KEY" with
   | None ->
       Printf.printf "openai-completions scenario: SKIP: OPENAI_API_KEY not set\n";
       exit 0
   | Some _ ->
       let user_msg =
-        Types.{ role = "user"; content = [ Types.UText "Say hello in one word." ] }
+        Types.{ role = "user"; content = [ Types.UText prompt_text ] }
       in
       let context =
         Provider.
@@ -192,13 +192,14 @@ let run_openai_completions_scenario () =
             thinking = false;
           }
       in
-      let options = Provider.{ max_tokens = 64; temperature = None } in
-      Printf.printf "openai-completions scenario\n%!";
+      let options = Provider.{ max_tokens; temperature = None } in
+      Printf.printf "model: %s\n" model_id;
+      Printf.printf "prompt: %s\n" prompt_text;
       Printf.printf "---\n%!";
       (try
          Eio_main.run @@ fun env ->
          Eio.Switch.run @@ fun sw ->
-         let model_id = "gpt-4o-mini" in
+         let model_id = model_id in
          let model = Types.{ id = model_id; api = "openai-completions" } in
          let provider = Openai_completions_provider.create ~env ~sw in
          let stream =
@@ -248,7 +249,24 @@ let () =
           print_endline "skipped: no API key";
           exit 0
       | Some _ -> run_thinking_scenario ())
-  | Some "openai-completions" -> run_openai_completions_scenario ()
+  | Some "openai-completions" ->
+      let default_oc_model = "gpt-4o-mini" in
+      let default_oc_prompt = "Say hello in one word." in
+      let default_oc_max_tokens = 4096 in
+      let model_id =
+        if Array.length argv > 2 then argv.(2) else default_oc_model
+      in
+      let prompt_text =
+        if Array.length argv > 3 then argv.(3) else default_oc_prompt
+      in
+      let max_tokens =
+        if Array.length argv > 4 then
+          match int_of_string_opt argv.(4) with
+          | Some n -> n
+          | None -> default_oc_max_tokens
+        else default_oc_max_tokens
+      in
+      run_openai_completions_scenario ~model_id ~prompt_text ~max_tokens ()
   | _ -> (
       match Sys.getenv_opt "ANTHROPIC_API_KEY" with
       | None ->
