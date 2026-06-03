@@ -51,15 +51,10 @@ let make_user_agent_message text =
 
 (** {1 Config defaults} *)
 
-(** [default_convert_to_llm msgs] unwraps [Real] messages and drops [Synthetic]
-    ones. Used as the default [convert_to_llm] in test configs. *)
+(** [default_convert_to_llm msgs] converts agent messages to provider messages
+    using the shared [Agent_types.to_provider_message] projection. *)
 let default_convert_to_llm msgs =
-  List.filter_map
-    (fun msg ->
-      match msg with
-      | Agent_types.Real m -> Some m
-      | Agent_types.Synthetic _ -> .)
-    msgs
+  List.map Agent_types.to_provider_message msgs
 
 (** A model value for loop calls. *)
 let test_model = Pera_types.Types.{ id = "test-model"; api = "faux" }

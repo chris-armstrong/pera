@@ -7,7 +7,8 @@
   agent_loop_test
   agent_loop_tools_test
   agent_loop_cancel_test
-  provider_adapter_test)
+  provider_adapter_test
+  synthetic_test)
  (modules
   agent_types_test
   faux_provider_test
@@ -15,5 +16,6 @@
   agent_loop_tools_test
   agent_loop_cancel_test
   provider_adapter_test
+  synthetic_test
   agent_loop_helpers)
  (libraries pera_core pera_core_test_util pera_types pera_provider alcotest containers eio_main))

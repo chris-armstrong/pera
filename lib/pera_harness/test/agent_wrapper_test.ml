@@ -9,12 +9,7 @@ let test_model = Pera_types.Types.{ id = "test-model"; api = "faux" }
 let test_options = Pera_provider.Provider.{ max_tokens = 1024; temperature = None }
 
 let default_convert_to_llm msgs =
-  List.filter_map
-    (fun msg ->
-       match msg with
-       | Pera_core.Agent_types.Real m -> Some m
-       | Pera_core.Agent_types.Synthetic _ -> .)
-    msgs
+  List.map Pera_core.Agent_types.to_provider_message msgs
 
 let make_assistant_message ?(stop_reason = Pera_types.Types.EndTurn) content =
   Pera_types.Types.
