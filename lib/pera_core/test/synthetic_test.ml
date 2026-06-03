@@ -81,6 +81,17 @@ let test_equal_agent_event_compaction () =
   Alcotest.(check bool) "AE_compaction_end differs from AE_compaction_start"
     false (Agent_types.equal_agent_event e1 e_start)
 
+let test_equal_agent_event_compaction_error () =
+  let e1 = Agent_types.AE_compaction_error { message = "oops" } in
+  let e2 = Agent_types.AE_compaction_error { message = "oops" } in
+  let e3 = Agent_types.AE_compaction_error { message = "other" } in
+  Alcotest.(check bool) "AE_compaction_error equals itself"
+    true (Agent_types.equal_agent_event e1 e2);
+  Alcotest.(check bool) "AE_compaction_error differs on message"
+    false (Agent_types.equal_agent_event e1 e3);
+  Alcotest.(check bool) "AE_compaction_error differs from AE_compaction_start"
+    false (Agent_types.equal_agent_event e1 Agent_types.AE_compaction_start)
+
 (** {1 Runner} *)
 
 let () =
@@ -109,5 +120,7 @@ let () =
         [
           Alcotest.test_case "compaction event equality" `Quick
             test_equal_agent_event_compaction;
+          Alcotest.test_case "compaction_error equality" `Quick
+            test_equal_agent_event_compaction_error;
         ] );
     ]

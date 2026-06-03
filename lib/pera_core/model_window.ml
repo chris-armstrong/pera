@@ -2,7 +2,7 @@ open Containers
 
 let anthropic_window = 200_000
 let openai_window = 128_000
-let default_window = 200_000
+let default_window = anthropic_window
 
 let for_model (model : Pera_types.Types.model) =
   if String.equal model.api "anthropic" then anthropic_window

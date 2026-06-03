@@ -1,5 +1,5 @@
-open Containers
-open Pera_harness
+open Containers [@@warning "-33"]
+open Pera_core
 
 let test_estimate_text_is_ceil_div_3 () =
   Alcotest.(check int) "abcd -> 2" 2 (Token_estimator.estimate_text "abcd");

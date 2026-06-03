@@ -1,4 +1,4 @@
-open Pera_harness
+open Pera_core
 
 let test_anthropic_window () =
   let model = Pera_types.Types.{ id = "claude-haiku-4-5-20251001"; api = "anthropic" } in

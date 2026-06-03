@@ -166,9 +166,7 @@ let run_scenario ~name ~messages ~sw ~check_result config =
           Printf.printf "  => text: %s\n%!" (String.concat "" text)
     | Some (Agent_types.Real (Provider.UserMessage _)) -> ()
     | Some (Agent_types.Real (Provider.ToolResultMessage _)) -> ()
-    | Some (Agent_types.Synthetic s) ->
-        let msg = Agent_types.synthetic_to_message s in
-        ignore msg
+    | Some (Agent_types.Synthetic _) -> ()
     | None -> ()
   in
   match iter_result with
