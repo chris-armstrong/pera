@@ -193,15 +193,25 @@ let run_openai_completions_scenario ~model_id ~prompt_text ~max_tokens () =
           }
       in
       let options = Provider.{ max_tokens; temperature = None } in
-      Printf.printf "model: %s\n" model_id;
-      Printf.printf "prompt: %s\n" prompt_text;
+      let base_url =
+        match Sys.getenv_opt "OPENAI_BASE_URL" with
+        | Some u -> u
+        | None ->
+            (match Sys.getenv_opt "OPENAI_COMPAT" with
+            | Some c -> Printf.sprintf "(compat=%s default)" c
+            | None -> "https://api.openai.com")
+      in
+      Printf.printf "model:    %s\n" model_id;
+      Printf.printf "endpoint: %s/v1/chat/completions\n" base_url;
+      Printf.printf "prompt:   %s\n" prompt_text;
       Printf.printf "---\n%!";
       (try
          Eio_main.run @@ fun env ->
          Eio.Switch.run @@ fun sw ->
-         let model_id = model_id in
+         Printf.printf "(connecting...)\n%!";
          let model = Types.{ id = model_id; api = "openai-completions" } in
          let provider = Openai_completions_provider.create ~env ~sw in
+         Printf.printf "(request sent, waiting for first token...)\n%!";
          let stream =
            Openai_completions_provider.stream_simple provider ~model ~context
              ~options ~sw

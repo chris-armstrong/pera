@@ -57,7 +57,11 @@ let open_conn ~sw ~clock net tls_config_opt uri : connection =
   Log.debug (fun m -> m "opened TCP connection to %s" host);
   match tls_config_opt with
   | Some cfg ->
-      (Tls_eio.client_of_flow cfg ?host:(peer_name uri) raw :> connection)
+      let tls =
+        Eio.Time.with_timeout_exn clock connect_timeout_s (fun () ->
+            Tls_eio.client_of_flow cfg ?host:(peer_name uri) raw)
+      in
+      (tls :> connection)
   | None -> (raw :> connection)
 
 let make_persistent_client ~sw ~clock net tls_config_opt base_uri =
