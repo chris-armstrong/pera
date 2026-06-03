@@ -42,11 +42,11 @@ let handle_framed interp_state stream done_message framed =
 
 (** Feed a raw SSE chunk through the SSE parser and dispatch all framed events.
 *)
+let log_chunks = Option.is_some (Sys.getenv_opt "PERA_LOG_CHUNKS")
+
 let process_chunk sse_state interp_state stream done_message chunk =
-  (* Only log raw chunks when PERA_LOG_CHUNKS is set — they are too noisy for
-     normal debug output. *)
-  if Option.is_some (Sys.getenv_opt "PERA_LOG_CHUNKS") then
-    Log.debug (fun m -> m "raw chunk: %S" chunk);
+  if log_chunks then
+    Log.warn (fun m -> m "chunk: %S" chunk);
   let new_sse_state, framed_events = Sse_parser.feed !sse_state chunk in
   sse_state := new_sse_state;
   List.iter (handle_framed interp_state stream done_message) framed_events
