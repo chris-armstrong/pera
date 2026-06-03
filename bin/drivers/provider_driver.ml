@@ -306,7 +306,7 @@ let () =
   | Some "openai-completions" ->
       let default_oc_model = "gpt-4o-mini" in
       let default_oc_prompt = "Say hello in one word." in
-      let default_oc_max_tokens = 4096 in
+      let default_oc_max_tokens = 16000 in
       let remaining = Array.to_list (Array.sub argv 2 (max 0 (Array.length argv - 2))) in
       let thinking = List.mem ~eq:String.equal "--thinking" remaining in
       let positional = List.filter (fun s -> not (String.equal s "--thinking")) remaining in
