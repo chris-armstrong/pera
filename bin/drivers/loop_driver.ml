@@ -827,8 +827,9 @@ let scenario_after_tool_call_fires sw =
       let ids = !recorded_ids in
       Printf.printf "    recorded_ids=[%s]\n%!" (String.concat ";" ids);
       let agent_end_last = check_agent_end_is_last events in
-      Int.equal (List.length ids) 1
-      && String.equal (List.hd ids) "after-1"
+      (match ids with
+      | [ id ] -> String.equal id "after-1"
+      | _ -> false)
       && agent_end_last)
 
 (** {1 Scenario 12: transform_context_applied} *)
