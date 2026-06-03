@@ -209,6 +209,11 @@ let run_openai_completions_scenario ~model_id ~prompt_text ~max_tokens () =
          Eio_main.run @@ fun env ->
          Eio.Switch.run @@ fun sw ->
          Printf.printf "(connecting...)\n%!";
+         (match Sys.getenv_opt "PERA_LOG" with
+         | None ->
+             Printf.printf
+               "(set PERA_LOG=debug to see the raw request/response)\n%!"
+         | Some _ -> ());
          let model = Types.{ id = model_id; api = "openai-completions" } in
          let provider = Openai_completions_provider.create ~env ~sw in
          Printf.printf "(request sent, waiting for first token...)\n%!";
@@ -217,10 +222,18 @@ let run_openai_completions_scenario ~model_id ~prompt_text ~max_tokens () =
              ~options ~sw
          in
          let events = ref [] in
+         let clock = Eio.Stdenv.clock env in
          let result =
-           Event_stream.iter stream ~f:(fun event ->
-               events := event :: !events;
-               Printf.printf "%s\n%!" (describe_event event))
+           try
+             Eio.Time.with_timeout_exn clock 60.0 (fun () ->
+                 Event_stream.iter stream ~f:(fun event ->
+                     events := event :: !events;
+                     Printf.printf "%s\n%!" (describe_event event)))
+           with Eio.Time.Timeout ->
+             Printf.printf
+               "openai-completions scenario: FAIL: no response after 60s\n\
+                (check OPENAI_BASE_URL — should not include /v1 suffix)\n";
+             exit 1
          in
          (match result with
          | Error msg ->
