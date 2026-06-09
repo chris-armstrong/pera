@@ -1,14 +1,15 @@
-(** Http_client — thin HTTP transport abstraction over piaf.
+(** Http_client — thin HTTP transport abstraction over cohttp-eio + TLS.
 
-    Piaf types are hidden behind this interface. Callers depend only on the
-    types declared here. *)
+    Implementation details are hidden behind this interface. Callers depend
+    only on the types declared here. *)
 
 type t
-(** An abstract persistent HTTP client bound to a single base URL.
+(** An abstract HTTP client bound to a single base URL.
 
-    The client wraps a {!Piaf.Client.t} connection pool. Its lifetime is tied to
-    the switch passed to {!create}: when the switch ends, the underlying
-    connection is torn down automatically. *)
+    Each {!post_stream} call opens a fresh connection under an internal switch,
+    sends the request, streams the response body, then closes the connection.
+    The [sw] parameter accepted by {!create} is retained for API symmetry but
+    does not govern individual request lifetimes. *)
 
 type error
 (** An opaque HTTP transport error. *)

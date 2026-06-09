@@ -432,14 +432,13 @@ let handle_done state =
 let feed state (framed : Sse_parser.framed_event) =
   if state.is_done then (state, [])
   else if String.equal framed.data "[DONE]" then handle_done state
+  else if String.is_empty framed.data then (state, [])
   else
     match Yojson.Safe.from_string framed.data with
     | exception _ ->
-        let partial = snapshot state in
-        ( state,
-          [
-            Types.AME_error { message = "Malformed JSON in SSE data"; partial };
-          ] )
+        (* Non-JSON data field: likely a server-specific control frame or
+           keepalive. Skip it rather than terminating the stream. *)
+        (state, [])
     | json -> (
         let state =
           match extract_usage json with

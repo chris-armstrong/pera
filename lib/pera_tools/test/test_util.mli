@@ -7,7 +7,7 @@ val make_temp_dir :
     on exit. *)
 
 val write_file :
-  (module Pera_harness.Execution_env.S) ->
+  (module Pera_env.Execution_env.S) ->
   path:string ->
   content:string ->
   sw:Eio.Switch.t ->

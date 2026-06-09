@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash /home/deploy/projects/pera/.claude/hooks/check_ml_conventions.sh",
+            "command": "bash ${CLAUDE_PROJECT_DIR}/.claude/hooks/check_ml_conventions.sh",
             "timeout": 15000
           }
         ]

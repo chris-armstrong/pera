@@ -45,8 +45,8 @@ let read_schema =
       ]
     ()
 
-let read (env : (module Pera_harness.Execution_env.S)) =
-  let module E = (val env : Pera_harness.Execution_env.S) in
+let read (env : (module Pera_env.Execution_env.S)) =
+  let module E = (val env : Pera_env.Execution_env.S) in
   {
     Pera_core.Agent_types.name = "read";
     description =

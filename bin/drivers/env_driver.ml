@@ -10,7 +10,7 @@
     Exit code: 0 if all non-skipped scenarios pass, 1 otherwise. *)
 
 open Containers
-open Pera_harness
+open Pera_env
 
 (* ── Types ────────────────────────────────────────────────────────────────── *)
 
@@ -158,6 +158,102 @@ let scenario_find_sh (module E : Execution_env.S) =
       print_verdict ~scenario v;
       v
 
+(** Scenario 6: Write a file then read it back; verify content matches. *)
+let scenario_fs_write_read ~sw (module E : Execution_env.S) =
+  let scenario = "fs write/read" in
+  match E.Fs.write_file ~path:"hello.txt" ~content:"hello world" ~sw with
+  | Error e ->
+      let v = Fail (Printf.sprintf "write failed: %s" e.message) in
+      print_verdict ~scenario v;
+      v
+  | Ok () ->
+      let v =
+        match E.Fs.read_text_file ~path:"hello.txt" ~sw with
+        | Error e -> Fail (Printf.sprintf "read failed: %s" e.message)
+        | Ok content ->
+            if String.equal (String.trim content) "hello world" then Pass
+            else Fail (Printf.sprintf "expected 'hello world', got '%s'" content)
+      in
+      print_verdict ~scenario v;
+      v
+
+(** Scenario 7: Write a file; verify exists returns true; nonexistent returns
+    false. *)
+let scenario_fs_file_exists ~sw (module E : Execution_env.S) =
+  let scenario = "fs file exists" in
+  match E.Fs.write_file ~path:"exists.txt" ~content:"x" ~sw with
+  | Error e ->
+      let v = Fail (Printf.sprintf "write failed: %s" e.message) in
+      print_verdict ~scenario v;
+      v
+  | Ok () ->
+      let v =
+        match E.Fs.exists ~path:"exists.txt" ~sw with
+        | Error e -> Fail (Printf.sprintf "exists check failed: %s" e.message)
+        | Ok false -> Fail "exists returned false for written file"
+        | Ok true ->
+            (match E.Fs.exists ~path:"nonexistent_xyz.txt" ~sw with
+            | Error e ->
+                Fail (Printf.sprintf "exists check failed: %s" e.message)
+            | Ok true ->
+                Fail "exists returned true for nonexistent file"
+            | Ok false -> Pass)
+      in
+      print_verdict ~scenario v;
+      v
+
+(** Scenario 8: Write two files; verify list_dir contains both. *)
+let scenario_fs_list_dir ~sw (module E : Execution_env.S) =
+  let scenario = "fs list dir" in
+  let writes =
+    [
+      E.Fs.write_file ~path:"a.txt" ~content:"a" ~sw;
+      E.Fs.write_file ~path:"b.txt" ~content:"b" ~sw;
+    ]
+  in
+  let write_error =
+    List.find_opt (function Error _ -> true | Ok _ -> false) writes
+  in
+  match write_error with
+  | Some (Error e) ->
+      let v = Fail (Printf.sprintf "write failed: %s" e.message) in
+      print_verdict ~scenario v;
+      v
+  | _ ->
+      let v =
+        match E.Fs.list_dir ~path:"." ~sw with
+        | Error e -> Fail (Printf.sprintf "list_dir failed: %s" e.message)
+        | Ok infos ->
+            let names = List.map (fun (fi : Execution_env.file_info) -> fi.name) infos in
+            let has_a = List.exists (String.equal "a.txt") names in
+            let has_b = List.exists (String.equal "b.txt") names in
+            if has_a && has_b then Pass
+            else
+              Fail
+                (Printf.sprintf "expected a.txt and b.txt, got [%s]"
+                   (String.concat "; " names))
+      in
+      print_verdict ~scenario v;
+      v
+
+(** Scenario 9: Read a nonexistent file; verify the result is an Error with
+    NotFound code. *)
+let scenario_fs_read_nonexistent ~sw (module E : Execution_env.S) =
+  let scenario = "fs read nonexistent" in
+  let v =
+    match E.Fs.read_text_file ~path:"no_such_file_xyz.txt" ~sw with
+    | Ok _ -> Fail "expected Error but got Ok"
+    | Error e ->
+        if Pera_types.Types.equal_file_error_code e.code Pera_types.Types.NotFound
+        then Pass
+        else
+          Fail
+            (Format.asprintf "expected NotFound, got (%a) %s"
+               Pera_types.Types.pp_file_error_code e.code e.message)
+  in
+  print_verdict ~scenario v;
+  v
+
 (* ── Main ─────────────────────────────────────────────────────────────────── *)
 
 (** Run all scenarios under a switch. Returns exit code. *)
@@ -171,6 +267,10 @@ let run_scenarios ~sw env tmpdir =
       scenario_exec_exit_code ~sw (module E);
       scenario_exec_timeout ~sw (module E);
       scenario_find_sh (module E);
+      scenario_fs_write_read ~sw (module E);
+      scenario_fs_file_exists ~sw (module E);
+      scenario_fs_list_dir ~sw (module E);
+      scenario_fs_read_nonexistent ~sw (module E);
     ]
   in
   let passed =
