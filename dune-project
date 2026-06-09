@@ -65,7 +65,7 @@
    (and
     (>= 0.21)
     :with-test))
-  (mirage-crypto-rng ( >= 2.02))
+  (mirage-crypto-rng ( >= 2.0.0))
   (qcheck-core
    (and
     (>= 0.21)
