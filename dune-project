@@ -46,18 +46,26 @@
    (>= 1.0))
   (eio_linux
    (>= 1.0))
-  (piaf
-   (>= 0.2))
+  (cohttp-eio
+   (>= 6.0.0))
+  (tls-eio
+   (>= 2.0))
+  (ca-certs
+   (>= 1.0))
+  (domain-name
+   (>= 0.4))
   (logs
    (>= 0.7))
   (re
    (>= 1.10))
+  (uri (>= 4.0.0))
   (ppx_deriving
    (>= 1.6))
   (qcheck-alcotest
    (and
     (>= 0.21)
     :with-test))
+  (mirage-crypto-rng ( >= 2.0.0))
   (qcheck-core
    (and
     (>= 0.21)
@@ -244,3 +252,16 @@
    (and
     (>= 1.7)
     :with-test))))
+
+(package
+ (name pera_drivers)
+ (synopsis "Driver executables for Pera")
+ (allow_empty)
+ (description
+   "Driver executables for Pera - examples of how to use the Pera AI agent framework")
+ (depends 
+  (cmarkit (>= 0.4.0))
+  (logs
+   (>= 0.7))
+  )
+ )

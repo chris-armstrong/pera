@@ -301,6 +301,65 @@ let scenario_grep_search ~(grep : unit tool) ~(write : unit tool) env ~sw
           print_verdict ~tool:tool_name ~scenario v;
           v)
 
+(** Scenario 8: Write a file with more lines than Truncate.max_lines; read it
+    via the read tool; verify the output is shorter than the input and contains
+    the truncation footer. *)
+let scenario_read_truncation ~(read : unit tool) ~(write : unit tool) ~sw
+    ~cancel =
+  let scenario = "read truncation" in
+  let line_count = Pera_tools.Truncate.max_lines * 2 in
+  let content =
+    String.concat "\n" (List.init line_count (fun _ -> "x"))
+  in
+  match write_file ~t:write ~path:"big.txt" ~content ~sw ~cancel with
+  | Error msg ->
+      let v = Fail (Printf.sprintf "write failed: %s" msg) in
+      print_verdict ~tool:read.name ~scenario v;
+      v
+  | Ok () ->
+      let args = `Assoc [ ("path", `String "big.txt") ] in
+      (match read.execute ~ctx:() ~args ~sw ~cancel with
+      | Error e ->
+          let v = Fail (Printf.sprintf "read failed: %s" e.message) in
+          print_verdict ~tool:read.name ~scenario v;
+          v
+      | Ok (Tool_text output) ->
+          let input_len = String.length content in
+          let output_len = String.length output in
+          let is_shorter = output_len < input_len in
+          let has_marker = is_substring ~sub:"truncated" output in
+          let v =
+            if is_shorter && has_marker then Pass
+            else
+              Fail
+                (Printf.sprintf
+                   "expected shorter output with truncation marker: \
+                    is_shorter=%b has_marker=%b output_len=%d input_len=%d"
+                   is_shorter has_marker output_len input_len)
+          in
+          print_verdict ~tool:read.name ~scenario v;
+          v
+      | Ok _ ->
+          let v = Fail "read returned non-text output" in
+          print_verdict ~tool:read.name ~scenario v;
+          v)
+
+(** Scenario 9: Call read.execute with no "path" key in args; verify Error is
+    returned (not an exception, not Ok). *)
+let scenario_read_missing_path_arg ~(read : unit tool) ~sw ~cancel =
+  let scenario = "read missing path arg" in
+  let args = `Assoc [] in
+  let v =
+    match read.execute ~ctx:() ~args ~sw ~cancel with
+    | Ok _ -> Fail "expected Error for missing path arg, got Ok"
+    | Error e ->
+        if String.is_empty e.message then
+          Fail "Error returned but message is empty"
+        else Pass
+  in
+  print_verdict ~tool:read.name ~scenario v;
+  v
+
 (* ── Main ─────────────────────────────────────────────────────────────────── *)
 
 let () =
@@ -328,6 +387,8 @@ let () =
                 scenario_bash_echo ~bash ~sw ~cancel;
                 scenario_bash_exit_code ~bash ~sw ~cancel;
                 scenario_grep_search ~grep ~write (module E) ~sw ~cancel;
+                scenario_read_truncation ~read ~write ~sw ~cancel;
+                scenario_read_missing_path_arg ~read ~sw ~cancel;
               ])
         in
         Printf.printf "\n";

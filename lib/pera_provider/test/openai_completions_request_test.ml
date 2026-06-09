@@ -244,7 +244,7 @@ let test_zen_compat_presets_are_correct () =
 let test_go_compat_presets_are_correct () =
   let c = Openai_completions_request.opencode_go_compat in
   Alcotest.(check string) "base_url" "https://opencode.ai/zen/go" c.base_url;
-  Alcotest.(check string) "reasoning_field" "reasoning" c.reasoning_field;
+  Alcotest.(check string) "reasoning_field" "reasoning_content" c.reasoning_field;
   Alcotest.(check string)
     "max_tokens_field" "max_completion_tokens" c.max_tokens_field;
   Alcotest.(check bool)

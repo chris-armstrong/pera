@@ -18,12 +18,17 @@ type t = {
 let build_request_body = Openai_completions_request.build_request_body
 
 (** Dispatch a single [Types.assistant_message_event] from the interpreter:
-    terminal events (done/error) resolve [done_message]; all others are pushed
-    into the stream. *)
+    terminal events (done/error) close the stream immediately so the caller
+    unblocks without waiting for the HTTP connection to reach EOF. All other
+    events are pushed into the stream. *)
 let handle_ame stream done_message ame =
   match ame with
-  | Types.AME_done { message } -> done_message := Some (Ok message)
-  | Types.AME_error { message; _ } -> done_message := Some (Error message)
+  | Types.AME_done { message } ->
+      done_message := Some (Ok message);
+      Event_stream.close stream message
+  | Types.AME_error { message; _ } ->
+      done_message := Some (Error message);
+      Event_stream.close_error stream message
   | event -> Event_stream.push stream event
 
 (** Feed a single framed SSE event through the OpenAI interpreter and dispatch
@@ -37,8 +42,11 @@ let handle_framed interp_state stream done_message framed =
 
 (** Feed a raw SSE chunk through the SSE parser and dispatch all framed events.
 *)
+let log_chunks = Option.is_some (Sys.getenv_opt "PERA_LOG_CHUNKS")
+
 let process_chunk sse_state interp_state stream done_message chunk =
-  Log.debug (fun m -> m "raw chunk: %S" chunk);
+  if log_chunks then
+    Log.warn (fun m -> m "chunk: %S" chunk);
   let new_sse_state, framed_events = Sse_parser.feed !sse_state chunk in
   sse_state := new_sse_state;
   List.iter (handle_framed interp_state stream done_message) framed_events
@@ -59,8 +67,7 @@ let process_chunks stream ~(compat : Openai_completions_request.compat) =
   in
   let finalise () =
     match !done_message with
-    | Some (Ok message) -> Event_stream.close stream message
-    | Some (Error msg) -> Event_stream.close_error stream msg
+    | Some _ -> () (* stream already closed in handle_ame *)
     | None ->
         Event_stream.close_error stream
           "stream ended without a finish_reason or [DONE] sentinel"
@@ -83,8 +90,9 @@ let do_request ~provider ~model ~context ~options ~sw:_ stream =
   in
   let request_body_str = Yojson.Safe.to_string request_body in
   let full_url = provider.compat.base_url ^ "/v1/chat/completions" in
-  Log.debug (fun m -> m "POST %s  model=%s" full_url model.Types.id);
-  Log.debug (fun m -> m "request body: %s" request_body_str);
+  Log.info (fun m -> m "POST %s  model=%s" full_url model.Types.id);
+  if Option.is_some (Sys.getenv_opt "PERA_LOG_CHUNKS") then
+    Log.debug (fun m -> m "request body: %s" request_body_str);
   let headers = build_headers provider.api_key in
   let on_chunk, finalise = process_chunks stream ~compat:provider.compat in
   let http_result =

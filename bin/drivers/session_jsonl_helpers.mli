@@ -40,3 +40,10 @@ val print_verdict : tag:string -> scenario:string -> verdict -> unit
 
 val count_passed : (string * verdict) list -> int
 (** Count scenarios whose verdict is [Pass]. *)
+
+val parse_session_file_lenient : string -> Yojson.Safe.t list
+(** [parse_session_file_lenient path] reads the file at [path], splits on
+    newlines, and returns only the lines that parse as valid JSON, silently
+    skipping lines that raise. Used to verify crash-resilience: a partial
+    trailing line (simulating a crash mid-write) does not corrupt the
+    previously-fsync'd entries. *)

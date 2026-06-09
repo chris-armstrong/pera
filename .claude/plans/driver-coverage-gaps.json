@@ -1,0 +1,269 @@
+{
+  "plan_id": "driver-coverage-gaps",
+  "title": "Driver coverage gaps — M1–M5 audit findings",
+  "source": "Post-M5 audit of drivers against SPECIFICATION.md §11 (milestone properties) and §12 (driver catalogue). Gaps identified by comparing each driver's scenarios against the spec's 'Exercises' and 'What you learn' claims for that layer.",
+  "baseline": {
+    "build_passes": true,
+    "tests_pass": true,
+    "known_failures": [],
+    "notes": "M5 is complete. All existing drivers pass. This plan addresses scenarios that are absent from drivers but explicitly required or implied by the spec. Gaps are grouped by severity: Epoch 0 is on the M6 critical path (should_stop_after_turn is called by the compaction hook); Epoch 1 fills in the M4 driver claims the spec makes but aren't demonstrated; Epoch 2 is low-priority polish.\n\nGAPS FOUND:\n(M2) loop_driver: should_stop_after_turn, before_tool_call, after_tool_call, prepare_next_turn, transform_context hooks are entirely untested. Spec says 'The full turn-and-hook surface is exercised.' Only get_steering_messages and get_follow_up_messages are covered.\n(M2) loop_driver: thinking blocks (AME_thinking_start, AME_thinking_delta, AThinking content) never appear in any Faux_provider script.\n(M5) session_driver: 'fsync ordering survives a kill -9' is listed in the spec driver catalogue as what session_driver validates. No scenario exists. The practical test is crash-resilience: write N fsync'd entries, then append a partial line to the file (simulating a crash mid-write), verify the reader rejects the partial line while preserving the valid entries.\n(M4) env_driver: only exercises shell (Sh.*) operations. Spec says 'Local_env filesystem and shell operations one at a time.' No Fs.* scenarios exist; covered only by unit tests, not the driver.\n(M4) tool_driver: spec says 'Schema validation, truncation, output formatting.' No truncation scenario; no invalid-args scenario.\n(M1) provider_driver: thinking blocks never exercised against the real Anthropic API.\n(M3) No isolated provider-layer smoke test for the OpenAI completions SSE wire format."
+  },
+  "epochs": [
+    {
+      "epoch": 0,
+      "title": "M6 critical path — loop hooks + session crash resilience",
+      "status": "pending",
+      "description": "The two highest-severity gaps. should_stop_after_turn is the hook compaction will use to exit the inner loop; without a driver scenario it is unvalidated on the M6 critical path. The session_driver crash-resilience scenario is the spec's stated evidence for the M5 durability claim.",
+      "stages": [
+        {
+          "stage": 0,
+          "title": "loop_driver — full hook surface coverage",
+          "status": "pending",
+          "description": "Add six scenarios to loop_driver covering every untested hook in agent_loop_config. Uses Faux_provider.recorded_contexts to verify transform_context. Uses the existing run_scenario helper pattern.",
+          "files_to_create": [],
+          "files_to_modify": [
+            "bin/drivers/loop_driver.ml"
+          ],
+          "depends_on": [],
+          "implementation_notes": "Add the following scenarios after scenario_follow_up_message, before run_all_scenarios.\n\nSCENARIO 8 — should_stop_after_turn_halts_loop:\nProvide a 2-turn Faux script (turn 1: text reply EndTurn; turn 2: text reply EndTurn).\nConfigure should_stop_after_turn to return true after seeing 1 AE_turn_end.\nVerify: only 1 turn_start event fires; AE_agent_end is the last event; second Faux script turn is never consumed (Faux_provider raises Failure if over-consumed, so no extra assertion needed).\nImplementation:\n  let stop_count = ref 0 in\n  let should_stop_after_turn = Some (fun _ctx ->\n    incr stop_count;\n    Int.equal !stop_count 1) in\n  let config = make_config ~should_stop_after_turn stream_fn in\n  check: count_events is_turn_start events = 1 && check_agent_end_is_last events.\n\nSCENARIO 9 — before_tool_call_allow:\nScript a single echo tool call (ToolUse stop + follow-up EndTurn).\nbefore_tool_call returns Allow.\nVerify: tool executes (AE_tool_execution_end with is_error=false), loop completes normally.\n\nSCENARIO 10 — before_tool_call_deny:\nSame script.\nbefore_tool_call returns Deny \"blocked by policy\".\nVerify: AE_tool_execution_end fires with is_error=true; the tool result content contains \"blocked by policy\"; loop continues (follow-up turn runs) and AE_agent_end fires.\n\nSCENARIO 11 — after_tool_call_fires:\nScript a single echo tool call.\nafter_tool_call records each invocation (ref list of tool_call.id).\nVerify: after send, the recorded list has exactly 1 entry matching the echo tool call id.\n\nSCENARIO 12 — transform_context_applied:\nScript a single text turn (no tools).\ntransform_context appends a known synthetic agent_message (Agent_types.Real (UserMessage {role='user'; content=[UText 'INJECTED']}) to the messages before each LLM call.\nAfter run_scenario, call Faux_provider.recorded_contexts () and verify the first context's messages list contains a message with content text 'INJECTED'.\nNote: reset_recorded() at start of scenario.\n\nSCENARIO 13 — prepare_next_turn_update:\nScript 2 turns: turn 1 EndTurn, turn 2 EndTurn. Use should_stop_after_turn=None so both turns run.\nprepare_next_turn returns Some (Agent_types.{ messages=None; model=Some {id='prepared-model'; api='faux'}; thinking=None }).\nAfter run, call recorded_contexts () and verify the second context's model_id is 'prepared-model'.\nNote: Agent_types.turn_update is { messages: agent_message list option; model: model option; thinking: bool option }. Check the actual field names from agent_types.mli.\n\nAdd all 6 to run_all_scenarios and run_named_scenario match.\n\nNOTE on Agent_types.turn_update: verify the exact record structure in agent_types.mli before implementing scenario 13. If the field is model_override or similar, use the actual name.\n\nNOTE on before_tool_call Deny: the loop converts a Deny result to a tool result with is_error=true. Check agent_loop.ml around line 261 to confirm the exact error text plumbing so the content check is precise.",
+          "coding_guidelines_to_emphasize": [
+            "pera-specific.md — open Containers; no structural equality",
+            "test-patterns.md — driver exercises public interface; one scenario per claim"
+          ],
+          "test_requirements": {
+            "existing_tests": [
+              "all existing loop_driver scenarios must still pass"
+            ],
+            "new_tests": [
+              "should_stop_after_turn_halts_loop: only 1 turn fires",
+              "before_tool_call_allow: tool executes, is_error=false",
+              "before_tool_call_deny: tool is_error=true, deny message in result",
+              "after_tool_call_fires: hook called once, tool_call_id recorded",
+              "transform_context_applied: recorded_contexts shows injected message",
+              "prepare_next_turn_update: recorded_contexts second call uses updated model"
+            ],
+            "test_command": "./_build/default/bin/drivers/loop_driver.exe",
+            "notes": "All new scenarios use Faux_provider and the existing echo_tool or a trivial inline tool. No network required."
+          },
+          "acceptance_criteria": [
+            "dune build passes",
+            "All 13 scenarios print PASS",
+            "should_stop_after_turn: only 1 AE_turn_start event in output",
+            "before_tool_call Deny: AE_tool_execution_end shows is_error=true",
+            "transform_context: recorded_contexts contains injected message",
+            "prepare_next_turn: recorded_contexts second context uses updated model"
+          ]
+        },
+        {
+          "stage": 1,
+          "title": "session_driver — crash-resilience / fsync scenario",
+          "status": "pending",
+          "description": "Add a 'crash_resilience' scenario to session_driver that validates the spec claim: 'A process crash mid-write may leave a partial line, which a future reader rejects; otherwise the file is well-formed up to the last completed entry.' This is the observable evidence for 'fsync ordering survives a kill -9' in the spec's driver catalogue — the invariant being demonstrated is that every completed (fsync'd) write is readable, and a partial trailing write does not corrupt the previously-fsync'd entries.",
+          "files_to_create": [],
+          "files_to_modify": [
+            "bin/drivers/session_driver.ml",
+            "bin/drivers/session_jsonl_helpers.ml",
+            "bin/drivers/session_jsonl_helpers.mli"
+          ],
+          "depends_on": [],
+          "implementation_notes": "ADD to session_jsonl_helpers:\n\n(** Parse a session file tolerating a partial last line. Returns only the\n    lines that parse as valid JSON; skips lines that raise an exception. *)\nval parse_session_file_lenient : string -> Yojson.Safe.t list\n\nImplementation in session_jsonl_helpers.ml:\nlet parse_session_file_lenient path =\n  let contents = Stdlib.In_channel.(with_open_text path input_all) in\n  let lines = String.split_on_char '\\n' contents in\n  let nonempty = List.filter (fun s -> not (String.is_empty s)) lines in\n  List.filter_map (fun line ->\n    try Some (Yojson.Safe.from_string line)\n    with _ -> None) nonempty\n\nADD to session_driver.ml:\n\nSCENARIO 6 — crash_resilience:\nStep 1: create a Session_writer, call write_session_info + write_message (user) + write_message (assistant) + write_leaf. These 4 entries are each fsync'd before returning.\nStep 2: re-open the file and append a partial/malformed line (simulating a crash mid-write before fsync):\n  let oc = Stdlib.Out_channel.open_gen [Open_append; Open_binary] 0o644 path in\n  Stdlib.Out_channel.output_string oc \"{\\\"id\\\":\\\"partial-line-no-closing\";\n  Stdlib.Out_channel.close oc\nStep 3: call parse_session_file_lenient path.\nStep 4: verify:\n  (a) exactly 4 valid entries are returned (the partial line is skipped)\n  (b) verify_chain_and_leaves on those 4 entries returns Pass (tree structure intact)\n  (c) types are [session_info; message; message; leaf] in order\n\nNOTE: write_session_info must be called before write_message (it initialises the session and sets the parent chain). The 4 entries are: SessionInfo, UserMessage, AssistantMessage, Leaf.\n\nPRINT output: '[session] crash_resilience ... PASS' or FAIL with reason.\nAdd to the scenarios list in main so it prints with the others and is counted.\n\nThis scenario directly demonstrates the spec invariant without requiring Unix.fork or SIGKILL: the 4 entries written via Session_writer (each with Eio.File.sync) survive the subsequent append of a partial line, and the lenient reader recovers the intact tree.",
+          "coding_guidelines_to_emphasize": [
+            "test-patterns.md — scenario documents its invariant in a comment",
+            "pera-specific.md — open Containers"
+          ],
+          "test_requirements": {
+            "existing_tests": [
+              "all 5 existing session_driver scenarios still pass"
+            ],
+            "new_tests": [
+              "crash_resilience: 4 valid entries returned despite partial 5th line; verify_chain_and_leaves passes"
+            ],
+            "test_command": "./_build/default/bin/drivers/session_driver.exe",
+            "notes": "parse_session_file_lenient is a new export from session_jsonl_helpers. The existing parse_session_file remains unchanged (it uses from_string which raises on invalid JSON, appropriate for normal use). The lenient variant is only needed here."
+          },
+          "acceptance_criteria": [
+            "dune build passes",
+            "6/6 session_driver scenarios print PASS",
+            "crash_resilience: exactly 4 entries returned by lenient parser",
+            "crash_resilience: verify_chain_and_leaves passes on those 4 entries",
+            "crash_resilience: partial trailing line is not counted"
+          ]
+        }
+      ]
+    },
+    {
+      "epoch": 1,
+      "title": "M4 driver hardening — env_driver Fs + tool_driver truncation",
+      "status": "pending",
+      "description": "Fill in the M4 driver claims the spec makes but aren't demonstrated. env_driver only covers shell operations; the spec says 'filesystem and shell operations one at a time.' tool_driver doesn't verify truncation or invalid-arg handling; the spec says 'Schema validation, truncation, output formatting.'",
+      "stages": [
+        {
+          "stage": 2,
+          "title": "env_driver — filesystem operation scenarios",
+          "status": "pending",
+          "description": "Add Fs.* scenarios to env_driver covering the filesystem half of Local_env. The spec's driver catalogue says env_driver exercises 'Local_env filesystem and shell operations one at a time.' Currently only shell operations are covered.",
+          "files_to_create": [],
+          "files_to_modify": [
+            "bin/drivers/env_driver.ml"
+          ],
+          "depends_on": [],
+          "implementation_notes": "Add the following scenarios to env_driver. Each uses the existing (module E : Execution_env.S) pattern. The tmpdir is already created by make_temp_dir.\n\nSCENARIO 6 — fs_write_read:\n  let module E = ... in\n  (match E.Fs.write_file ~path:\"hello.txt\" ~content:\"hello world\" with\n  | Error e -> Fail ...\n  | Ok () ->\n    match E.Fs.read_file ~path:\"hello.txt\" with\n    | Error e -> Fail ...\n    | Ok content ->\n      if String.equal (String.trim content) \"hello world\" then Pass\n      else Fail ...)\n\nSCENARIO 7 — fs_file_exists:\n  Write \"exists.txt\", verify E.Fs.file_exists ~path:\"exists.txt\" = true.\n  Verify E.Fs.file_exists ~path:\"nonexistent.txt\" = false.\n\nSCENARIO 8 — fs_list_dir:\n  Write two files \"a.txt\" and \"b.txt\" in tmpdir.\n  E.Fs.list_dir ~path:\".\" -> verify result contains both filenames.\n\nSCENARIO 9 — fs_read_nonexistent:\n  E.Fs.read_file ~path:\"no_such_file.txt\" -> verify result is Error with code NotFound (or equivalent).\n  Check Pera_types.Types.equal_file_error_code e.code NotFound.\n\nSCENARIO 10 — fs_write_creates_parent_dirs (optional, skip if not supported):\n  E.Fs.write_file ~path:\"subdir/nested.txt\" ~content:\"x\" -> if Ok, verify file exists.\n  If Error (mkdir not supported), Skip with reason.\n\nAdd all to run_scenarios list. Count Skips separately.\n\nNOTE: Check the actual Execution_env.S Fs module interface in lib/pera_env/execution_env.mli for exact function signatures (read_file, write_file, file_exists, list_dir). The error type may be file_error or execution_error; use the right comparison.",
+          "coding_guidelines_to_emphasize": [
+            "pera-specific.md — IO functions return Result, never raise",
+            "test-patterns.md — driver exercises public interface"
+          ],
+          "test_requirements": {
+            "existing_tests": [
+              "all 5 existing env_driver scenarios still pass"
+            ],
+            "new_tests": [
+              "fs_write_read: write file, read it back, content matches",
+              "fs_file_exists: exists for written file, false for nonexistent",
+              "fs_list_dir: written files appear in directory listing",
+              "fs_read_nonexistent: Error with NotFound code"
+            ],
+            "test_command": "./_build/default/bin/drivers/env_driver.exe",
+            "notes": "These operations are already covered by local_env_fs_test.ml unit tests. The driver scenarios are required to produce observable layer-level evidence, not to add new coverage."
+          },
+          "acceptance_criteria": [
+            "dune build passes",
+            "All Fs scenarios print PASS (or SKIP with reason if not supported)",
+            "fs_read_nonexistent: Error with expected error code, not an exception"
+          ]
+        },
+        {
+          "stage": 3,
+          "title": "tool_driver — truncation and invalid-args scenarios",
+          "status": "pending",
+          "description": "Add two scenarios to tool_driver: one verifying output truncation on large files (the spec says 'truncation, output formatting'), one verifying graceful error on invalid/missing args (the spec says 'schema validation').",
+          "files_to_create": [],
+          "files_to_modify": [
+            "bin/drivers/tool_driver.ml"
+          ],
+          "depends_on": [],
+          "implementation_notes": "SCENARIO 8 — read_truncation:\nWrite a file with content larger than the read tool's truncation limit. The read tool uses Pera_tools.Truncate; check truncate.mli for the default limit (likely ~8000 chars or similar).\nWrite a file with 20000 'x' characters.\nRead it via the read tool.\nVerify the output:\n  (a) is shorter than the input (truncation occurred)\n  (b) contains a truncation marker (check Truncate for the exact marker string — likely something like '[... truncated]' or similar)\n\nSCENARIO 9 — read_missing_path_arg:\nCall read.execute ~ctx:() ~args:(`Assoc []) ~sw ~cancel (no 'path' key).\nVerify: result is Error e and e.message is non-empty.\nThis demonstrates that the tool handles missing required arguments gracefully without raising.\n\nNote on schema validation: schema validation (Json_schema coercion) happens in the agent loop, not in tool.execute. The tool.execute receives pre-coerced args. 'Invalid args' at the tool level means the tool does its own defensive arg extraction — read_tool extracts 'path' with a fallback. The test should pass empty args and confirm the tool returns a sensible error rather than raising or panicking.\n\nCheck Pera_tools.Truncate for the actual max output size and marker string before writing the scenario, to avoid hardcoding the wrong values.\n\nAdd both to the Eio.Cancel.sub verdicts list in main.",
+          "coding_guidelines_to_emphasize": [
+            "test-patterns.md — driver exercises public interface",
+            "naming-and-intermediates.md — name the truncation limit constant"
+          ],
+          "test_requirements": {
+            "existing_tests": [
+              "all 7 existing tool_driver scenarios still pass"
+            ],
+            "new_tests": [
+              "read_truncation: output shorter than input and contains truncation marker",
+              "read_missing_path_arg: returns Error with non-empty message"
+            ],
+            "test_command": "./_build/default/bin/drivers/tool_driver.exe",
+            "notes": "Check Pera_tools.Truncate.max_output_chars or equivalent for the exact limit. The marker string is in truncate.ml."
+          },
+          "acceptance_criteria": [
+            "dune build passes",
+            "read_truncation: output length < input length AND truncation marker present",
+            "read_missing_path_arg: Error returned (not exception, not Ok)"
+          ]
+        }
+      ]
+    },
+    {
+      "epoch": 2,
+      "title": "Low-priority polish — thinking blocks + OpenAI completions smoke test",
+      "status": "pending",
+      "description": "Lower-priority gaps: thinking blocks in loop_driver and provider_driver (M1/M2 vocabulary claims), and a standalone OpenAI completions provider smoke test (M3 isolation property).",
+      "stages": [
+        {
+          "stage": 4,
+          "title": "loop_driver — thinking block scenario",
+          "status": "pending",
+          "description": "Add a scenario where the Faux_provider emits AME_thinking_start + AME_thinking_delta events and the final message contains AThinking content. Validates that thinking blocks flow through the loop correctly and appear in AE_message_end.",
+          "files_to_create": [],
+          "files_to_modify": [
+            "bin/drivers/loop_driver.ml"
+          ],
+          "depends_on": [
+            0
+          ],
+          "implementation_notes": "SCENARIO 14 — thinking_blocks:\nBuild a Faux turn where events include:\n  AME_thinking_start { partial = partial_msg }\n  AME_thinking_delta { text = \"thinking step\"; partial = partial_msg }\n  AME_text_start { partial = partial_msg }\n  AME_text_delta { text = \"answer\"; partial = final_msg }\nThe final_msg has content = [ AThinking { text=\"thinking step\"; signature=None }; AText \"answer\" ].\nVerify:\n  (a) AE_message_end fires with a message containing AThinking content\n  (b) AE_agent_end is last\n\nCheck: List.exists (function\n  | AE_message_end { message = Real (AssistantMessage am) } ->\n      List.exists (function AThinking _ -> true | _ -> false) am.content\n  | _ -> false) events",
+          "coding_guidelines_to_emphasize": [
+            "test-patterns.md — one scenario per claim"
+          ],
+          "test_requirements": {
+            "existing_tests": [
+              "all existing loop_driver scenarios still pass"
+            ],
+            "new_tests": [
+              "thinking_blocks: AE_message_end contains AThinking content block"
+            ],
+            "test_command": "./_build/default/bin/drivers/loop_driver.exe",
+            "notes": "No network required. Pure Faux_provider scenario."
+          },
+          "acceptance_criteria": [
+            "thinking_blocks scenario prints PASS",
+            "AThinking content visible in AE_message_end event"
+          ]
+        },
+        {
+          "stage": 5,
+          "title": "provider_driver — thinking scenario",
+          "status": "pending",
+          "description": "Add an optional thinking-enabled scenario to provider_driver. Requires ANTHROPIC_API_KEY. Sends a prompt with thinking enabled and verifies AME_thinking_start/AME_thinking_delta events arrive. Validates M1's claim that the provider event vocabulary is adequate for the Anthropic API.",
+          "files_to_create": [],
+          "files_to_modify": [
+            "bin/drivers/provider_driver.ml"
+          ],
+          "depends_on": [],
+          "implementation_notes": "Add a second scenario to provider_driver, triggered when argv[1] = 'thinking'.\nBuild a provider context with thinking = true and a prompt that requires reasoning (e.g. 'What is the 15th prime number? Show your reasoning.').\nStream and print events. Verify at least one AME_thinking_start event fires before done.\nPrint: 'thinking scenario: PASS' or 'FAIL: no thinking events'.\n\nThe existing default scenario (no argv) is unchanged. New invocation: ./provider_driver.exe thinking\n\nNote: thinking budget may need to be set in options. Check Anthropic_provider.stream_simple for how thinking is enabled — it may require a thinking budget in the options or context. Consult anthropic_provider.ml.",
+          "coding_guidelines_to_emphasize": [
+            "test-patterns.md — skip gracefully if API key absent (already handled)"
+          ],
+          "test_requirements": {
+            "existing_tests": [
+              "default provider_driver scenario still passes when API key present"
+            ],
+            "new_tests": [
+              "thinking scenario: AME_thinking_start event fires"
+            ],
+            "test_command": "ANTHROPIC_API_KEY=... ./_build/default/bin/drivers/provider_driver.exe thinking",
+            "notes": "Manual only — requires real API key. Skip if absent."
+          },
+          "acceptance_criteria": [
+            "dune build passes",
+            "thinking scenario: at least one AME_thinking_start event printed",
+            "existing default scenario unaffected"
+          ]
+        },
+        {
+          "stage": 6,
+          "title": "OpenAI completions isolated provider smoke test",
+          "status": "pending",
+          "description": "Add an OpenAI-completions path to provider_driver (or a separate openai_driver) that exercises the OpenAI completions SSE pipeline in isolation — one streamed completion, events printed, exit 0. Validates M3's isolation property: the OpenAI completions provider and its SSE interpreter work against the real wire format independently of the loop.",
+          "files_to_create": [],
+          "files_to_modify": [
+            "bin/drivers/provider_driver.ml",
+            "bin/drivers/dune"
+          ],
+          "depends_on": [],
+          "implementation_notes": "Add an OpenAI completions path to provider_driver triggered by argv[1] = 'openai-completions'.\nRequires OPENAI_COMPAT env var (or OPENAI_API_KEY). Skip if absent.\nUse Openai_completions_provider.create ~env ~sw.\nSend a simple prompt (same weather question or simpler).\nPrint events using describe_event.\nVerify at least one AME_text_delta fires and final stop_reason is end_turn.\n\nAlternatively: create a minimal separate standalone binary openai_provider_driver.ml. Either approach is acceptable. The goal is an isolated test of the OpenAI completions SSE pipeline without routing through the loop.\n\nCheck OPENAI_COMPAT env var handling in openai_completions_provider.ml to understand how to construct a provider instance (base_url, api_key). Mirror provider_driver's Anthropic pattern.",
+          "coding_guidelines_to_emphasize": [
+            "test-patterns.md — skip gracefully when env vars absent"
+          ],
+          "test_requirements": {
+            "existing_tests": [
+              "existing provider_driver scenarios unaffected"
+            ],
+            "new_tests": [
+              "openai-completions scenario: at least one AME_text_delta, final stop_reason = end_turn"
+            ],
+            "test_command": "OPENAI_COMPAT=... ./_build/default/bin/drivers/provider_driver.exe openai-completions",
+            "notes": "Manual only. Skip if OPENAI_COMPAT (or equivalent) not set."
+          },
+          "acceptance_criteria": [
+            "dune build passes",
+            "openai-completions scenario prints PASS or SKIP when env var absent",
+            "When run with credentials: at least one AME_text_delta event; exit 0"
+          ]
+        }
+      ]
+    }
+  ]
+}
