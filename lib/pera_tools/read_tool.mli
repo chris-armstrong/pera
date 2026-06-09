@@ -4,7 +4,7 @@
     as [Tool_text], with truncation and offset/limit support. *)
 
 val read :
-  (module Pera_harness.Execution_env.S) -> (unit Pera_core.Agent_types.tool)
+  (module Pera_env.Execution_env.S) -> (unit Pera_core.Agent_types.tool)
 (** [read env] constructs a read tool that reads files through [env].
 
     Schema arguments:

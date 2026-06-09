@@ -16,11 +16,12 @@ depends: [
   "eio" {>= "1.0"}
   "eio_main" {>= "1.0"}
   "eio_linux" {>= "1.0"}
-  "piaf" {>= "0.2"}
   "logs" {>= "0.7"}
   "re" {>= "1.10"}
+  "uri" {>= "4.0.0"}
   "ppx_deriving" {>= "1.6"}
   "qcheck-alcotest" {>= "0.21" & with-test}
+  "mirage-crypto-rng.unix" {>= "2.02"}
   "qcheck-core" {>= "0.21" & with-test}
   "odoc" {with-doc}
 ]

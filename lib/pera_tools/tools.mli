@@ -9,19 +9,19 @@ type local_tool = unit Pera_core.Agent_types.tool
     execute receives [~ctx:()]. The loop config for these tools uses
     [tool_ctx = ()]. *)
 
-val read : (module Pera_harness.Execution_env.S) -> local_tool
+val read : (module Pera_env.Execution_env.S) -> local_tool
 (** [read env] constructs a read tool. See {!Read_tool.read}. *)
 
-val write : (module Pera_harness.Execution_env.S) -> local_tool
+val write : (module Pera_env.Execution_env.S) -> local_tool
 (** [write env] constructs a write tool. See {!Write_tool.write}. *)
 
-val bash : (module Pera_harness.Execution_env.S) -> local_tool
+val bash : (module Pera_env.Execution_env.S) -> local_tool
 (** [bash env] constructs a bash tool. See {!Bash_tool.bash}. *)
 
-val grep : (module Pera_harness.Execution_env.S) -> local_tool
+val grep : (module Pera_env.Execution_env.S) -> local_tool
 (** [grep env] constructs a grep tool. See {!Grep_tool.grep}. *)
 
-val default : (module Pera_harness.Execution_env.S) -> local_tool list
+val default : (module Pera_env.Execution_env.S) -> local_tool list
 (** [default env] returns [[read env; write env; bash env; grep env]]. This is
     the standard assembly function for building all four tools from a single
     execution environment.

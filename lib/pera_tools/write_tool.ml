@@ -13,8 +13,8 @@ let write_schema =
       ]
     ()
 
-let write (env : (module Pera_harness.Execution_env.S)) =
-  let module E = (val env : Pera_harness.Execution_env.S) in
+let write (env : (module Pera_env.Execution_env.S)) =
+  let module E = (val env : Pera_env.Execution_env.S) in
   {
     Pera_core.Agent_types.name = "write";
     description =

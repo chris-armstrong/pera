@@ -35,10 +35,17 @@ Apply changes per the coding guidelines. After each significant edit, run `dune 
 
 Pera-specific reminders:
 - `open Containers` at top of every `.ml`
-- No `(=)` or `(<>)` on non-primitive types
+- No `(=)` or `(<>)` on non-primitive types — use `String.equal`, `Int.equal`, etc.
+- `List.mem`, `List.assoc`, `List.sort`, etc.: always pass `~eq` / `~cmp` explicitly
+- **`List.nth` is banned** — use `List.nth_opt`, pattern matching, or destructuring instead
+- **Nesting ≤ 2 levels** — if you are about to write a third `match`/`if` inside an existing one, stop and extract a named helper or use `Result.Syntax`/`Option.Syntax` bind instead. Write flat, not deep.
 - Option/Result via library functions and bind operators — not match
 - IO functions return `Result`, never raise on expected failures
 - Fibres under a switch, not detached
+
+Driver executable reminders (applies to any file in `bin/drivers/`):
+- Each scenario runs under its own `Eio.Switch.run` so one scenario's fibre crash does not abort the suite
+- Shared JSONL/file inspection helpers go in a shared module — do not copy helpers across driver files
 
 ## Step 5 — Self-Review (mandatory before formatting)
 

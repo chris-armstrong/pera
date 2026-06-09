@@ -7,6 +7,7 @@ type 'ctx should_stop_ctx = {
   tool_results : Pera_types.Types.tool_result_content list;
   messages : Agent_types.agent_message list;
   tool_ctx : 'ctx;
+  emit : Agent_types.agent_event -> unit;
 }
 
 type 'ctx prepare_ctx = {
@@ -385,6 +386,7 @@ let rec run_inner ~config ~model_ref ~options_ref ~messages_ref ~pending ~sw
             tool_results;
             messages = !messages_ref;
             tool_ctx = config.tool_ctx;
+            emit = (fun ev -> push_event out_stream ev);
           }
   in
   let invoke_prepare_next_turn ~final_agent_msg ~tool_results =

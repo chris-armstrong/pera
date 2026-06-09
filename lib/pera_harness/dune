@@ -1,7 +1,8 @@
 (library
  (name pera_harness)
  (public_name pera-harness)
- (modules execution_env local_env)
- (libraries pera_types eio eio_main eio_linux unix containers fpath)
+ (modules entry_id session_types session_writer agent_wrapper)
+ (libraries pera_types pera_provider pera_core eio eio_main eio_linux unix
+            containers yojson uuidm decimal)
  (preprocess
   (pps ppx_deriving.eq ppx_deriving.show)))

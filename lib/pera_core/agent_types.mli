@@ -8,17 +8,35 @@
 
 (** {1 Agent messages} *)
 
-(** Uninhabited sum for forward-compatibility. New synthetic kinds (e.g.
-    compaction summaries) will be added as constructors here at M6. *)
-type synthetic = |
+(** Synthetic message kinds. *)
+type synthetic = Compaction_summary of { summary : string }
 
-(** Agent-level message: a real provider message, or a synthetic one. The
-    [Synthetic] case is uninhabited in v1; pattern-matching on it can use the
-    refutation syntax [| Synthetic s -> .] *)
+val equal_synthetic : synthetic -> synthetic -> bool
+val pp_synthetic : Format.formatter -> synthetic -> unit
+val show_synthetic : synthetic -> string
+
+val compaction_framing : string
+(** ["Context from earlier conversation:\n\n"] — the user-role framing
+    prepended to a compaction summary when it is rendered for the LLM. *)
+
+val synthetic_to_message : synthetic -> Pera_provider.Provider.message
+(** Render a synthetic message into the provider message the LLM sees. For
+    [Compaction_summary {summary}] this is a user message whose single text
+    block is [compaction_framing ^ summary]. *)
+
+(** Agent-level message: a real provider message, or a synthetic one. *)
 type agent_message =
   | Real of Pera_provider.Provider.message
       (** A real provider message (user, assistant, or tool result). *)
-  | Synthetic of synthetic  (** A synthetic message kind; uninhabited in v1. *)
+  | Synthetic of synthetic  (** A synthetic message kind. *)
+
+val to_provider_message : agent_message -> Pera_provider.Provider.message
+(** [Real m -> m]; [Synthetic s -> synthetic_to_message s]. The canonical
+    agent-to-provider message projection.
+
+    NOTE: every synthetic in M6 is LLM-visible, so this is total. If a future
+    {i invisible} synthetic is added, change the return type to [option] and
+    have [convert_to_llm] [filter_map] over it. *)
 
 (** {1 Tool types} *)
 
@@ -103,6 +121,15 @@ type agent_event =
     }
       (** A tool execution has completed. [is_error] is [true] when the tool
           returned an error or raised an exception. *)
+  | AE_compaction_start
+      (** Autonomous compaction has begun (threshold crossed). *)
+  | AE_compaction_end of { summary : string }
+      (** Compaction succeeded; [summary] is the produced summary text. The
+          harness session subscriber writes the Compaction entry, the synthetic
+          user message, and a Leaf in response to this event. *)
+  | AE_compaction_error of { message : string }
+      (** Compaction failed; [message] describes the failure. The context is
+          unchanged and the run continues uncompacted. *)
 
 val equal_agent_event : agent_event -> agent_event -> bool
 (** Derived structural equality for {!agent_event}. Uses [agent_message_equal]
@@ -186,6 +213,5 @@ type stream_fn =
 (** {1 Equality helpers} *)
 
 val agent_message_equal : agent_message -> agent_message -> bool
-(** Structural equality for {!agent_message}. The [Synthetic] case is
-    uninhabited; only [Real] messages are compared. Uses
-    [Provider.equal_message]. *)
+(** Structural equality for {!agent_message}. Uses [Provider.equal_message]
+    for [Real] messages and [equal_synthetic] for [Synthetic] messages. *)

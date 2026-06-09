@@ -89,17 +89,17 @@ let describe_agent_event = function
   | Agent_types.AE_tool_execution_update _ -> "[tool_update]"
   | Agent_types.AE_tool_execution_end { tool_name; is_error; _ } ->
       Printf.sprintf "[tool_end] name=%s error=%b" tool_name is_error
+  | Agent_types.AE_compaction_start -> "[compaction_start]"
+  | Agent_types.AE_compaction_end { summary } ->
+      Printf.sprintf "[compaction_end] summary_len=%d" (String.length summary)
+  | Agent_types.AE_compaction_error { message } ->
+      Printf.sprintf "[compaction_error] %s" message
 
 (** {1 Helpers} *)
 
-(** Default convert_to_llm: filter Real messages, refute Synthetic. *)
+(** Default convert_to_llm: project agent messages to provider messages. *)
 let default_convert_to_llm msgs =
-  List.filter_map
-    (fun msg ->
-      match msg with
-      | Agent_types.Real m -> Some m
-      | Agent_types.Synthetic _ -> .)
-    msgs
+  List.map Agent_types.to_provider_message msgs
 
 (** Build a user [agent_message]. *)
 let make_user_message text =
@@ -149,7 +149,7 @@ let run_scenario ~name ~messages ~sw ~check_result config =
           | Agent_types.Real (Provider.AssistantMessage _) -> true
           | Agent_types.Real (Provider.UserMessage _) -> false
           | Agent_types.Real (Provider.ToolResultMessage _) -> false
-          | Agent_types.Synthetic _ -> .)
+          | Agent_types.Synthetic _ -> false)
         (List.rev msgs)
     in
     match last_assistant with
@@ -166,7 +166,7 @@ let run_scenario ~name ~messages ~sw ~check_result config =
           Printf.printf "  => text: %s\n%!" (String.concat "" text)
     | Some (Agent_types.Real (Provider.UserMessage _)) -> ()
     | Some (Agent_types.Real (Provider.ToolResultMessage _)) -> ()
-    | Some (Agent_types.Synthetic _) -> .
+    | Some (Agent_types.Synthetic _) -> ()
     | None -> ()
   in
   match iter_result with

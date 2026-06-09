@@ -17,6 +17,10 @@ type 'ctx should_stop_ctx = {
   messages : Agent_types.agent_message list;
       (** The full conversation history after this turn. *)
   tool_ctx : 'ctx;  (** The tool context from the loop config. *)
+  emit : Agent_types.agent_event -> unit;
+      (** Push an event into the loop's own event stream, in order, after this
+          turn's [AE_turn_end] and before the next turn. Used by the harness
+          compaction hook to emit [AE_compaction_*] events. *)
 }
 (** Context passed to the [should_stop_after_turn] hook. *)
 

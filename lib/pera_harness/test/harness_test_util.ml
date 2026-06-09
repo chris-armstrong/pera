@@ -1,3 +1,5 @@
+open Containers [@@warning "-33"]
+
 let make_temp_dir env =
   let tmpdir = Filename.get_temp_dir_name () in
   let buf = Cstruct.create 8 in
