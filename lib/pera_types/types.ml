@@ -47,7 +47,10 @@ type usage = {
   output_tokens : int;
   cache_read_tokens : int;
   cache_write_tokens : int;
-  cost_usd : float option;
+  cost_usd :
+    (Decimal.t option
+    [@equal fun a b -> Option.equal (fun x y -> Decimal.compare x y = 0) a b]
+    [@printer fun fmt v -> Option.pp Decimal.pp fmt v]);
 }
 [@@deriving eq, show]
 

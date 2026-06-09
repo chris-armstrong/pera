@@ -2,9 +2,9 @@
  (name pera_tools_test_util)
  (wrapped false)
  (modules test_util)
- (libraries pera_harness_test_util pera_harness alcotest eio))
+ (libraries pera_harness_test_util pera_env alcotest eio))
 
 (tests
  (names read_tool_test write_tool_test bash_tool_test grep_tool_test)
  (modules read_tool_test write_tool_test bash_tool_test grep_tool_test)
- (libraries pera_tools_test_util pera_tools pera_harness pera_types eio eio_main eio_linux alcotest containers))
+ (libraries pera_tools_test_util pera_tools pera_env pera_types eio eio_main eio_linux alcotest containers))

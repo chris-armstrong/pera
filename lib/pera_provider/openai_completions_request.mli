@@ -10,6 +10,10 @@ type compat = {
           ["max_tokens"]. *)
   require_tool_result_name : bool;
       (** When [true], tool-result messages must include a [name] field. *)
+  enable_thinking_field : string option;
+      (** If [Some field], send [field: true] when [context.thinking = true].
+          [None] for providers that enable thinking via model selection
+          (e.g. OpenAI o-series). *)
 }
 (** Per-endpoint compatibility configuration for the OpenAI chat-completions
     API.

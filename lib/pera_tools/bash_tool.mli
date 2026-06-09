@@ -6,7 +6,7 @@
     [Error tool_error]. *)
 
 val bash :
-  (module Pera_harness.Execution_env.S) -> unit Pera_core.Agent_types.tool
+  (module Pera_env.Execution_env.S) -> unit Pera_core.Agent_types.tool
 (** [bash env] constructs a bash tool that executes commands through [env].
 
     Schema arguments:

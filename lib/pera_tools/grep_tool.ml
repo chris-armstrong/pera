@@ -77,8 +77,8 @@ let handle_grep_output ~exit_code ~stdout_str ~stderr_str =
       let msg = if String.is_empty stderr_str then stdout_str else stderr_str in
       Error { Pera_types.Types.message = msg; is_user_error = false }
 
-let grep (env : (module Pera_harness.Execution_env.S)) =
-  let module E = (val env : Pera_harness.Execution_env.S) in
+let grep (env : (module Pera_env.Execution_env.S)) =
+  let module E = (val env : Pera_env.Execution_env.S) in
   (* Memoised rg path: None = unchecked, Some None = not found,
      Some (Some p) = found at p *)
   let rg_path : string option option ref = ref None in
@@ -140,7 +140,7 @@ let grep (env : (module Pera_harness.Execution_env.S)) =
             Error
               { Pera_types.Types.message = e.message; is_user_error = false }
         | Ok result ->
-            let exit_code = result.Pera_harness.Execution_env.exit_code in
+            let exit_code = result.Pera_env.Execution_env.exit_code in
             let stdout_str = Buffer.contents stdout_buf in
             let stderr_str = Buffer.contents stderr_buf in
             handle_grep_output ~exit_code ~stdout_str ~stderr_str);

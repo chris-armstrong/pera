@@ -5,7 +5,7 @@
     fallback. *)
 
 val grep :
-  (module Pera_harness.Execution_env.S) -> unit Pera_core.Agent_types.tool
+  (module Pera_env.Execution_env.S) -> unit Pera_core.Agent_types.tool
 (** [grep env] constructs a grep tool that searches files through [env].
 
     Schema arguments:

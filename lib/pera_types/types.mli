@@ -88,9 +88,9 @@ type usage = {
   output_tokens : int;
   cache_read_tokens : int;
   cache_write_tokens : int;
-  cost_usd : float option;
+  cost_usd : Decimal.t option;
       (** Estimated cost in US dollars; [None] if the provider does not report
-          it. *)
+          it. Serialised as a JSON string via [Decimal.to_string]. *)
 }
 (** Token usage and cost for a single LLM call. *)
 
