@@ -81,7 +81,9 @@ let stop_reason_string = function
   | Types.Aborted -> "aborted"
 
 let run_default_scenario ~model_id ~prompt_text ~max_tokens =
-  let model = Types.{ id = model_id; api = "anthropic" } in
+  let model =
+    Types.{ id = model_id; api = "anthropic"; context_window = 200_000 }
+  in
   let user_msg =
     Types.{ role = "user"; content = [ Types.UText prompt_text ] }
   in
@@ -120,7 +122,10 @@ let run_default_scenario ~model_id ~prompt_text ~max_tokens =
       exit 1
 
 let run_thinking_scenario () =
-  let model = Types.{ id = "claude-sonnet-4-5"; api = "anthropic" } in
+  let model =
+    Types.
+      { id = "claude-sonnet-4-5"; api = "anthropic"; context_window = 200_000 }
+  in
   let user_msg =
     Types.
       {
@@ -214,7 +219,14 @@ let run_openai_completions_scenario ~model_id ~prompt_text ~max_tokens ~thinking
              Printf.printf
                "(set PERA_LOG=debug to see the raw request/response)\n%!"
          | Some _ -> ());
-         let model = Types.{ id = model_id; api = "openai-completions" } in
+         let model =
+           Types.
+             {
+               id = model_id;
+               api = "openai-completions";
+               context_window = 128_000;
+             }
+         in
          let provider = Openai_completions_provider.create ~env ~sw in
          Printf.printf "(request sent, waiting for first token...)\n%!";
          let stream =

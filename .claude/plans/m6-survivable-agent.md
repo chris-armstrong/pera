@@ -15,6 +15,25 @@ resolve every ambiguity; do not revisit them without asking.
 
 ---
 
+## Progress (as of 2026-06-09)
+
+| Stage | Title | Status | Notes |
+|---|---|---|---|
+| 0 | Agent-core extensions | ✅ **DONE** | All refutation sites collapsed to `List.map Agent_types.to_provider_message`; `emit` added to `should_stop_ctx`; subscriber stub arms present in `agent_harness.ml`. |
+| 1 | `Token_estimator` + `Model_window` | ✅ **DONE — deviation** | Both modules landed in `pera_core` (not `pera_harness`) per commit `3fcc8ae`. Rationale: pure functions over `pera_provider`/`pera_types`; no harness dependency; `pera_core` already has `yojson`. |
+| 1.5 | `context_window` on `Types.model` (prerequisite) | ✅ **DONE** | Resolution of Open Question 3 (Option 1). `Pera_types.Types.model` now has `context_window : int`; `Model_window.for_model` is `fun m -> m.context_window`; api/id-prefix table deleted. All ~20 construction sites updated. Session-types JSON codec serialises `context_window` alongside `id`/`api`. `model_window_test.ml` rewritten with five cases (incl. variant disambiguation and small-OpenAI-compatible cases). Build + tests green. |
+| 2 | `Session_writer.write_compaction` | ⬜ pending | `session_writer.mli` does not yet expose `write_compaction`. |
+| 3 | `Compaction` module | ⬜ pending | No `lib/pera_harness/compaction.{ml,mli}` exists. |
+| 4 | `Agent_harness` compaction wiring | ⬜ pending | `Agent_harness.config` has no `compaction` field; subscriber has stub arms only. |
+| 5 | `compaction_driver` + `session_driver` scenario 6 | ⬜ pending | No `bin/drivers/compaction_driver.ml`. |
+| 6 | `harness_driver` autonomous-compaction scenario | ⬜ pending | `harness_driver.ml` has the three M5 scenarios but no compaction scenario. |
+| 7 | Docs + verification sweep | ⬜ pending | `AGENTS.md` / `USAGE.md` untouched. |
+
+Build state at the time of this update: `dune build` and `dune runtest` both green on the
+merged worktree (m6 + main).
+
+---
+
 ## Settled design decisions
 
 These are **decided**. They are the load-bearing choices for M6. Do not deviate.
@@ -116,7 +135,7 @@ These are **decided**. They are the load-bearing choices for M6. Do not deviate.
 
 ---
 
-## Open questions (none blocking)
+## Open questions
 
 - **Q (resolved → decision 1):** `Real` user message vs. `Synthetic` constructor for the
   summary. Chosen: `Synthetic` (spec-faithful). The alternative (store as `Real`) was
@@ -124,6 +143,49 @@ These are **decided**. They are the load-bearing choices for M6. Do not deviate.
   intends the `Synthetic` arm to grow here.
 - **Q (resolved → decision 5):** how compaction events reach subscribers. Chosen: a
   `should_stop_ctx.emit` field routing through the loop's own stream (correct ordering).
+- **Q3 (RESOLVED 2026-06-09 → Option 1):** `Model_window.for_model`
+  currently keys context-window size by `model.id` prefix + `model.api`, returning
+  `anthropic_window = 200_000` or `openai_window = 128_000`. This is **wrong** for the
+  realistic deployment surface:
+  - Claude 4.x families have **both 200K and 1M context-window variants**
+    (e.g. `claude-opus-4-7` vs. `claude-opus-4-7[1m]`) — same `id` prefix, same `api`,
+    different windows.
+  - `api = "openai-completions"` covers anything that speaks the OpenAI Chat-Completions
+    protocol: gpt-4o (128K), gpt-4 (8K/32K), local llama (4K/8K), DeepSeek (64K),
+    Qwen (128K+), self-hosted vLLM (anything). A single 128K constant overshoots small
+    local models (dangerous — won't trigger compaction until after overflow) and
+    undershoots large ones.
+
+  Three resolution shapes, in increasing invasiveness:
+
+  1. **(Preferred) Add `context_window : int` (and optionally `output_window : int`) to
+     `Pera_types.Types.model`.** The caller already chose the model; making the window a
+     property of the chosen model record is the right ownership. `Model_window.for_model`
+     becomes `fun (m : model) -> m.context_window`; the api/id-prefix table goes away.
+     Construction sites (`live_driver`, `harness_driver`, test fixtures) gain one extra
+     field — small fan-out (grep for `Types.{ id =`). Provider-list config (when we add
+     per-provider model registries) supplies the field.
+  2. **Add a `context_window` field to `Agent_harness.compaction_config` and drop
+     `Model_window.default_trigger_tokens`.** Caller computes `trigger_tokens` directly;
+     `Model_window` is reduced to a no-op or deleted. Simplest, but pushes the
+     "what's this model's window" question onto every harness caller.
+  3. **Keep `Model_window` as-is and document the override path.** `compaction_config`
+     already takes `trigger_tokens` directly; `Model_window` is only used as a default.
+     Cheap, but the default is wrong often enough that callers will get burned.
+
+  **Recommendation:** Option 1. The `model` record already carries the API family; the
+  context window is the same kind of metadata. Doing this **before Stage 4** keeps the
+  Stage 4 caller code simple. If we defer, Stage 4 should pass `trigger_tokens` directly
+  (Option 2) and never call `Model_window.default_trigger_tokens` from production code.
+
+  **Decision (2026-06-09):** Option 1. Add `context_window : int` to
+  `Pera_types.Types.model`. `Model_window.for_model` becomes `fun (m : Types.model) ->
+  m.context_window`; the api/id-prefix table and `anthropic_window`/`openai_window`
+  constants are deleted. All construction sites (`live_driver`, `harness_driver`, test
+  fixtures, anywhere `Types.{ id = …; api = …; …}` literal appears) gain the new field.
+  This is a **prerequisite Stage 1.5** that must land before Stage 4. Tests for
+  `model_window_test.ml` update to construct models with explicit windows; the
+  `test_unknown_defaults` case is removed (no default any more — the field is required).
 
 If the user prefers the simpler `Real`-message approach for M6, only Stage 0 and the
 `Compaction` constructor change; everything else is identical. Flag this before starting if
@@ -201,7 +263,7 @@ runtime behaviour (no hooks are wired until Stage 4).
 
 ## Epoch 0 — Foundations
 
-### Stage 0 — Agent-core extensions
+### Stage 0 — Agent-core extensions  ✅ DONE
 
 **Goal:** inhabit `synthetic`, add the shared renderer, add three compaction `agent_event`s,
 add the `emit` field to `should_stop_ctx`, and fix every site the type changes break. No
@@ -365,23 +427,24 @@ unchanged**; the three new events and the `Compaction_summary` constructor exist
 
 ---
 
-### Stage 1 — `Token_estimator` + `Model_window`
+### Stage 1 — `Token_estimator` + `Model_window`  ✅ DONE (deviation: landed in `pera_core`)
 
 **Goal:** the two pure observation pieces (Level-1 token awareness). No IO.
 
-**Files to create**
+**Deviation from the original plan:** both modules were placed in `pera_core`, not
+`pera_harness` (commit `3fcc8ae`). Both are pure functions over `pera_provider` /
+`pera_types` with no harness dependency; `pera_core` already has `yojson`. Future stages
+that reference them must use `Pera_core.Token_estimator` / `Pera_core.Model_window`
+rather than `Pera_harness.…`.
 
-- `lib/pera_harness/token_estimator.mli` / `.ml`
-- `lib/pera_harness/model_window.mli` / `.ml`
-- `lib/pera_harness/test/token_estimator_test.ml`
-- `lib/pera_harness/test/model_window_test.ml`
+**Files (actual locations)**
 
-**Files to modify**
-
-- `lib/pera_harness/dune` — add `token_estimator model_window` to `modules` (the dune lists
-  modules explicitly per M5). No new library deps (`pera_provider`, `pera_types` already
-  present).
-- `lib/pera_harness/test/dune` — add the two test modules.
+- `lib/pera_core/token_estimator.mli` / `.ml`
+- `lib/pera_core/model_window.mli` / `.ml`
+- `lib/pera_core/test/token_estimator_test.ml`
+- `lib/pera_core/test/model_window_test.ml`
+- `lib/pera_core/dune` — `token_estimator model_window` in `modules`
+- `lib/pera_core/test/dune` — the two test modules
 
 #### `Token_estimator`
 
@@ -446,7 +509,7 @@ Implementation: small table keyed by a prefix/`api` of `model.id`/`model.api`:
 
 ## Epoch 1 — Compaction pipeline
 
-### Stage 2 — `Session_writer.write_compaction`
+### Stage 2 — `Session_writer.write_compaction`  ⬜ pending
 
 **Goal:** the one missing writer method. The `Compaction` *entry type* and *codec* already
 exist (`session_types.ml`); we only add the advancing writer.
@@ -489,7 +552,7 @@ first_kept_entry_id }`, `append_line`, then `t.current_parent_id <- Some id`.
 
 ---
 
-### Stage 3 — `Compaction` module
+### Stage 3 — `Compaction` module  ⬜ pending
 
 **Goal:** the pure-from-IO-except-via-`stream_fn` compaction algorithm. Per SPECIFICATION.md
 §12, this module must be writable **without instantiating a full harness** — it takes a
@@ -612,7 +675,14 @@ script is a `Turn` producing `AText "SUMMARY"` and a final `EndTurn` assistant m
 
 ## Epoch 2 — Harness wiring (Level 3, autonomous)
 
-### Stage 4 — `Agent_harness` compaction wiring
+### Stage 4 — `Agent_harness` compaction wiring  ⬜ pending
+
+> Before starting, resolve Open Question 3 (model context windows). Stage 4 currently
+> assumes `Pera_core.Model_window.default_trigger_tokens model` produces a sensible
+> default, which is **only true** if Option 1 (`context_window` on `Types.model`) has
+> been applied. If Option 1 is rejected, replace `Model_window.default_trigger_tokens`
+> calls at the harness construction sites with explicit `trigger_tokens` values from
+> the caller (live_driver / harness_driver / config plumbing).
 
 **Goal:** wire autonomous compaction into the assembled harness. When `config.compaction =
 Some cc`, install the `should_stop_after_turn` and `prepare_next_turn` hooks and grow the
@@ -786,7 +856,7 @@ a summary turn (see Stage 6 for the exact script shape — reuse it here).
 > structured `[driver] scenario … PASS/FAIL: reason` output and a meaningful exit code. No
 > stubbed scenarios, no "TODO" paths.
 
-### Stage 5 — `compaction_driver` + `session_driver` compaction scenario
+### Stage 5 — `compaction_driver` + `session_driver` compaction scenario  ⬜ pending
 
 **Files to create**
 
@@ -859,7 +929,7 @@ PASS`.
 
 ---
 
-### Stage 6 — `harness_driver` autonomous-compaction scenario
+### Stage 6 — `harness_driver` autonomous-compaction scenario  ⬜ pending
 
 **Files to modify**
 
@@ -945,7 +1015,7 @@ directly observable in the output.
 
 ## Epoch 4 — Verification & docs
 
-### Stage 7 — Docs + full sweep
+### Stage 7 — Docs + full sweep  ⬜ pending
 
 **Files to modify**
 

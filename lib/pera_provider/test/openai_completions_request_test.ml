@@ -144,7 +144,9 @@ let test_build_request_body_includes_system_as_first_message () =
     { (make_context []) with Provider.system = "You are helpful" }
   in
   let options = make_options () in
-  let model = { Types.id = "gpt-4"; api = "openai-completions" } in
+  let model =
+    { Types.id = "gpt-4"; api = "openai-completions"; context_window = 8_192 }
+  in
   (* Act *)
   let body =
     Openai_completions_request.build_request_body ~model ~context ~options
@@ -175,7 +177,9 @@ let test_build_request_body_includes_tools_as_functions_array () =
   in
   let context = { (make_context []) with Provider.tools = [ tool ] } in
   let options = make_options () in
-  let model = { Types.id = "gpt-4"; api = "openai-completions" } in
+  let model =
+    { Types.id = "gpt-4"; api = "openai-completions"; context_window = 8_192 }
+  in
   (* Act *)
   let body =
     Openai_completions_request.build_request_body ~model ~context ~options
@@ -197,7 +201,9 @@ let test_max_tokens_field_uses_max_completion_tokens_by_default () =
   (* Arrange *)
   let context = make_context [] in
   let options = make_options () in
-  let model = { Types.id = "gpt-4"; api = "openai-completions" } in
+  let model =
+    { Types.id = "gpt-4"; api = "openai-completions"; context_window = 8_192 }
+  in
   (* Act *)
   let body =
     Openai_completions_request.build_request_body ~model ~context ~options
@@ -218,7 +224,9 @@ let test_max_tokens_field_switches_per_compat () =
   in
   let context = make_context [] in
   let options = make_options () in
-  let model = { Types.id = "gpt-4"; api = "openai-completions" } in
+  let model =
+    { Types.id = "gpt-4"; api = "openai-completions"; context_window = 8_192 }
+  in
   (* Act *)
   let body =
     Openai_completions_request.build_request_body ~model ~context ~options

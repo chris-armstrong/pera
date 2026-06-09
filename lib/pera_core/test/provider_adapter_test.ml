@@ -67,7 +67,9 @@ let test_stream_fn_resolves_registered_provider () =
           { Pera_types.Types.role = "user"; content = [ UText "hi" ] };
       ]
   in
-  let model = { Pera_types.Types.id = "test-model"; api = "faux" } in
+  let model =
+    { Pera_types.Types.id = "test-model"; api = "faux"; context_window = 200_000 }
+  in
   let options =
     Pera_provider.Provider.{ max_tokens = 1024; temperature = None }
   in
@@ -102,7 +104,11 @@ let test_stream_fn_unknown_api_returns_error_stream () =
       ]
   in
   let model =
-    { Pera_types.Types.id = "nonexistent-model"; api = "nonexistent-api" }
+    {
+      Pera_types.Types.id = "nonexistent-model";
+      api = "nonexistent-api";
+      context_window = 200_000;
+    }
   in
   let options =
     Pera_provider.Provider.{ max_tokens = 1024; temperature = None }
@@ -133,7 +139,9 @@ let test_stream_fn_preserves_provider_semantics () =
   let stream_fn = Provider_adapter.stream_fn adapter in
   (* Build a loop config using the adapter's stream_fn.
      The model.api must match the registered name 'faux'. *)
-  let model = { Pera_types.Types.id = "test-model"; api = "faux" } in
+  let model =
+    { Pera_types.Types.id = "test-model"; api = "faux"; context_window = 200_000 }
+  in
   let options =
     Pera_provider.Provider.{ max_tokens = 1024; temperature = None }
   in

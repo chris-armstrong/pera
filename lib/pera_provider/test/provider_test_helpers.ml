@@ -39,7 +39,8 @@ let make_context messages =
 let make_options () = { Provider.max_tokens = 1024; temperature = None }
 
 (** A minimal model value. *)
-let test_model = { Types.id = "test-model"; api = "anthropic" }
+let test_model =
+  { Types.id = "test-model"; api = "anthropic"; context_window = 200_000 }
 
 (** Build a [ToolResultMessage] with string content. *)
 let make_tool_result ?(is_error = false) tool_call_id content_str =

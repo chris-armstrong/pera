@@ -42,7 +42,9 @@ let fake_id_str = Pera_harness.Entry_id.to_string fake_id
 let fake_parent_id = Pera_harness.Entry_id.generate ()
 let fake_parent_id_str = Pera_harness.Entry_id.to_string fake_parent_id
 let fake_ts = 1700000000.0
-let fake_model = Pera_types.Types.{ id = "claude-3-5"; api = "anthropic" }
+let fake_model =
+  Pera_types.Types.
+    { id = "claude-3-5"; api = "anthropic"; context_window = 200_000 }
 
 (* ── session_info tests ─────────────────────────────────────────────────── *)
 
@@ -65,7 +67,11 @@ let test_session_info_serialises_required_fields () =
   Alcotest.(check string) "session_id" "sess-123" (get_str json "session_id");
   Alcotest.(check string) "cwd" "/home/user" (get_str json "cwd");
   Alcotest.(check string) "model.id" "claude-3-5"
-    (get_str (member "model" json) "id")
+    (get_str (member "model" json) "id");
+  Alcotest.(check string) "model.api" "anthropic"
+    (get_str (member "model" json) "api");
+  Alcotest.(check int) "model.context_window" 200_000
+    (member "model" json |> member "context_window" |> to_int)
 
 let test_session_info_omits_parent_session_id_when_none () =
   let e =

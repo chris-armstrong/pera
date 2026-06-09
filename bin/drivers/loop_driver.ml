@@ -70,7 +70,7 @@ let default_convert_to_llm msgs =
   List.map Agent_types.to_provider_message msgs
 
 (** Default model for loop calls. *)
-let test_model = Types.{ id = "faux-model"; api = "faux" }
+let test_model = Types.{ id = "faux-model"; api = "faux"; context_window = 200_000 }
 
 (** Default options for loop calls. *)
 let test_options = Provider.{ max_tokens = 1024; temperature = None }
@@ -929,7 +929,14 @@ let scenario_prepare_next_turn_update sw =
           Agent_types.
             {
               messages = None;
-              model = Some Types.{ id = "prepared-model"; api = "faux" };
+              model =
+                Some
+                  Types.
+                    {
+                      id = "prepared-model";
+                      api = "faux";
+                      context_window = 200_000;
+                    };
               thinking = None;
             })
   in

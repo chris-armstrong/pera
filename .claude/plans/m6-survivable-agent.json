@@ -4,11 +4,21 @@
   "source": "SPECIFICATION.md §3 (synthetic messages, sessions), §5 (between-turn hooks), §8 (compaction — full subsystem; M6 targets Level 3, autonomous), §11 (M6 milestone), §12 (compaction_driver + harness_driver with compaction enabled). Milestone M6: M5 plus compaction at Level 3 (autonomous). Sessions of any length terminate gracefully or compact themselves. Context overflow is not a failure mode for normal use.",
   "baseline": {
     "build_passes": true,
-    "tests_pass": false,
-    "known_failures": [
-      "openai_completions_interpreter_test error_handling.0 malformed_json_produces_error",
-      "openai_completions_request_test compat_presets.1 go_compat_presets_are_correct"
-    ],
+    "tests_pass": true,
+    "known_failures": [],
+    "progress_summary": {
+      "as_of": "2026-06-09",
+      "stages_done": [0, 1, 1.5],
+      "stages_pending": [2, 3, 4, 5, 6, 7],
+      "deviations": [
+        "Stage 1: Token_estimator and Model_window are in pera_core (not pera_harness) per commit 3fcc8ae. Pure modules over pera_provider/pera_types; pera_core already has yojson. Stage 4 and later must reference them as Pera_core.Token_estimator / Pera_core.Model_window.",
+        "Stage 1.5 (new prerequisite, completed 2026-06-09): context_window:int added to Pera_types.Types.model. Model_window.for_model rewritten as trivial accessor; id/api prefix table deleted. session_types.ml JSON codec extended to emit context_window alongside id/api in model_change and session_info entries. Every construction site updated (drivers + tests). model_window_test.ml rewritten with 5 cases covering variant disambiguation and small OpenAI-compatible windows. Build + tests green."
+      ],
+      "new_open_questions": [],
+      "resolved_open_questions": [
+        "Q3 (model context windows) RESOLVED 2026-06-09 -> Option 1, IMPLEMENTED as Stage 1.5: context_window:int is now a field of Pera_types.Types.model. Pera_core.Model_window.for_model is a trivial accessor (fun m -> m.context_window). The api/id-prefix table is deleted. test_unknown_defaults was removed from model_window_test.ml (no default; the field is required by the type). Stage 4 callers compute trigger_tokens via Pera_core.Model_window.default_trigger_tokens which now reads the model's own window — correct for variants and OpenAI-compatible models."
+      ]
+    },
     "notes": "M5 (auditable agent) is complete and committed. Branch: driver-improvements. Libraries: pera_types, pera_provider, pera_core, pera_core_test_util, pera_env, pera_harness, pera_tools, pera_agent. Drivers: provider_driver, loop_driver, conversation_driver, env_driver, tool_driver, session_driver, harness_driver, live_driver.\n\nThe two known_failures are pre-existing in pera_provider tests and are unrelated to M6.\n\nSETTLED DESIGN DECISIONS (do not revisit without asking):\n(1) SYNTHETIC COMPACTION MESSAGES: The in-memory agent context represents a compaction summary as Agent_types.Synthetic (Compaction_summary { summary }), NOT as a plain Real user message. This matches SPECIFICATION.md §3 and §7. The agent_types.mli forward-compat comment already anticipates this.\n(2) convert_to_llm CALLERS: We add a single shared renderer Agent_types.to_provider_message : agent_message -> Provider.message (Real m -> m; Synthetic s -> synthetic_to_message s). Every caller of convert_to_llm passes List.map Agent_types.to_provider_message as its value. The convert_to_llm FIELD in agent_loop_config is not removed — the loop remains generic.\n(3) FRAMING CONSTANT: Agent_types.compaction_framing = \"Context from earlier conversation:\\n\\n\". synthetic_to_message (Compaction_summary {summary}) returns UserMessage { role=\"user\"; content=[UText (compaction_framing ^ summary)] }. Both the in-memory render path and the session-write path use this one function.\n(4) COMPACTION TRIGGERS: Triggers in should_stop_after_turn; new context installed in prepare_next_turn. The two hooks share a pending : agent_message list option ref. should_stop does the work and stashes the compacted list; prepare_next_turn pops it and returns turn_update { messages = Some compacted; _ }.\n(5) EMIT FIELD: The loop exposes an event sink to the should_stop hook via a new ctx field emit : agent_event -> unit. The loop populates it with its own push_event out_stream. Compaction events flow through the same event stream as AE_turn_end. Do NOT emit compaction events by calling subscribers directly.\n(6) SESSION WRITES IN SUBSCRIBER: The compaction hook emits events only; it never touches Session_writer. The existing session_subscriber grows three cases. On AE_compaction_end it writes: write_compaction -> write_message (synthetic user message) -> write_leaf.\n(7) first_kept_entry_id IS PRE-COMPACTION TIP: Session_writer.current_parent_id (the last content entry before compaction) is used as first_kept_entry_id. This is a documented approximation; exact tail-boundary tracking is v2.\n(8) NO LEVEL-4 ROBUSTNESS: Retry-on-overshoot, tighter-tail retries, configurable compaction target model are M7. M6 does a single summarisation attempt. On failure it emits AE_compaction_error, leaves context untouched, returns false.\n(9) COMPACTION TRIGGER IS CONFIGURABLE: Agent_harness.config gains compaction : compaction_config option. None = M5 behaviour. Some { trigger_tokens; tail_size } enables autonomous compaction. Production callers use Model_window.default_trigger_tokens model.\n(10) RE-COMPACTION GUARD: Compaction.compact returns Ok None when List.length messages <= tail_size + 1 (empty middle). The hook treats Ok None as a silent no-op.\n(11) NO MANUAL /compact CLI IN M6: The Level-2 property is validated by compaction_driver calling Compaction.compact directly.\n(12) TOKEN ESTIMATION: Conservative char-based. Token_estimator estimates ceil(text_len / 3) per rendered message plus a fixed per-message overhead of 4 tokens. Overestimates by design.\n\nBREAKING SITES (all must be fixed in Stage 0, when Compaction_summary inhabits synthetic):\n- lib/pera_core/test/agent_loop_helpers.ml:61 (convert_to_llm helper)\n- lib/pera_agent/agent_harness.ml:37 (convert_to_llm helper)\n- lib/pera_harness/test/agent_wrapper_test.ml:16 (convert_to_llm helper)\n- bin/drivers/loop_driver.ml:74 (convert_to_llm helper)\n- bin/drivers/conversation_driver_helpers.ml:101 (convert_to_llm helper)\n- bin/drivers/conversation_driver_helpers.ml:152 (convert_to_llm helper)\n- bin/drivers/conversation_driver_helpers.ml:169 (option-shaped: | Some (Agent_types.Synthetic _) -> .)\n- agent_message_equal and pp_agent_message (both hand-written, Real-only in current code)\n- pp_agent_event (hand-written, exhaustive — must add three new variant arms)\n- session_subscriber in agent_harness.ml (exhaustive match — add stub arms in Stage 0)"
   },
   "epochs": [
@@ -21,7 +31,7 @@
         {
           "stage": 0,
           "title": "Agent-core extensions: inhabit synthetic, add compaction events, add emit",
-          "status": "pending",
+          "status": "done",
           "description": "Inhabit the synthetic type with Compaction_summary, add the shared renderer to_provider_message, add three compaction agent_event variants, add the emit field to should_stop_ctx, and fix every site the type changes break. No behaviour change — should_stop_after_turn is still None everywhere.",
           "files_to_create": [
             "lib/pera_core/test/synthetic_test.ml"
@@ -97,19 +107,19 @@
         {
           "stage": 1,
           "title": "Token_estimator + Model_window",
-          "status": "pending",
-          "description": "Add the two pure observation modules: Token_estimator (conservative char-based token counting) and Model_window (per-model context window sizes and trigger computation). No IO, no side effects.",
+          "status": "done",
+          "description": "Add the two pure observation modules: Token_estimator (conservative char-based token counting) and Model_window (per-model context window sizes and trigger computation). No IO, no side effects. DEVIATION: both modules landed in pera_core (commit 3fcc8ae), not pera_harness as originally planned, because they are pure functions over pera_provider/pera_types with no harness dependency. Stage 4 and later must reference them as Pera_core.Token_estimator / Pera_core.Model_window. SEE OPEN QUESTION 3: Model_window.for_model keys context-window size by api/id-prefix which cannot disambiguate 200K vs 1M Claude variants or the wide range of OpenAI-compatible windows.",
           "files_to_create": [
-            "lib/pera_harness/token_estimator.mli",
-            "lib/pera_harness/token_estimator.ml",
-            "lib/pera_harness/model_window.mli",
-            "lib/pera_harness/model_window.ml",
-            "lib/pera_harness/test/token_estimator_test.ml",
-            "lib/pera_harness/test/model_window_test.ml"
+            "lib/pera_core/token_estimator.mli",
+            "lib/pera_core/token_estimator.ml",
+            "lib/pera_core/model_window.mli",
+            "lib/pera_core/model_window.ml",
+            "lib/pera_core/test/token_estimator_test.ml",
+            "lib/pera_core/test/model_window_test.ml"
           ],
           "files_to_modify": [
-            "lib/pera_harness/dune",
-            "lib/pera_harness/test/dune"
+            "lib/pera_core/dune",
+            "lib/pera_core/test/dune"
           ],
           "files_to_delete": [],
           "depends_on": [0],

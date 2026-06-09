@@ -193,7 +193,10 @@ let test_prepare_next_turn_swaps_model () =
   Eio_main.run @@ fun _env ->
   Eio.Switch.run @@ fun sw ->
   Faux_provider.reset_recorded ();
-  let new_model = Pera_types.Types.{ id = "swapped-model"; api = "faux" } in
+  let new_model =
+    Pera_types.Types.
+      { id = "swapped-model"; api = "faux"; context_window = 200_000 }
+  in
   (* Record models seen by our custom stream_fn wrapper *)
   let recorded_models : Pera_types.Types.model list ref = ref [] in
   (* prepare_next_turn returns a model swap after the first turn, then None *)
