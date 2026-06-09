@@ -46,6 +46,14 @@
    (>= 1.0))
   (eio_linux
    (>= 1.0))
+  (cohttp-eio
+   (>= 6.0.0))
+  (tls-eio
+   (>= 2.0))
+  (ca-certs
+   (>= 1.0))
+  (domain-name
+   (>= 0.4))
   (logs
    (>= 0.7))
   (re
