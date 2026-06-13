@@ -41,3 +41,17 @@
   containers
   eio_main
   eio))
+
+(test
+ (name compaction_test)
+ (modules compaction_test)
+ (libraries
+  pera_harness
+  pera_core
+  pera_core_test_util
+  pera_provider
+  pera_types
+  alcotest
+  containers
+  eio_main
+  eio))

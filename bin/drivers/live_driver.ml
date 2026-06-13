@@ -89,7 +89,15 @@ let session_output_contains ~needle entries =
 
 let make_harness_config ~model ~tmpdir ~session_path ~stream_fn ~exec_env :
     Pera_agent.Agent_harness.config =
-  { cwd = tmpdir; model; session_path; stream_fn; max_tokens = 1024; exec_env }
+  {
+    cwd = tmpdir;
+    model;
+    session_path;
+    stream_fn;
+    max_tokens = 1024;
+    exec_env;
+    compaction = None;
+  }
 
 (* ── Verify helpers ───────────────────────────────────────────────────────── *)
 

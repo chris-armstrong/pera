@@ -140,3 +140,20 @@ let write_model_change t model =
   let* () = append_line t (Session_types.entry_to_json entry) in
   t.current_parent_id <- Some id;
   Ok ()
+
+let write_compaction t ~summary ~first_kept_entry_id =
+  let open Result.Syntax in
+  let id = Entry_id.generate () in
+  let entry =
+    Session_types.Compaction
+      {
+        id;
+        parent_id = t.current_parent_id;
+        timestamp = Unix.gettimeofday ();
+        summary;
+        first_kept_entry_id;
+      }
+  in
+  let* () = append_line t (Session_types.entry_to_json entry) in
+  t.current_parent_id <- Some id;
+  Ok ()
