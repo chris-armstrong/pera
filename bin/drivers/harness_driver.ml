@@ -1,9 +1,10 @@
 (** Harness driver — exercises Agent_harness against Faux_provider.
 
     Three scenarios verifying session log contents and parent chain correctness:
-    1. text_only — one text turn; 4 entries in correct order.
-    2. tool_use — bash tool call + follow-up text; 6 entries; tool_result present.
-    3. subscriber_events — text-only; collected events include key lifecycle markers.
+    1. text_only — one text turn; 4 entries in correct order. 2. tool_use — bash
+    tool call + follow-up text; 6 entries; tool_result present. 3.
+    subscriber_events — text-only; collected events include key lifecycle
+    markers.
 
     Exit code: 0 if all scenarios pass, 1 otherwise. *)
 
@@ -51,7 +52,8 @@ let make_tool_use_msg tool_call_id tool_name arguments =
 let text_turn text =
   let msg = make_assistant_msg text in
   Faux_provider.Turn
-    Faux_provider.{ events = [ Types.AME_text_start { partial = msg } ]; final = msg }
+    Faux_provider.
+      { events = [ Types.AME_text_start { partial = msg } ]; final = msg }
 
 let tool_use_turn tool_call_id tool_name arguments =
   let msg = make_tool_use_msg tool_call_id tool_name arguments in
@@ -93,18 +95,20 @@ let is_tool_result_entry e =
 
 let verify_text_only_entries entries =
   match entries with
-  | [ _si; user_msg; _asst; _leaf ] ->
+  | [ _si; user_msg; _asst; _leaf ] -> (
       let types = List.map (get_string "type") entries in
       let expected = [ "session_info"; "message"; "message"; "leaf" ] in
       if not (List.equal String.equal types expected) then
         Fail (Printf.sprintf "types mismatch: [%s]" (String.concat "; " types))
       else
         let msg_json = Yojson.Safe.Util.member "message" user_msg in
-        (match get_string_opt "role" msg_json with
+        match get_string_opt "role" msg_json with
         | Some r when String.equal r "user" -> verify_chain_and_leaves entries
-        | Some r -> Fail (Printf.sprintf "second entry role='%s', expected 'user'" r)
+        | Some r ->
+            Fail (Printf.sprintf "second entry role='%s', expected 'user'" r)
         | None -> Fail "second entry has no role field")
-  | _ -> Fail (Printf.sprintf "expected 4 entries, got %d" (List.length entries))
+  | _ ->
+      Fail (Printf.sprintf "expected 4 entries, got %d" (List.length entries))
 
 let verify_tool_use_entries entries =
   match entries with
@@ -118,7 +122,8 @@ let verify_tool_use_entries entries =
       else if not (List.exists is_tool_result_entry entries) then
         Fail "no tool_result message entry found"
       else verify_chain_and_leaves entries
-  | _ -> Fail (Printf.sprintf "expected 6 entries, got %d" (List.length entries))
+  | _ ->
+      Fail (Printf.sprintf "expected 6 entries, got %d" (List.length entries))
 
 (* ── Scenarios (each runs under its own sub-switch) ──────────────────────── *)
 
@@ -153,7 +158,9 @@ let scenario_tool_use ~tmpdir ~env =
 let scenario_subscriber_events ~tmpdir ~env =
   Eio.Switch.run @@ fun sw ->
   let session_path = Filename.concat tmpdir "subscriber.jsonl" in
-  let stream_fn = Faux_provider.stream_fn_of_scripts [ text_turn "Hello sub!" ] in
+  let stream_fn =
+    Faux_provider.stream_fn_of_scripts [ text_turn "Hello sub!" ]
+  in
   let exec_env = Pera_env.Local_env.create ~env ~cwd:tmpdir in
   let config = make_harness_config ~tmpdir ~session_path ~stream_fn ~exec_env in
   match Pera_agent.Agent_harness.create ~config ~env ~sw with
@@ -167,12 +174,14 @@ let scenario_subscriber_events ~tmpdir ~env =
       Pera_agent.Agent_harness.send h "Subscribe test.";
       let events = List.rev !collected in
       let has ev_pred = List.exists ev_pred events in
-      if not (has (function Agent_types.AE_agent_start -> true | _ -> false)) then
-        Fail "missing AE_agent_start"
-      else if not (has (function Agent_types.AE_turn_start -> true | _ -> false)) then
-        Fail "missing AE_turn_start"
-      else if not (has (function Agent_types.AE_agent_end _ -> true | _ -> false)) then
-        Fail "missing AE_agent_end"
+      if not (has (function Agent_types.AE_agent_start -> true | _ -> false))
+      then Fail "missing AE_agent_start"
+      else if
+        not (has (function Agent_types.AE_turn_start -> true | _ -> false))
+      then Fail "missing AE_turn_start"
+      else if
+        not (has (function Agent_types.AE_agent_end _ -> true | _ -> false))
+      then Fail "missing AE_agent_end"
       else Pass
 
 (* ── Main ─────────────────────────────────────────────────────────────────── *)
@@ -190,7 +199,9 @@ let () =
             ("subscriber_events", scenario_subscriber_events ~tmpdir ~env);
           ]
         in
-        List.iter (fun (name, v) -> print_verdict ~tag:"harness" ~scenario:name v) scenarios;
+        List.iter
+          (fun (name, v) -> print_verdict ~tag:"harness" ~scenario:name v)
+          scenarios;
         Printf.printf "\n";
         let passed = count_passed scenarios in
         let total = List.length scenarios in

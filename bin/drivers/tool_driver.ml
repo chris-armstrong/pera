@@ -308,17 +308,15 @@ let scenario_read_truncation ~(read : unit tool) ~(write : unit tool) ~sw
     ~cancel =
   let scenario = "read truncation" in
   let line_count = Pera_tools.Truncate.max_lines * 2 in
-  let content =
-    String.concat "\n" (List.init line_count (fun _ -> "x"))
-  in
+  let content = String.concat "\n" (List.init line_count (fun _ -> "x")) in
   match write_file ~t:write ~path:"big.txt" ~content ~sw ~cancel with
   | Error msg ->
       let v = Fail (Printf.sprintf "write failed: %s" msg) in
       print_verdict ~tool:read.name ~scenario v;
       v
-  | Ok () ->
+  | Ok () -> (
       let args = `Assoc [ ("path", `String "big.txt") ] in
-      (match read.execute ~ctx:() ~args ~sw ~cancel with
+      match read.execute ~ctx:() ~args ~sw ~cancel with
       | Error e ->
           let v = Fail (Printf.sprintf "read failed: %s" e.message) in
           print_verdict ~tool:read.name ~scenario v;

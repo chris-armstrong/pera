@@ -11,8 +11,7 @@ let run_write_test (body : (module Execution_env.S) -> Eio.Switch.t -> unit) =
   let tmpdir = make_temp_dir env in
   Eio.Switch.run @@ fun sw ->
   let module E =
-    (val Pera_env.Local_env.create ~env ~cwd:tmpdir
-        : Pera_env.Execution_env.S)
+    (val Pera_env.Local_env.create ~env ~cwd:tmpdir : Pera_env.Execution_env.S)
   in
   body (module E) sw
 

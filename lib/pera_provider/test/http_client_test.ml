@@ -26,9 +26,7 @@ let capture_request_path ~env ~sw ~base_url ~path =
       (* Drain headers so the client isn't blocked sending them. *)
       (try
          let rec drain () =
-           match Eio.Buf_read.line reader with
-           | "\r" | "" -> ()
-           | _ -> drain ()
+           match Eio.Buf_read.line reader with "\r" | "" -> () | _ -> drain ()
          in
          drain ()
        with _ -> ());
@@ -39,14 +37,18 @@ let capture_request_path ~env ~sw ~base_url ~path =
   | Ok client ->
       ignore
         (Http_client.post_stream ~client ~headers:[] ~body:"{}"
-           ~on_chunk:(fun _ -> ()) path));
+           ~on_chunk:(fun _ -> ())
+           path));
   !received
 
 (** [post_stream] prepends the path component of [base_url] to [path]. *)
 let test_base_path_prepended () =
   Eio_main.run @@ fun env ->
   Eio.Switch.run @@ fun sw ->
-  let got = capture_request_path ~env ~sw ~base_url:"/zen/go" ~path:"/v1/chat/completions" in
+  let got =
+    capture_request_path ~env ~sw ~base_url:"/zen/go"
+      ~path:"/v1/chat/completions"
+  in
   Alcotest.(check string)
     "path includes base prefix" "/zen/go/v1/chat/completions" got
 
@@ -55,7 +57,9 @@ let test_base_path_prepended () =
 let test_no_base_path () =
   Eio_main.run @@ fun env ->
   Eio.Switch.run @@ fun sw ->
-  let got = capture_request_path ~env ~sw ~base_url:"" ~path:"/v1/chat/completions" in
+  let got =
+    capture_request_path ~env ~sw ~base_url:"" ~path:"/v1/chat/completions"
+  in
   Alcotest.(check string)
     "path unchanged when no base prefix" "/v1/chat/completions" got
 

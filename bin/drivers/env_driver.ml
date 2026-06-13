@@ -172,7 +172,8 @@ let scenario_fs_write_read ~sw (module E : Execution_env.S) =
         | Error e -> Fail (Printf.sprintf "read failed: %s" e.message)
         | Ok content ->
             if String.equal (String.trim content) "hello world" then Pass
-            else Fail (Printf.sprintf "expected 'hello world', got '%s'" content)
+            else
+              Fail (Printf.sprintf "expected 'hello world', got '%s'" content)
       in
       print_verdict ~scenario v;
       v
@@ -191,12 +192,11 @@ let scenario_fs_file_exists ~sw (module E : Execution_env.S) =
         match E.Fs.exists ~path:"exists.txt" ~sw with
         | Error e -> Fail (Printf.sprintf "exists check failed: %s" e.message)
         | Ok false -> Fail "exists returned false for written file"
-        | Ok true ->
-            (match E.Fs.exists ~path:"nonexistent_xyz.txt" ~sw with
+        | Ok true -> (
+            match E.Fs.exists ~path:"nonexistent_xyz.txt" ~sw with
             | Error e ->
                 Fail (Printf.sprintf "exists check failed: %s" e.message)
-            | Ok true ->
-                Fail "exists returned true for nonexistent file"
+            | Ok true -> Fail "exists returned true for nonexistent file"
             | Ok false -> Pass)
       in
       print_verdict ~scenario v;
@@ -224,7 +224,9 @@ let scenario_fs_list_dir ~sw (module E : Execution_env.S) =
         match E.Fs.list_dir ~path:"." ~sw with
         | Error e -> Fail (Printf.sprintf "list_dir failed: %s" e.message)
         | Ok infos ->
-            let names = List.map (fun (fi : Execution_env.file_info) -> fi.name) infos in
+            let names =
+              List.map (fun (fi : Execution_env.file_info) -> fi.name) infos
+            in
             let has_a = List.exists (String.equal "a.txt") names in
             let has_b = List.exists (String.equal "b.txt") names in
             if has_a && has_b then Pass
@@ -244,7 +246,9 @@ let scenario_fs_read_nonexistent ~sw (module E : Execution_env.S) =
     match E.Fs.read_text_file ~path:"no_such_file_xyz.txt" ~sw with
     | Ok _ -> Fail "expected Error but got Ok"
     | Error e ->
-        if Pera_types.Types.equal_file_error_code e.code Pera_types.Types.NotFound
+        if
+          Pera_types.Types.equal_file_error_code e.code
+            Pera_types.Types.NotFound
         then Pass
         else
           Fail

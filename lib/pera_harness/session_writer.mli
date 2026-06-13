@@ -23,12 +23,10 @@ val write_message :
 (** Append a [message] entry and advance [current_parent_id]. *)
 
 val write_leaf : t -> (unit, Pera_types.Types.file_error) result
-(** Append a [leaf] entry.  Does NOT advance [current_parent_id]. *)
+(** Append a [leaf] entry. Does NOT advance [current_parent_id]. *)
 
 val write_model_change :
-  t ->
-  Pera_types.Types.model ->
-  (unit, Pera_types.Types.file_error) result
+  t -> Pera_types.Types.model -> (unit, Pera_types.Types.file_error) result
 (** Append a [model_change] entry and advance [current_parent_id]. *)
 
 val session_id : t -> string

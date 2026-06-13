@@ -7,7 +7,7 @@ type truncation_info = {
   truncated : bool;
   total_lines : int;
   output_lines : int;
-  truncated_by : [`Lines | `Bytes] option;
+  truncated_by : [ `Lines | `Bytes ] option;
 }
 
 (** Find how many lines starting from [lines] fit within [byte_limit] bytes,
@@ -19,8 +19,7 @@ let lines_fit_in_bytes lines byte_limit =
         let line_len = String.length line in
         (* +1 for the newline that would be added when joining *)
         let next = acc_bytes + line_len + 1 in
-        if next > byte_limit then n
-        else count next (n + 1) rest
+        if next > byte_limit then n else count next (n + 1) rest
   in
   count 0 0 lines
 

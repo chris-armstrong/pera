@@ -24,7 +24,8 @@ let build_registry () =
   | None -> ());
   !registry
 
-(** Select the model based on available providers and an optional CLI argument. *)
+(** Select the model based on available providers and an optional CLI argument.
+*)
 let select_model registry argv =
   if Array.length argv > 1 then (
     let api = argv.(1) in
@@ -92,8 +93,7 @@ let () =
     match scenario_name with
     | Some name ->
         Conversation_driver_helpers.run_named_scenario name ~model stream_fn sw
-    | None ->
-        Conversation_driver_helpers.run_all_scenarios ~model stream_fn sw
+    | None -> Conversation_driver_helpers.run_all_scenarios ~model stream_fn sw
   in
   Printf.printf "\n=== Summary ===\n%!";
   List.iter

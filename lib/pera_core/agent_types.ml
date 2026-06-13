@@ -1,6 +1,7 @@
 open Containers
 
-type synthetic = Compaction_summary of { summary : string } [@@deriving eq, show]
+type synthetic = Compaction_summary of { summary : string }
+[@@deriving eq, show]
 
 type agent_message =
   | Real of Pera_provider.Provider.message

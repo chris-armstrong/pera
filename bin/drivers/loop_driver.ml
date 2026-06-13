@@ -66,11 +66,11 @@ let make_tool_use_message tool_calls =
 let make_tool_call id name arguments = Types.{ id; name; arguments }
 
 (** Default convert_to_llm: project agent messages to provider messages. *)
-let default_convert_to_llm msgs =
-  List.map Agent_types.to_provider_message msgs
+let default_convert_to_llm msgs = List.map Agent_types.to_provider_message msgs
 
 (** Default model for loop calls. *)
-let test_model = Types.{ id = "faux-model"; api = "faux"; context_window = 200_000 }
+let test_model =
+  Types.{ id = "faux-model"; api = "faux"; context_window = 200_000 }
 
 (** Default options for loop calls. *)
 let test_options = Provider.{ max_tokens = 1024; temperature = None }
@@ -605,8 +605,8 @@ let scenario_follow_up_message sw =
 
 (** {1 Scenario 8: should_stop_after_turn_halts_loop} *)
 
-(** should_stop_after_turn returning true on the first call halts the inner
-    loop after exactly one turn; the second Faux script is never consumed. *)
+(** should_stop_after_turn returning true on the first call halts the inner loop
+    after exactly one turn; the second Faux script is never consumed. *)
 let scenario_should_stop_after_turn_halts_loop sw =
   let turn1_msg = make_assistant_message "Turn 1." in
   let turn2_msg = make_assistant_message "Turn 2." in
@@ -648,7 +648,8 @@ let scenario_should_stop_after_turn_halts_loop sw =
     ~check_result:(fun events _final ->
       let turn_count = count_events is_turn_start events in
       let agent_end_last = check_agent_end_is_last events in
-      Printf.printf "    turn_starts=%d stop_calls=%d\n%!" turn_count !stop_count;
+      Printf.printf "    turn_starts=%d stop_calls=%d\n%!" turn_count
+        !stop_count;
       Int.equal turn_count 1 && agent_end_last)
 
 (** {1 Scenario 9: before_tool_call_allow} *)
@@ -827,9 +828,7 @@ let scenario_after_tool_call_fires sw =
       let ids = !recorded_ids in
       Printf.printf "    recorded_ids=[%s]\n%!" (String.concat ";" ids);
       let agent_end_last = check_agent_end_is_last events in
-      (match ids with
-      | [ id ] -> String.equal id "after-1"
-      | _ -> false)
+      (match ids with [ id ] -> String.equal id "after-1" | _ -> false)
       && agent_end_last)
 
 (** {1 Scenario 12: transform_context_applied} *)
@@ -884,11 +883,11 @@ let scenario_transform_context_applied sw =
 
 (** {1 Scenario 13: prepare_next_turn_update} *)
 
-(** prepare_next_turn returning Some with a model override causes the second
-    LLM call to use the updated model. Verified by wrapping stream_fn to
-    capture each model argument (Faux_provider only records contexts, not
-    models). A steering message forces the second turn so that prepare_next_turn
-    actually fires. *)
+(** prepare_next_turn returning Some with a model override causes the second LLM
+    call to use the updated model. Verified by wrapping stream_fn to capture
+    each model argument (Faux_provider only records contexts, not models). A
+    steering message forces the second turn so that prepare_next_turn actually
+    fires. *)
 let scenario_prepare_next_turn_update sw =
   let turn1_msg = make_assistant_message "Turn 1." in
   let turn2_msg = make_assistant_message "Turn 2." in
@@ -957,12 +956,12 @@ let scenario_prepare_next_turn_update sw =
     ~check_result:(fun events _final ->
       let models = !recorded_models in
       Printf.printf "    model_calls=%d\n%!" (List.length models);
-      (match models with
+      match models with
       | [ _; second ] ->
           Printf.printf "    second_model=%s\n%!" second.Types.id;
           let agent_end_last = check_agent_end_is_last events in
           String.equal second.Types.id "prepared-model" && agent_end_last
-      | _ -> false))
+      | _ -> false)
 
 (** {1 Scenario 14: thinking_blocks} *)
 
@@ -1020,10 +1019,7 @@ let scenario_thinking_blocks sw =
         List.exists
           (function
             | Agent_types.AE_message_end
-                {
-                  message =
-                    Real (Provider.AssistantMessage am);
-                } ->
+                { message = Real (Provider.AssistantMessage am) } ->
                 List.exists
                   (function Types.AThinking _ -> true | _ -> false)
                   am.content

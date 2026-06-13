@@ -101,7 +101,7 @@ let snapshot state =
 (** Extract a string field from a JSON object, returning [None] if absent.
     Non-string values (including [`Null]) are treated as absent rather than
     raising, because OpenAI streaming deltas may explicitly set optional fields
-    to [null].  This matches the lenient pattern used in the Anthropic
+    to [null]. This matches the lenient pattern used in the Anthropic
     interpreter. *)
 let json_string_field_opt fields key =
   match List.assoc_opt ~eq:String.equal key fields with
@@ -396,8 +396,9 @@ let finalize_tool_calls state =
   in
   ({ state with active_tool_calls = [] }, events)
 
-(** Extract usage from the top-level chunk JSON when [stream_options.include_usage]
-    is true. Usage appears only on the final chunk. *)
+(** Extract usage from the top-level chunk JSON when
+    [stream_options.include_usage] is true. Usage appears only on the final
+    chunk. *)
 let extract_usage json =
   match json with
   | `Assoc fields -> (
@@ -405,7 +406,14 @@ let extract_usage json =
       | Some (`Assoc u) ->
           let input_tokens = json_int_field u "prompt_tokens" in
           let output_tokens = json_int_field u "completion_tokens" in
-          Some { Types.input_tokens; output_tokens; cache_read_tokens = 0; cache_write_tokens = 0; cost_usd = None }
+          Some
+            {
+              Types.input_tokens;
+              output_tokens;
+              cache_read_tokens = 0;
+              cache_write_tokens = 0;
+              cost_usd = None;
+            }
       | _ -> None)
   | _ -> None
 

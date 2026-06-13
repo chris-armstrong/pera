@@ -1,9 +1,9 @@
 (** Session entry type definitions and JSON codec.
 
-    All session entries share common fields: [id] (a UUIDv7 string), [type]
-    (a discriminant string), and [timestamp] (Unix epoch seconds as float).
-    The [parent_id] field is included only when [Some]; absent fields are
-    omitted entirely from the JSON — never serialised as [null]. *)
+    All session entries share common fields: [id] (a UUIDv7 string), [type] (a
+    discriminant string), and [timestamp] (Unix epoch seconds as float). The
+    [parent_id] field is included only when [Some]; absent fields are omitted
+    entirely from the JSON — never serialised as [null]. *)
 
 type entry_id = Entry_id.t
 

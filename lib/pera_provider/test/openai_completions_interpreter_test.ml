@@ -46,10 +46,7 @@ let ame_tag e =
   let len = String.length s in
   let rec find_end i =
     if i >= len then i
-    else
-      match s.[i] with
-      | ' ' | '{' | '(' -> i
-      | _ -> find_end (i + 1)
+    else match s.[i] with ' ' | '{' | '(' -> i | _ -> find_end (i + 1)
   in
   String.sub s 0 (find_end 0)
 
@@ -347,7 +344,8 @@ let test_malformed_json_produces_error () =
   let events =
     run_interpreter ~reasoning_field:"reasoning_content" [ malformed_chunk () ]
   in
-  Alcotest.(check (list ame_testable)) "malformed JSON silently skipped" [] events
+  Alcotest.(check (list ame_testable))
+    "malformed JSON silently skipped" [] events
 
 (* ── Test 7: multiple tool calls ── *)
 

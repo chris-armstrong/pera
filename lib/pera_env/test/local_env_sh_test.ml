@@ -56,8 +56,7 @@ let test_exec_captures_stderr sw (module E : Execution_env.S) =
       (* stdout should be empty, stderr should have "hello" *)
       let stderr_trimmed = trim_trailing_newline result.stderr in
       let ok =
-        String.equal result.stdout ""
-        && String.equal stderr_trimmed "hello"
+        String.equal result.stdout "" && String.equal stderr_trimmed "hello"
       in
       if not ok then
         Alcotest.failf

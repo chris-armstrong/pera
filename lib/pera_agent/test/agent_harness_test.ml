@@ -5,8 +5,7 @@ open Yojson.Safe.Util
 (* ── Helpers ─────────────────────────────────────────────────────────────── *)
 
 let test_model =
-  Pera_types.Types.
-    { id = "test-model"; api = "faux"; context_window = 200_000 }
+  Pera_types.Types.{ id = "test-model"; api = "faux"; context_window = 200_000 }
 
 let make_temp_dir = Harness_test_util.make_temp_dir
 
@@ -76,10 +75,10 @@ let test_send_creates_session_file env () =
   Eio.Switch.run @@ fun sw ->
   let dir = make_temp_dir env in
   let session_path = Filename.concat dir "session.jsonl" in
-  let config = make_config ~env ~cwd:dir ~session_path [ make_text_turn_script "hi" ] in
-  let t =
-    Result.get_exn (Pera_agent.Agent_harness.create ~config ~env ~sw)
+  let config =
+    make_config ~env ~cwd:dir ~session_path [ make_text_turn_script "hi" ]
   in
+  let t = Result.get_exn (Pera_agent.Agent_harness.create ~config ~env ~sw) in
   Pera_agent.Agent_harness.send t "hello";
   let exists =
     match Eio.Path.kind ~follow:true Eio.Path.(env#fs / session_path) with
@@ -98,14 +97,12 @@ let test_session_file_contains_session_info_on_first_send env () =
   let config =
     make_config ~env ~cwd:dir ~session_path [ make_text_turn_script "hi" ]
   in
-  let t =
-    Result.get_exn (Pera_agent.Agent_harness.create ~config ~env ~sw)
-  in
+  let t = Result.get_exn (Pera_agent.Agent_harness.create ~config ~env ~sw) in
   Pera_agent.Agent_harness.send t "hello";
   let lines = read_jsonl_lines env session_path in
   let first = List.get_at_idx 0 lines |> Option.get_exn_or "first line" in
-  Alcotest.(check string) "first line type is session_info" "session_info"
-    (get_str first "type")
+  Alcotest.(check string)
+    "first line type is session_info" "session_info" (get_str first "type")
 
 (** 3. Second line has type:'message', role:'user', text matching input. *)
 let test_session_file_contains_user_message env () =
@@ -116,23 +113,19 @@ let test_session_file_contains_user_message env () =
   let config =
     make_config ~env ~cwd:dir ~session_path [ make_text_turn_script "reply" ]
   in
-  let t =
-    Result.get_exn (Pera_agent.Agent_harness.create ~config ~env ~sw)
-  in
+  let t = Result.get_exn (Pera_agent.Agent_harness.create ~config ~env ~sw) in
   Pera_agent.Agent_harness.send t "user input text";
   let lines = read_jsonl_lines env session_path in
   let second = List.get_at_idx 1 lines |> Option.get_exn_or "second line" in
   Alcotest.(check string) "type is message" "message" (get_str second "type");
-  let role =
-    second |> member "message" |> member "role" |> to_string
-  in
+  let role = second |> member "message" |> member "role" |> to_string in
   Alcotest.(check string) "role is user" "user" role;
   let text =
     second |> member "message" |> member "content" |> to_list
     |> List.filter_map (fun block ->
-           match member "type" block |> to_string_option with
-           | Some "text" -> Some (member "text" block |> to_string)
-           | _ -> None)
+        match member "type" block |> to_string_option with
+        | Some "text" -> Some (member "text" block |> to_string)
+        | _ -> None)
     |> List.head_opt
     |> Option.get_exn_or "text block"
   in
@@ -145,11 +138,10 @@ let test_session_file_contains_assistant_message env () =
   let dir = make_temp_dir env in
   let session_path = Filename.concat dir "session.jsonl" in
   let config =
-    make_config ~env ~cwd:dir ~session_path [ make_text_turn_script "assistant reply" ]
+    make_config ~env ~cwd:dir ~session_path
+      [ make_text_turn_script "assistant reply" ]
   in
-  let t =
-    Result.get_exn (Pera_agent.Agent_harness.create ~config ~env ~sw)
-  in
+  let t = Result.get_exn (Pera_agent.Agent_harness.create ~config ~env ~sw) in
   Pera_agent.Agent_harness.send t "hi";
   let lines = read_jsonl_lines env session_path in
   let has_assistant =
@@ -175,9 +167,7 @@ let test_session_file_ends_with_leaf env () =
   let config =
     make_config ~env ~cwd:dir ~session_path [ make_text_turn_script "done" ]
   in
-  let t =
-    Result.get_exn (Pera_agent.Agent_harness.create ~config ~env ~sw)
-  in
+  let t = Result.get_exn (Pera_agent.Agent_harness.create ~config ~env ~sw) in
   Pera_agent.Agent_harness.send t "go";
   let lines = read_jsonl_lines env session_path in
   let leaf_count =
@@ -201,9 +191,7 @@ let test_single_send_chain_is_linear env () =
   let config =
     make_config ~env ~cwd:dir ~session_path [ make_text_turn_script "ok" ]
   in
-  let t =
-    Result.get_exn (Pera_agent.Agent_harness.create ~config ~env ~sw)
-  in
+  let t = Result.get_exn (Pera_agent.Agent_harness.create ~config ~env ~sw) in
   Pera_agent.Agent_harness.send t "test";
   let lines = read_jsonl_lines env session_path in
   (* Collect entries that have both id and parent_id (all except session_info) *)
@@ -254,13 +242,10 @@ let test_single_send_chain_is_linear env () =
     |> Option.flat_map (fun l -> member "id" l |> to_string_option)
   in
   let leaf_parent =
-    Option.flat_map
-      (fun l -> member "parent_id" l |> to_string_option)
-      leaf
+    Option.flat_map (fun l -> member "parent_id" l |> to_string_option) leaf
   in
   Alcotest.(check (option string))
-    "leaf parent is last advancing entry"
-    last_advancing_id leaf_parent
+    "leaf parent is last advancing entry" last_advancing_id leaf_parent
 
 (** 7. Two sends: send-2 user parent_id = send-1 last content id (not leaf id).
     No entry references a leaf id as parent. *)
@@ -273,9 +258,7 @@ let test_leaf_is_childless_across_sends env () =
     make_config ~env ~cwd:dir ~session_path
       [ make_text_turn_script "first"; make_text_turn_script "second" ]
   in
-  let t =
-    Result.get_exn (Pera_agent.Agent_harness.create ~config ~env ~sw)
-  in
+  let t = Result.get_exn (Pera_agent.Agent_harness.create ~config ~env ~sw) in
   Pera_agent.Agent_harness.send t "send1";
   Pera_agent.Agent_harness.send t "send2";
   let lines = read_jsonl_lines env session_path in
@@ -307,9 +290,7 @@ let test_second_send_continues_content_chain env () =
     make_config ~env ~cwd:dir ~session_path
       [ make_text_turn_script "a"; make_text_turn_script "b" ]
   in
-  let t =
-    Result.get_exn (Pera_agent.Agent_harness.create ~config ~env ~sw)
-  in
+  let t = Result.get_exn (Pera_agent.Agent_harness.create ~config ~env ~sw) in
   Pera_agent.Agent_harness.send t "first";
   Pera_agent.Agent_harness.send t "second";
   let lines = read_jsonl_lines env session_path in
@@ -359,21 +340,21 @@ let test_second_send_continues_content_chain env () =
               (acc + 1))
   in
   let reachable = walk first_id 0 in
-  Alcotest.(check int) "all advancing entries reachable" (List.length advancing)
-    reachable
+  Alcotest.(check int)
+    "all advancing entries reachable" (List.length advancing) reachable
 
-(** 9. Subscriber receives at least AE_agent_start, AE_turn_start, AE_agent_end. *)
+(** 9. Subscriber receives at least AE_agent_start, AE_turn_start, AE_agent_end.
+*)
 let test_subscriber_receives_events env () =
   Faux_provider.reset_recorded ();
   Eio.Switch.run @@ fun sw ->
   let dir = make_temp_dir env in
   let session_path = Filename.concat dir "session.jsonl" in
   let config =
-    make_config ~env ~cwd:dir ~session_path [ make_text_turn_script "event test" ]
+    make_config ~env ~cwd:dir ~session_path
+      [ make_text_turn_script "event test" ]
   in
-  let t =
-    Result.get_exn (Pera_agent.Agent_harness.create ~config ~env ~sw)
-  in
+  let t = Result.get_exn (Pera_agent.Agent_harness.create ~config ~env ~sw) in
   let received = ref [] in
   let _unsub =
     Pera_agent.Agent_harness.subscribe t (fun event ->
@@ -414,7 +395,8 @@ let () =
                 (test_session_file_contains_session_info_on_first_send env);
               Alcotest.test_case "session file contains user message" `Quick
                 (test_session_file_contains_user_message env);
-              Alcotest.test_case "session file contains assistant message" `Quick
+              Alcotest.test_case "session file contains assistant message"
+                `Quick
                 (test_session_file_contains_assistant_message env);
               Alcotest.test_case "session file ends with leaf" `Quick
                 (test_session_file_ends_with_leaf env);

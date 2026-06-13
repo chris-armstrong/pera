@@ -73,8 +73,7 @@ let create ~path ~env ~model ~cwd =
     if String.equal parent "." then Ok ()
     else
       catch_write path (fun () ->
-          Eio.Path.mkdirs ~exists_ok:true ~perm:0o755
-            Eio.Path.(base / parent))
+          Eio.Path.mkdirs ~exists_ok:true ~perm:0o755 Eio.Path.(base / parent))
   in
   let session_id = Entry_id.to_string (Entry_id.generate ()) in
   Ok { path; base; session_id; model; cwd; current_parent_id = None }

@@ -5,8 +5,8 @@ val for_model : Pera_types.Types.model -> int
     across 4K–256K). *)
 
 val default_ratio : float
-(** [0.70] — the fraction of the window at which compaction should trigger
-    (spec §8). *)
+(** [0.70] — the fraction of the window at which compaction should trigger (spec
+    §8). *)
 
 val default_trigger_tokens : ?ratio:float -> Pera_types.Types.model -> int
 (** [default_trigger_tokens ?ratio model] is

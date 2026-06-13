@@ -28,11 +28,10 @@ val create :
     Returns [Error] if the session file cannot be prepared. *)
 
 val send : t -> string -> unit
-(** [send t text] writes a user message to the session file and dispatches a
-    run to the agent wrapper.  The session info entry is written once on the
-    first call.  [send] never raises. *)
+(** [send t text] writes a user message to the session file and dispatches a run
+    to the agent wrapper. The session info entry is written once on the first
+    call. [send] never raises. *)
 
-val subscribe :
-  t -> (Pera_core.Agent_types.agent_event -> unit) -> unit -> unit
-(** [subscribe t f] registers [f] to receive every agent event.  Returns an
+val subscribe : t -> (Pera_core.Agent_types.agent_event -> unit) -> unit -> unit
+(** [subscribe t f] registers [f] to receive every agent event. Returns an
     unsubscribe function. *)
