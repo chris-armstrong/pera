@@ -65,14 +65,9 @@ let make_tool_use_message tool_calls =
 (** Build a tool call record. *)
 let make_tool_call id name arguments = Types.{ id; name; arguments }
 
-(** Default convert_to_llm: unwrap Real messages, refute Synthetic. *)
+(** Default convert_to_llm: project agent messages to provider messages. *)
 let default_convert_to_llm msgs =
-  List.filter_map
-    (fun msg ->
-      match msg with
-      | Agent_types.Real m -> Some m
-      | Agent_types.Synthetic _ -> .)
-    msgs
+  List.map Agent_types.to_provider_message msgs
 
 (** Default model for loop calls. *)
 let test_model = Types.{ id = "faux-model"; api = "faux" }

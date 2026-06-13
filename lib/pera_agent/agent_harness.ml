@@ -31,11 +31,7 @@ let build_system_prompt tools =
   else base ^ "\n\nAvailable tools:\n" ^ String.concat "\n" descs
 
 let convert_to_llm messages =
-  List.filter_map
-    (function
-      | Pera_core.Agent_types.Real msg -> Some msg
-      | Pera_core.Agent_types.Synthetic _ -> .)
-    messages
+  List.map Pera_core.Agent_types.to_provider_message messages
 
 let session_subscriber writer event =
   let open Result.Syntax in
@@ -62,6 +58,10 @@ let session_subscriber writer event =
     | Pera_core.Agent_types.AE_tool_execution_start _
     | Pera_core.Agent_types.AE_tool_execution_update _
     | Pera_core.Agent_types.AE_tool_execution_end _ -> Ok ()
+    | Pera_core.Agent_types.AE_compaction_start -> Ok ()
+    | Pera_core.Agent_types.AE_compaction_error _ -> Ok ()
+    | Pera_core.Agent_types.AE_compaction_end _ -> Ok ()
+    (* Stage 4 will replace this AE_compaction_end stub with the real writer sequence. *)
   in
   match result with
   | Ok () -> ()

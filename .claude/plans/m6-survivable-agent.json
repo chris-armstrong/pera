@@ -1,0 +1,507 @@
+{
+  "plan_id": "m6-survivable-agent",
+  "title": "M6 — Survivable agent (autonomous compaction, Level 3)",
+  "source": "SPECIFICATION.md §3 (synthetic messages, sessions), §5 (between-turn hooks), §8 (compaction — full subsystem; M6 targets Level 3, autonomous), §11 (M6 milestone), §12 (compaction_driver + harness_driver with compaction enabled). Milestone M6: M5 plus compaction at Level 3 (autonomous). Sessions of any length terminate gracefully or compact themselves. Context overflow is not a failure mode for normal use.",
+  "baseline": {
+    "build_passes": true,
+    "tests_pass": false,
+    "known_failures": [
+      "openai_completions_interpreter_test error_handling.0 malformed_json_produces_error",
+      "openai_completions_request_test compat_presets.1 go_compat_presets_are_correct"
+    ],
+    "notes": "M5 (auditable agent) is complete and committed. Branch: driver-improvements. Libraries: pera_types, pera_provider, pera_core, pera_core_test_util, pera_env, pera_harness, pera_tools, pera_agent. Drivers: provider_driver, loop_driver, conversation_driver, env_driver, tool_driver, session_driver, harness_driver, live_driver.\n\nThe two known_failures are pre-existing in pera_provider tests and are unrelated to M6.\n\nSETTLED DESIGN DECISIONS (do not revisit without asking):\n(1) SYNTHETIC COMPACTION MESSAGES: The in-memory agent context represents a compaction summary as Agent_types.Synthetic (Compaction_summary { summary }), NOT as a plain Real user message. This matches SPECIFICATION.md §3 and §7. The agent_types.mli forward-compat comment already anticipates this.\n(2) convert_to_llm CALLERS: We add a single shared renderer Agent_types.to_provider_message : agent_message -> Provider.message (Real m -> m; Synthetic s -> synthetic_to_message s). Every caller of convert_to_llm passes List.map Agent_types.to_provider_message as its value. The convert_to_llm FIELD in agent_loop_config is not removed — the loop remains generic.\n(3) FRAMING CONSTANT: Agent_types.compaction_framing = \"Context from earlier conversation:\\n\\n\". synthetic_to_message (Compaction_summary {summary}) returns UserMessage { role=\"user\"; content=[UText (compaction_framing ^ summary)] }. Both the in-memory render path and the session-write path use this one function.\n(4) COMPACTION TRIGGERS: Triggers in should_stop_after_turn; new context installed in prepare_next_turn. The two hooks share a pending : agent_message list option ref. should_stop does the work and stashes the compacted list; prepare_next_turn pops it and returns turn_update { messages = Some compacted; _ }.\n(5) EMIT FIELD: The loop exposes an event sink to the should_stop hook via a new ctx field emit : agent_event -> unit. The loop populates it with its own push_event out_stream. Compaction events flow through the same event stream as AE_turn_end. Do NOT emit compaction events by calling subscribers directly.\n(6) SESSION WRITES IN SUBSCRIBER: The compaction hook emits events only; it never touches Session_writer. The existing session_subscriber grows three cases. On AE_compaction_end it writes: write_compaction -> write_message (synthetic user message) -> write_leaf.\n(7) first_kept_entry_id IS PRE-COMPACTION TIP: Session_writer.current_parent_id (the last content entry before compaction) is used as first_kept_entry_id. This is a documented approximation; exact tail-boundary tracking is v2.\n(8) NO LEVEL-4 ROBUSTNESS: Retry-on-overshoot, tighter-tail retries, configurable compaction target model are M7. M6 does a single summarisation attempt. On failure it emits AE_compaction_error, leaves context untouched, returns false.\n(9) COMPACTION TRIGGER IS CONFIGURABLE: Agent_harness.config gains compaction : compaction_config option. None = M5 behaviour. Some { trigger_tokens; tail_size } enables autonomous compaction. Production callers use Model_window.default_trigger_tokens model.\n(10) RE-COMPACTION GUARD: Compaction.compact returns Ok None when List.length messages <= tail_size + 1 (empty middle). The hook treats Ok None as a silent no-op.\n(11) NO MANUAL /compact CLI IN M6: The Level-2 property is validated by compaction_driver calling Compaction.compact directly.\n(12) TOKEN ESTIMATION: Conservative char-based. Token_estimator estimates ceil(text_len / 3) per rendered message plus a fixed per-message overhead of 4 tokens. Overestimates by design.\n\nBREAKING SITES (all must be fixed in Stage 0, when Compaction_summary inhabits synthetic):\n- lib/pera_core/test/agent_loop_helpers.ml:61 (convert_to_llm helper)\n- lib/pera_agent/agent_harness.ml:37 (convert_to_llm helper)\n- lib/pera_harness/test/agent_wrapper_test.ml:16 (convert_to_llm helper)\n- bin/drivers/loop_driver.ml:74 (convert_to_llm helper)\n- bin/drivers/conversation_driver_helpers.ml:101 (convert_to_llm helper)\n- bin/drivers/conversation_driver_helpers.ml:152 (convert_to_llm helper)\n- bin/drivers/conversation_driver_helpers.ml:169 (option-shaped: | Some (Agent_types.Synthetic _) -> .)\n- agent_message_equal and pp_agent_message (both hand-written, Real-only in current code)\n- pp_agent_event (hand-written, exhaustive — must add three new variant arms)\n- session_subscriber in agent_harness.ml (exhaustive match — add stub arms in Stage 0)"
+  },
+  "epochs": [
+    {
+      "epoch": 0,
+      "title": "Foundations",
+      "status": "pending",
+      "description": "Bootstrap the compaction infrastructure. Inhabit the synthetic type and fix all refutation sites (Stage 0). Add Token_estimator and Model_window (Stage 1). These stages add capability without changing M5 runtime behaviour — no hooks are wired until Stage 4.",
+      "stages": [
+        {
+          "stage": 0,
+          "title": "Agent-core extensions: inhabit synthetic, add compaction events, add emit",
+          "status": "pending",
+          "description": "Inhabit the synthetic type with Compaction_summary, add the shared renderer to_provider_message, add three compaction agent_event variants, add the emit field to should_stop_ctx, and fix every site the type changes break. No behaviour change — should_stop_after_turn is still None everywhere.",
+          "files_to_create": [
+            "lib/pera_core/test/synthetic_test.ml"
+          ],
+          "files_to_modify": [
+            "lib/pera_core/agent_types.mli",
+            "lib/pera_core/agent_types.ml",
+            "lib/pera_core/agent_loop.mli",
+            "lib/pera_core/agent_loop.ml",
+            "lib/pera_core/test/agent_loop_helpers.ml",
+            "lib/pera_core/test/dune",
+            "lib/pera_agent/agent_harness.ml",
+            "lib/pera_harness/test/agent_wrapper_test.ml",
+            "bin/drivers/loop_driver.ml",
+            "bin/drivers/conversation_driver_helpers.ml"
+          ],
+          "files_to_delete": [],
+          "depends_on": [],
+          "implementation_notes": "AGENT_TYPES.MLI changes:\n```ocaml\ntype synthetic = Compaction_summary of { summary : string }\nval equal_synthetic : synthetic -> synthetic -> bool\nval pp_synthetic : Format.formatter -> synthetic -> unit\nval show_synthetic : synthetic -> string\n\nval compaction_framing : string\n(** \"Context from earlier conversation:\\n\\n\" — the user-role framing prepended to a\n    compaction summary when it is rendered for the LLM. *)\n\nval synthetic_to_message : synthetic -> Pera_provider.Provider.message\n(** Render a synthetic message into the provider message the LLM sees. For\n    [Compaction_summary {summary}] this is a user message whose single text block is\n    [compaction_framing ^ summary]. *)\n\nval to_provider_message : agent_message -> Pera_provider.Provider.message\n(** [Real m -> m]; [Synthetic s -> synthetic_to_message s]. The canonical agent->provider\n    message projection. NOTE: every synthetic in M6 is LLM-visible, so this is total. If a\n    future *invisible* synthetic is added, change the return type to [option] and have\n    [convert_to_llm] [filter_map] over it. *)\n```\n\nAGENT_TYPES.ML changes:\n```ocaml\ntype synthetic = Compaction_summary of { summary : string } [@@deriving eq, show]\n\nlet compaction_framing = \"Context from earlier conversation:\\n\\n\"\n\nlet synthetic_to_message = function\n  | Compaction_summary { summary } ->\n      Pera_provider.Provider.UserMessage\n        Pera_types.Types.\n          { role = \"user\"; content = [ UText (compaction_framing ^ summary) ] }\n\nlet to_provider_message = function\n  | Real m -> m\n  | Synthetic s -> synthetic_to_message s\n```\n\nExtend agent_message_equal (currently Real-only):\n```ocaml\nlet agent_message_equal m1 m2 =\n  match (m1, m2) with\n  | Real a, Real b -> Pera_provider.Provider.equal_message a b\n  | Synthetic a, Synthetic b -> equal_synthetic a b\n  | Real _, Synthetic _ | Synthetic _, Real _ -> false\n```\n\nExtend pp_agent_message (currently Real-only):\n```ocaml\nlet pp_agent_message ppf = function\n  | Real msg -> Format.fprintf ppf \"Real(%s)\" (Pera_provider.Provider.show_message msg)\n  | Synthetic s -> Format.fprintf ppf \"Synthetic(%s)\" (show_synthetic s)\n```\n\nAdd three agent_event variants after AE_tool_execution_end:\n```ocaml\n  | AE_compaction_start\n      (** Autonomous compaction has begun (threshold crossed). *)\n  | AE_compaction_end of { summary : string }\n      (** Compaction succeeded; [summary] is the produced summary text. The harness\n          session subscriber writes the Compaction entry, the synthetic user message, and a\n          Leaf in response to this event. *)\n  | AE_compaction_error of { message : string }\n      (** Compaction failed; [message] describes the failure. The context is unchanged and\n          the run continues uncompacted. *)\n```\n\nExtend hand-written pp_agent_event with three new cases (e.g. \"[AE_compaction_start]\", \"[AE_compaction_end] summary_len=%d\", \"[AE_compaction_error] %s\").\n\nAGENT_LOOP.MLI and .ML — add emit field to should_stop_ctx:\n```ocaml\n  emit : Agent_types.agent_event -> unit;\n      (** Push an event into the loop's own event stream, in order, after this turn's\n          AE_turn_end and before the next turn. Used by the harness compaction hook to emit\n          AE_compaction_* events. *)\n```\nIn agent_loop.ml, run_inner.invoke_should_stop constructs the ctx — add emit = (fun ev -> push_event out_stream ev);. Only this construction site changes; existing test hooks read the ctx and are unaffected.\n\nFIX REFUTATION SITES (all convert_to_llm helpers):\nReplace the List.filter_map (... | Synthetic _ -> .) body with List.map Agent_types.to_provider_message messages at each site:\n- lib/pera_core/test/agent_loop_helpers.ml:61\n- lib/pera_agent/agent_harness.ml:37\n- lib/pera_harness/test/agent_wrapper_test.ml:16\n- bin/drivers/loop_driver.ml:74\n- bin/drivers/conversation_driver_helpers.ml:101\n- bin/drivers/conversation_driver_helpers.ml:152\nFor the option-shaped site at conversation_driver_helpers.ml:169:\n  | Some (Agent_types.Synthetic s) -> Some (Agent_types.synthetic_to_message s)\n\nFIX session_subscriber in agent_harness.ml — add stub no-op arms so the exhaustive match compiles:\n```ocaml\n| Pera_core.Agent_types.AE_compaction_start -> Ok ()\n| Pera_core.Agent_types.AE_compaction_error _ -> Ok ()\n| Pera_core.Agent_types.AE_compaction_end _ -> Ok ()\n(* Stage 4 will replace this AE_compaction_end stub with the real writer sequence. *)\n```\n\nIf using the preferred file lib/pera_core/test/synthetic_test.ml (not agent_types_test.ml), modify lib/pera_core/test/dune to add synthetic_test to both (names ...) and (modules ...) in the shared (tests ...) stanza.",
+          "coding_guidelines_to_emphasize": [
+            "pattern-matching.md — exhaustive matches required; pp_agent_event is hand-written and must cover all three new variants",
+            "module-boundaries.md — .mli additions before .ml implementations",
+            "pera-specific.md — open Containers at top of agent_types.ml",
+            "error-handling.md — Result-not-raise"
+          ],
+          "test_requirements": {
+            "existing_tests": [
+              "All M5 tests must pass unchanged after Stage 0",
+              "pp_agent_event must be exhaustive (compile-time check)",
+              "session_subscriber in agent_harness.ml must be exhaustive (compile-time check)"
+            ],
+            "new_tests": [
+              {
+                "name": "test_synthetic_to_message_uses_framing",
+                "description": "synthetic_to_message (Compaction_summary {summary=\"S\"}) is a UserMessage whose text equals compaction_framing ^ \"S\""
+              },
+              {
+                "name": "test_to_provider_message_real_passthrough",
+                "description": "to_provider_message (Real m) = m"
+              },
+              {
+                "name": "test_to_provider_message_synthetic_renders",
+                "description": "to_provider_message (Synthetic s) equals synthetic_to_message s"
+              },
+              {
+                "name": "test_agent_message_equal_synthetic",
+                "description": "equal/unequal Compaction_summary pairs behave correctly"
+              },
+              {
+                "name": "test_agent_message_equal_mixed_is_false",
+                "description": "Real vs Synthetic -> false"
+              },
+              {
+                "name": "test_equal_agent_event_compaction",
+                "description": "AE_compaction_end {summary=\"a\"} equals itself, differs from {summary=\"b\"} and from AE_compaction_start"
+              }
+            ],
+            "test_command": "dune build && dune runtest lib/pera_core",
+            "notes": "Tests live in lib/pera_core/test/synthetic_test.ml (pure Alcotest, no Eio). If creating this new file, also add it to lib/pera_core/test/dune (names + modules in the shared tests stanza). Alternatively extend lib/pera_core/test/agent_types_test.ml if it exists."
+          },
+          "acceptance_criteria": [
+            "dune build with zero warnings",
+            "All existing M5 tests pass unchanged",
+            "Three new agent_event variants exist: AE_compaction_start, AE_compaction_end, AE_compaction_error",
+            "Compaction_summary constructor exists in type synthetic",
+            "pp_agent_event is exhaustive (covers all three new variants)",
+            "session_subscriber in agent_harness.ml is exhaustive (stub arms present)",
+            "All convert_to_llm helpers use List.map Agent_types.to_provider_message",
+            "should_stop_ctx has emit : agent_event -> unit field",
+            "All six new tests in synthetic_test.ml pass"
+          ]
+        },
+        {
+          "stage": 1,
+          "title": "Token_estimator + Model_window",
+          "status": "pending",
+          "description": "Add the two pure observation modules: Token_estimator (conservative char-based token counting) and Model_window (per-model context window sizes and trigger computation). No IO, no side effects.",
+          "files_to_create": [
+            "lib/pera_harness/token_estimator.mli",
+            "lib/pera_harness/token_estimator.ml",
+            "lib/pera_harness/model_window.mli",
+            "lib/pera_harness/model_window.ml",
+            "lib/pera_harness/test/token_estimator_test.ml",
+            "lib/pera_harness/test/model_window_test.ml"
+          ],
+          "files_to_modify": [
+            "lib/pera_harness/dune",
+            "lib/pera_harness/test/dune"
+          ],
+          "files_to_delete": [],
+          "depends_on": [0],
+          "implementation_notes": "TOKEN_ESTIMATOR.MLI:\n```ocaml\nval estimate_text : string -> int\n(** ceil(String.length / 3) — conservative (overestimates). *)\n\nval estimate_message : Pera_provider.Provider.message -> int\n(** Sum of estimate_text over every text-bearing part of the message, plus a fixed\n    per-message overhead of 4 tokens. Renders: user UText; assistant AText + AThinking.text\n    + AToolCall (name + Yojson.Safe.to_string arguments); tool_result content\n    (Yojson.Safe.to_string). UImage contributes a flat 8-token placeholder. *)\n\nval estimate_messages : Pera_provider.Provider.message list -> int\n(** Sum of estimate_message. *)\n```\n\nTOKEN_ESTIMATOR.ML implementation notes:\n- open Containers\n- estimate_text s = (String.length s + 2) / 3\n- Pattern-match exhaustively on Provider.message and content variants (no catch-alls)\n- per_message_overhead = 4 (named constant)\n\nMODEL_WINDOW.MLI:\n```ocaml\nval for_model : Pera_types.Types.model -> int\n(** The model's input context window in tokens. Known ids -> exact; otherwise a conservative\n    default of 200_000. *)\n\nval default_ratio : float\n(** 0.70 — the fraction of the window at which compaction should trigger (spec §8). *)\n\nval default_trigger_tokens : ?ratio:float -> Pera_types.Types.model -> int\n(** [int_of_float (ratio *. float (for_model model))]. *)\n```\n\nMODEL_WINDOW.ML implementation notes:\n- Small table keyed by prefix/api of model.id/model.api\n- anthropic_window = 200_000 (\"claude\"-prefixed ids or api=\"anthropic\")\n- openai_window = 128_000 (api=\"openai-completions\" or \"gpt\"-prefixed)\n- default_window = 200_000\n- default_ratio = 0.70\n- default_trigger_tokens ?(ratio=default_ratio) model = int_of_float (ratio *. float_of_int (for_model model))\n\nDUNE CHANGES:\n- lib/pera_harness/dune: add token_estimator model_window to modules list\n- lib/pera_harness/test/dune: add token_estimator_test and model_window_test to test modules",
+          "coding_guidelines_to_emphasize": [
+            "pera-specific.md — open Containers at top of both .ml files",
+            "module-boundaries.md — .mli with val before .ml",
+            "pattern-matching.md — exhaustive matches on Provider.message content variants in estimate_message"
+          ],
+          "test_requirements": {
+            "existing_tests": [
+              "All pera_harness tests still pass"
+            ],
+            "new_tests": [
+              {
+                "name": "test_estimate_text_is_ceil_div_3",
+                "description": "estimate_text \"abcd\" = 2; estimate_text \"\" = 0"
+              },
+              {
+                "name": "test_estimate_message_includes_overhead",
+                "description": "a one-char user message estimates >= per_message_overhead (4)"
+              },
+              {
+                "name": "test_estimate_messages_monotonic",
+                "description": "appending a message strictly increases the estimate"
+              },
+              {
+                "name": "test_estimate_counts_tool_call_arguments",
+                "description": "an assistant AToolCall with a long JSON argument estimates higher than the same message with empty args"
+              },
+              {
+                "name": "test_anthropic_window",
+                "description": "for_model {id=\"claude-haiku-4-5-...\"; api=\"anthropic\"} = 200_000"
+              },
+              {
+                "name": "test_openai_window",
+                "description": "for_model {id=\"gpt-4o\"; api=\"openai-completions\"} = 128_000"
+              },
+              {
+                "name": "test_unknown_defaults",
+                "description": "for_model {id=\"weird\"; api=\"weird\"} = 200_000"
+              },
+              {
+                "name": "test_default_trigger_tokens",
+                "description": "default_trigger_tokens model = 140_000 for anthropic (200_000 * 0.70)"
+              }
+            ],
+            "test_command": "dune build && dune runtest lib/pera_harness",
+            "notes": "Both modules must be pure (no Eio/IO). Tests in token_estimator_test.ml and model_window_test.ml."
+          },
+          "acceptance_criteria": [
+            "dune build passes",
+            "All existing tests pass",
+            "Token_estimator and Model_window modules exist in pera_harness",
+            "Both modules are pure (no Eio/IO dependencies)",
+            "All 8 new tests pass"
+          ]
+        }
+      ]
+    },
+    {
+      "epoch": 1,
+      "title": "Compaction pipeline",
+      "status": "pending",
+      "description": "Add the write-side compaction infrastructure. Session_writer.write_compaction (Stage 2). Compaction module — split/summarise/render algorithm (Stage 3). These stages add capability without wiring the autonomous hook.",
+      "stages": [
+        {
+          "stage": 2,
+          "title": "Session_writer.write_compaction",
+          "status": "pending",
+          "description": "Add the single missing writer method to Session_writer. The Compaction entry type and codec already exist in session_types.ml; only the advancing writer is new.",
+          "files_to_create": [],
+          "files_to_modify": [
+            "lib/pera_harness/session_writer.mli",
+            "lib/pera_harness/session_writer.ml",
+            "lib/pera_harness/test/session_writer_test.ml"
+          ],
+          "files_to_delete": [],
+          "depends_on": [0],
+          "implementation_notes": "SESSION_WRITER.MLI addition:\n```ocaml\nval write_compaction :\n  t ->\n  summary:string ->\n  first_kept_entry_id:Entry_id.t ->\n  (unit, Pera_types.Types.file_error) result\n(** Append a [compaction] entry parented at the current tip, then advance the tip to it.\n    The synthetic summary message is written separately by the caller (a subsequent\n    write_message), parenting to this entry. *)\n```\n\nSESSION_WRITER.ML implementation:\nMirror write_model_change exactly (advancing pattern):\n1. Generate id = Entry_id.generate ()\n2. Get parent_id = t.current_parent_id\n3. Get timestamp (Unix.gettimeofday or Eio clock)\n4. Build Session_types.Compaction { id; parent_id; timestamp; summary; first_kept_entry_id }\n5. append_line the entry\n6. t.current_parent_id <- Some id\n7. Return Ok ()\n\nAlso expose current_parent_id for the session_subscriber to read:\n```ocaml\nval current_parent_id : t -> Entry_id.t option\n(** The id of the last content entry written, or None if only session_info has been written. *)\n```\nThis is needed by the harness session_subscriber (Stage 4, decision 7) to determine first_kept_entry_id.",
+          "coding_guidelines_to_emphasize": [
+            "pera-specific.md — open Containers",
+            "error-handling.md — Result-not-raise for file operations",
+            "module-boundaries.md — .mli additions before .ml"
+          ],
+          "test_requirements": {
+            "existing_tests": [
+              "All existing session_writer_test cases still pass"
+            ],
+            "new_tests": [
+              {
+                "name": "test_write_compaction_emits_compaction_entry",
+                "description": "After write_session_info + write_message(user) + write_message(assistant) + write_compaction ~summary:\"S\" ~first_kept_entry_id:fk, the third line has type:\"compaction\", summary:\"S\", first_kept_entry_id:fk, and parent_id = id(assistant)"
+              },
+              {
+                "name": "test_write_compaction_advances_tip",
+                "description": "A following write_message(synth) has parent_id = id(compaction)"
+              },
+              {
+                "name": "test_compaction_then_synthetic_then_leaf_chain",
+                "description": "sequence session_info -> user -> assistant -> compaction -> synthetic(user) -> leaf; content chain (excluding leaf) is gap-free; leaf is childless (no entry references the leaf id)"
+              }
+            ],
+            "test_command": "dune build && dune runtest lib/pera_harness",
+            "notes": "To get the assistant entry id for first_kept_entry_id in tests, read current_parent_id before write_compaction (it equals the assistant id at that point)."
+          },
+          "acceptance_criteria": [
+            "dune build passes",
+            "All existing session_writer tests pass",
+            "write_compaction method exists and produces a compaction JSONL entry",
+            "write_compaction advances the tip (subsequent writes parent to it)",
+            "current_parent_id accessor is exposed in the .mli",
+            "All 3 new tests pass"
+          ]
+        },
+        {
+          "stage": 3,
+          "title": "Compaction module (split / summarise / render)",
+          "status": "pending",
+          "description": "The pure-from-IO-except-via-stream_fn compaction algorithm. Takes a message list and a stream_fn; gives a new message list and summary. The compaction_driver exercises exactly this surface. Must be writable without instantiating a full harness.",
+          "files_to_create": [
+            "lib/pera_harness/compaction.mli",
+            "lib/pera_harness/compaction.ml",
+            "lib/pera_harness/test/compaction_test.ml"
+          ],
+          "files_to_modify": [
+            "lib/pera_harness/dune",
+            "lib/pera_harness/test/dune"
+          ],
+          "files_to_delete": [],
+          "depends_on": [1, 2],
+          "implementation_notes": "COMPACTION.MLI:\n```ocaml\ntype result = {\n  new_messages : Pera_core.Agent_types.agent_message list;\n      (** [ first ] @ [ Synthetic (Compaction_summary {summary}) ] @ tail. *)\n  summary : string;\n}\n\nval summarise_prompt : string\n(** The hardcoded compaction system prompt (spec §8). *)\n\nval render_messages_to_text : Pera_provider.Provider.message list -> string\n(** A plain-text transcript of the messages to summarise: one block per message, role-\n    labelled, tool calls and results inlined as text. Robust for the summarisation call\n    (avoids provider message-shape constraints like \"tool_result must follow a tool_use\"). *)\n\nval compact :\n  stream_fn:Pera_core.Agent_types.stream_fn ->\n  model:Pera_types.Types.model ->\n  options:Pera_provider.Provider.simple_stream_options ->\n  messages:Pera_core.Agent_types.agent_message list ->\n  tail_size:int ->\n  sw:Eio.Switch.t ->\n  (result option, string) result\n(** Compact [messages]. Returns:\n    - [Ok (Some result)] on success;\n    - [Ok None] when there is nothing to compact ([List.length messages <= tail_size + 1],\n      i.e. empty middle — the re-compaction guard);\n    - [Error msg] when the summarisation LLM call fails or yields empty text. *)\n```\n\nCOMPACTION ALGORITHM (compact):\n1. Let n = List.length messages. If n <= tail_size + 1 -> Ok None.\n2. first = List.hd messages. tail = last tail_size messages.\n   middle = messages from index 1 to n - tail_size - 1 inclusive (non-empty by step 1).\n3. rendered = render_messages_to_text (List.map Agent_types.to_provider_message middle).\n4. Build the summarisation provider context:\n   let user = Provider.UserMessage Types.{ role = \"user\";\n     content = [ UText (\"Conversation to summarise:\\n\\n\" ^ rendered) ] } in\n   let context = Provider.{ system = summarise_prompt; messages = [ user ];\n                            tools = []; thinking = false } in\n5. let stream = stream_fn ~model ~context ~options ~sw in\n   Consume with Event_stream.iter:\n   match Event_stream.iter stream ~f:(fun _ -> ()) with\n   | Error e -> Error e\n   | Ok final ->\n   Collect all AText blocks of final.content, concatenate -> summary.\n   If summary = \"\" -> Error \"compaction produced empty summary\".\n6. new_messages = [first] @ [ Agent_types.Synthetic (Compaction_summary { summary }) ] @ tail.\n   Return Ok (Some { new_messages; summary }).\n\nSUMMARISE_PROMPT (exact text):\n\"You are compacting a long coding-assistant conversation to fit a context window.\\nProduce a concise summary that PRESERVES:\\n- the original task / goal;\\n- every file path the agent has created or edited, each with a one-line note of what changed;\\n- outstanding decisions, open questions, and the current plan;\\n- the working understanding of the project (key facts, constraints).\\nDISCARD:\\n- file contents (they can be re-read);\\n- exploration that led nowhere;\\n- tool calls whose results were superseded by later work.\\nOutput structured prose with short section headers. Do not address the user; write the\\nsummary as notes.\"\n\nDUNE CHANGES:\n- lib/pera_harness/dune: add compaction to modules; ensure pera_core is in libraries (it already is per M5 decision 2)\n- lib/pera_harness/test/dune: add compaction_test; ensure pera_core_test_util is in test libraries (for Faux_provider)",
+          "coding_guidelines_to_emphasize": [
+            "pera-specific.md — open Containers",
+            "module-boundaries.md — .mli with type and val before .ml",
+            "error-handling.md — Result-not-raise; compact returns (result option, string) result",
+            "eio.md — sw parameter threaded through; child switch semantics",
+            "test-patterns.md — Faux_provider for deterministic stream tests"
+          ],
+          "test_requirements": {
+            "existing_tests": [
+              "All pera_harness tests still pass"
+            ],
+            "new_tests": [
+              {
+                "name": "test_compact_success_shape",
+                "description": "with messages of length tail_size + 3 and tail_size = 2, compact returns Ok (Some r) where r.summary = \"SUMMARY\", r.new_messages has length 1 + 1 + tail_size, the head equals the original first message, element 1 is Synthetic (Compaction_summary {summary=\"SUMMARY\"}), and the tail equals the original last tail_size messages"
+              },
+              {
+                "name": "test_compact_renders_synthetic_as_user",
+                "description": "to_provider_message (List.nth r.new_messages 1) is a UserMessage whose text starts with Agent_types.compaction_framing"
+              },
+              {
+                "name": "test_compact_too_short_returns_none",
+                "description": "messages of length tail_size + 1 -> Ok None (and the stream_fn is NOT called — assert via a counter)"
+              },
+              {
+                "name": "test_compact_stream_error_returns_error",
+                "description": "script an Error turn -> compact returns Error _, and new_messages is not produced"
+              },
+              {
+                "name": "test_render_messages_to_text_includes_tool_results",
+                "description": "rendering a list containing a ToolResultMessage includes its content text"
+              }
+            ],
+            "test_command": "dune build && dune runtest lib/pera_harness",
+            "notes": "Use Faux_provider.stream_fn_of_scripts (no network). Build a stream_fn whose single script is a Turn producing AText \"SUMMARY\" and a final EndTurn assistant message with content=[AText \"SUMMARY\"]. Compaction must not depend on Agent_harness, Session_writer, or any harness state."
+          },
+          "acceptance_criteria": [
+            "dune build passes",
+            "Compaction module exists and does not depend on Agent_harness, Session_writer, or any harness state (proves the §12 seam is clean)",
+            "summarise_prompt matches the exact text in implementation_notes",
+            "compact returns Ok None for messages of length <= tail_size + 1",
+            "All 5 new tests pass"
+          ]
+        }
+      ]
+    },
+    {
+      "epoch": 2,
+      "title": "Harness wiring (Level 3, autonomous)",
+      "status": "pending",
+      "description": "Wire autonomous compaction into the assembled harness (Stage 4). When config.compaction = Some cc, install the should_stop_after_turn and prepare_next_turn hooks and grow the session subscriber. When None, behaviour is exactly M5.",
+      "stages": [
+        {
+          "stage": 4,
+          "title": "Agent_harness compaction wiring (autonomous L3)",
+          "status": "pending",
+          "description": "Add compaction_config type, add compaction field to config, wire the should_stop and prepare_next_turn hooks, replace stub arms in session_subscriber with real writer sequence. M5 behaviour preserved when compaction = None.",
+          "files_to_create": [],
+          "files_to_modify": [
+            "lib/pera_agent/agent_harness.mli",
+            "lib/pera_agent/agent_harness.ml",
+            "lib/pera_agent/test/agent_harness_test.ml",
+            "lib/pera_agent/dune",
+            "bin/drivers/live_driver.ml",
+            "bin/drivers/harness_driver.ml"
+          ],
+          "files_to_delete": [],
+          "depends_on": [3],
+          "implementation_notes": "INTERFACE ADDITIONS (agent_harness.mli):\n```ocaml\ntype compaction_config = {\n  trigger_tokens : int;\n      (** Compact when estimate_messages (convert_to_llm context.messages) > this. *)\n  tail_size : int;  (** Number of trailing messages kept verbatim (spec default 4). *)\n}\n\ntype config = {\n  cwd : string;\n  model : Pera_types.Types.model;\n  session_path : string;\n  stream_fn : Pera_core.Agent_types.stream_fn;\n  max_tokens : int;\n  exec_env : (module Pera_env.Execution_env.S);\n  compaction : compaction_config option;   (* NEW; None = no autonomous compaction *)\n}\n```\n\nINTERNAL WIRING (create):\nAdd a shared ref before building loop_config:\n```ocaml\nlet pending_compacted : Pera_core.Agent_types.agent_message list option ref = ref None in\n```\n\nDefine the two hooks (only when config.compaction = Some cc):\n```ocaml\nlet options = Provider.{ max_tokens = config.max_tokens; temperature = None } in\n\nlet should_stop_hook cc (ctx : _ Pera_core.Agent_loop.should_stop_ctx) =\n  let provider_msgs = convert_to_llm ctx.messages in\n  let est = Pera_harness.Token_estimator.estimate_messages provider_msgs in\n  if est <= cc.trigger_tokens then false\n  else begin\n    ctx.emit Pera_core.Agent_types.AE_compaction_start;\n    let outcome =\n      Eio.Switch.run (fun sw ->\n        Pera_harness.Compaction.compact\n          ~stream_fn:config.stream_fn ~model:config.model ~options\n          ~messages:ctx.messages ~tail_size:cc.tail_size ~sw)\n    in\n    (match outcome with\n     | Ok (Some r) ->\n         pending_compacted := Some r.new_messages;\n         ctx.emit (Pera_core.Agent_types.AE_compaction_end { summary = r.summary })\n     | Ok None -> ()   (* nothing to compact — silent no-op *)\n     | Error msg ->\n         ctx.emit (Pera_core.Agent_types.AE_compaction_error { message = msg }));\n    false   (* never stop the run on account of compaction *)\n  end\nin\n\nlet prepare_hook (_ctx : _ Pera_core.Agent_loop.prepare_ctx) =\n  match !pending_compacted with\n  | None -> None\n  | Some msgs ->\n      pending_compacted := None;\n      Some Pera_core.Agent_types.{ messages = Some msgs; model = None; thinking = None }\nin\n```\n\nIn loop_config, set:\n```ocaml\nshould_stop_after_turn =\n  (match config.compaction with None -> None | Some cc -> Some (should_stop_hook cc));\nprepare_next_turn =\n  (match config.compaction with None -> None | Some _ -> Some prepare_hook);\n```\n\nORDERING NOTE: the loop runs should_stop (Step 9) then prepare_next_turn (Step 10) only when should_stop returned false. Our hook always returns false, so prepare_next_turn always runs and installs the compacted context for the next turn.\n\nSWITCH NOTE: should_stop runs in the loop fibre under the run switch. We wrap the summarisation in a child Eio.Switch.run so compact has a switch for the provider stream; cancellation of the outer switch still propagates to the child.\n\nSESSION SUBSCRIBER GROWTH (replace stub arms with real implementation):\n```ocaml\n| AE_compaction_start -> Ok ()\n| AE_compaction_error { message } ->\n    Printf.eprintf \"compaction failed: %s\\n%!\" message;\n    Ok ()   (* hook already emitted; nothing to persist *)\n| AE_compaction_end { summary } ->\n    (match Pera_harness.Session_writer.current_parent_id writer with\n     | None -> Ok ()   (* no tip to anchor; should not happen mid-run *)\n     | Some first_kept_entry_id ->\n         (* first_kept_entry_id is the pre-compaction tip (decision 7) — documented approximation *)\n         let* () =\n           Pera_harness.Session_writer.write_compaction writer ~summary\n             ~first_kept_entry_id\n         in\n         let synth =\n           Pera_core.Agent_types.synthetic_to_message\n             (Pera_core.Agent_types.Compaction_summary { summary })\n         in\n         let* () = Pera_harness.Session_writer.write_message writer synth in\n         Pera_harness.Session_writer.write_leaf writer)\n```\n\nCONFIG CONSTRUCTION SITES: grep for Agent_harness.config record literals in live_driver.ml, harness_driver.ml, and agent_harness_test.ml. Add compaction = None to each.",
+          "coding_guidelines_to_emphasize": [
+            "eio.md — child Eio.Switch.run inside should_stop hook; structured concurrency",
+            "error-handling.md — Result-not-raise; let* binding operator for session writes",
+            "pera-specific.md — open Containers",
+            "pattern-matching.md — exhaustive match on agent_event in session_subscriber"
+          ],
+          "test_requirements": {
+            "existing_tests": [
+              "All M5 agent_harness_test cases still pass (they now construct config with compaction = None)",
+              "live_driver and harness_driver still build"
+            ],
+            "new_tests": [
+              {
+                "name": "test_autonomous_compaction_writes_compaction_entry",
+                "description": "after a run that crosses the threshold, the session file contains exactly one type:\"compaction\" entry with a non-empty summary"
+              },
+              {
+                "name": "test_autonomous_compaction_writes_synthetic_message",
+                "description": "a message entry whose role is user and whose text begins with compaction_framing follows the compaction entry, parented to it"
+              },
+              {
+                "name": "test_autonomous_compaction_emits_events",
+                "description": "a subscriber observes AE_compaction_start then AE_compaction_end, ordered after the triggering AE_turn_end and before a later AE_turn_end"
+              },
+              {
+                "name": "test_autonomous_compaction_no_error_event",
+                "description": "no AE_compaction_error in the happy path; the run reaches AE_agent_end"
+              },
+              {
+                "name": "test_compaction_disabled_is_m5_behaviour",
+                "description": "with compaction = None, the session file has no compaction entry (regression guard for M5 parity)"
+              },
+              {
+                "name": "test_compaction_failure_emits_error_and_continues",
+                "description": "script the summarisation turn as an Error; subscriber sees AE_compaction_error, the run still reaches AE_agent_end, and the session has no compaction entry"
+              }
+            ],
+            "test_command": "dune build && dune runtest lib/pera_agent",
+            "notes": "Drive with Faux_provider. Set compaction = Some { trigger_tokens = <low>; tail_size = 2 }. Use a scripted sequence that accumulates enough messages to trip the threshold and provides a summary turn."
+          },
+          "acceptance_criteria": [
+            "dune build passes",
+            "All M5 agent_harness tests pass with compaction = None",
+            "compaction_config type and config.compaction field exist in .mli",
+            "should_stop_after_turn and prepare_next_turn hooks are wired when Some cc",
+            "session_subscriber AE_compaction_end arm writes compaction entry + synthetic message + leaf",
+            "AE_compaction_error arm prints to stderr",
+            "All 6 new tests pass"
+          ]
+        }
+      ]
+    },
+    {
+      "epoch": 3,
+      "title": "Drivers",
+      "status": "pending",
+      "description": "The milestone's evidence (SPECIFICATION.md §12: M6 = compaction_driver + harness_driver with compaction). Both drivers must be complete and self-checking with structured PASS/FAIL output and meaningful exit codes.",
+      "stages": [
+        {
+          "stage": 5,
+          "title": "compaction_driver + session_driver compaction scenario",
+          "status": "pending",
+          "description": "Create compaction_driver with offline_faux and real_model scenarios. Add session_driver scenario 6 for the compaction entry chain.",
+          "files_to_create": [
+            "bin/drivers/compaction_driver.ml"
+          ],
+          "files_to_modify": [
+            "bin/drivers/session_driver.ml",
+            "bin/drivers/dune"
+          ],
+          "files_to_delete": [],
+          "depends_on": [3],
+          "implementation_notes": "COMPACTION_DRIVER — two scenarios:\n\nScenario A — offline_faux (always runs):\n- Build stream_fn via Faux_provider.stream_fn_of_scripts with one Turn producing content=[AText \"OFFLINE SUMMARY\"]\n- Build a synthetic conversation of ~8 agent_messages (user task, several assistant/tool-result pairs)\n- Call Compaction.compact ~tail_size:3\n- Assert: result is Ok (Some r); r.summary = \"OFFLINE SUMMARY\"; List.length r.new_messages = 1 + 1 + 3; to_provider_message (List.nth r.new_messages 1) is a UserMessage whose text starts with compaction_framing; the head and last 3 messages are preserved verbatim\n- Print \"[compaction] offline_faux ... PASS\"\n\nScenario B — real_model (skips without ANTHROPIC_API_KEY):\n- Build real stream_fn: Provider_registry.t containing Anthropic_provider, then Provider_adapter.create ~registry ~env ~sw, then Provider_adapter.stream_fn\n- Construct a representative long conversation (coding task + file-edit turns described as text)\n- Call Compaction.compact ~model:{id=\"claude-haiku-4-5-...\"; api=\"anthropic\"}\n- Assert Ok (Some r), r.summary non-empty; print the summary for human inspection\n- Print \"[compaction] real_model ... PASS\" or when key absent \"[compaction] real_model ... SKIP: no ANTHROPIC_API_KEY\"\n\nExit 0 if every non-skipped scenario passes, else 1.\n\nDUNE STANZA:\n```\n(executable\n (name compaction_driver)\n (modules compaction_driver)\n (libraries pera_harness pera_core pera_core_test_util pera_provider pera_env pera_types\n            eio eio_main eio_linux containers yojson unix))\n```\n\nSESSION_DRIVER SCENARIO 6 — compaction:\nDrive Session_writer directly (no agent loop):\nwrite_session_info -> write_message(user) -> write_message(assistant) ->\nwrite_compaction ~summary:\"S\" ~first_kept_entry_id:<id of assistant> ->\nwrite_message(synthetic user) -> write_leaf\nVerify:\n- 6 lines; types [session_info; message; message; compaction; message; leaf]\n- the compaction entry has summary:\"S\" and a present first_kept_entry_id\n- content chain (excluding leaf) is gap-free; the leaf is childless\nTo get the assistant entry id, read current_parent_id before write_compaction (it equals the assistant id).\nPrint \"[session] compaction ... PASS\".",
+          "coding_guidelines_to_emphasize": [
+            "test-patterns.md — structured [driver] scenario ... PASS/FAIL output; meaningful exit codes",
+            "pera-specific.md — open Containers",
+            "error-handling.md — Result-not-raise"
+          ],
+          "test_requirements": {
+            "existing_tests": [
+              "All existing session_driver scenarios still pass (5 scenarios before this stage)"
+            ],
+            "new_tests": [
+              {
+                "name": "offline_faux scenario passes",
+                "description": "compaction_driver offline_faux scenario asserts all shape invariants and prints PASS"
+              },
+              {
+                "name": "real_model scenario skips gracefully",
+                "description": "without ANTHROPIC_API_KEY, prints SKIP: no ANTHROPIC_API_KEY and exits 0"
+              },
+              {
+                "name": "session_driver scenario 6 compaction",
+                "description": "6 JSONL lines with correct types, gap-free chain, leaf is childless, compaction has summary and first_kept_entry_id"
+              }
+            ],
+            "test_command": "./_build/default/bin/drivers/session_driver.exe && ./_build/default/bin/drivers/compaction_driver.exe",
+            "notes": "session_driver must print 6 PASS lines after this stage. compaction_driver prints offline PASS and either real PASS or real SKIP."
+          },
+          "acceptance_criteria": [
+            "dune build passes",
+            "session_driver prints 6 PASS lines, exit 0",
+            "compaction_driver prints offline_faux PASS and either real_model PASS or real_model SKIP, exit 0"
+          ]
+        },
+        {
+          "stage": 6,
+          "title": "harness_driver autonomous-compaction scenario",
+          "status": "pending",
+          "description": "Add the autonomous_compaction scenario to harness_driver. This is the M6 headline evidence: a full-stack Agent_harness run against Faux_provider that crosses the compaction threshold mid-run and continues without an error event.",
+          "files_to_create": [],
+          "files_to_modify": [
+            "bin/drivers/harness_driver.ml"
+          ],
+          "files_to_delete": [],
+          "depends_on": [4, 5],
+          "implementation_notes": "SCRIPT ORDER (critical — call ordering is the subtle part):\nFaux_provider.stream_fn_of_scripts plays scripts in call order. The harness compaction hook makes an EXTRA stream_fn call (the summarisation) between agent turns. A run that compacts once consumes 5 scripts:\n1. Turn 1 — assistant tool call (e.g. bash echo a), stop_reason = ToolUse. Large text (~1200 chars AText filler + tool call) so running estimate climbs.\n2. Turn 2 — assistant tool call (bash echo b), large text, ToolUse.\n3. Turn 3 — assistant tool call (bash echo c), large text, ToolUse. After this turn accumulated context exceeds trigger_tokens -> should_stop compacts.\n4. Summarisation call — should_stop calls stream_fn; this consumes the next script: a plain Turn with content=[AText \"COMPACTED SUMMARY\"], EndTurn. (NOT an agent turn; it is the compaction LLM call.)\n5. Turn 4 — assistant text, EndTurn. The inner loop continued because Turn 3 had a tool call; after compaction it runs this final turn and the run ends.\n\nSo scripts = [tool1; tool2; tool3; summary; final_text] (5 scripts). Use real tool calls to bash so the harness's real Local_env executes them (echo output is deterministic). tail_size = 2.\n\nTUNING trigger_tokens (worked example):\nToken_estimator.estimate_message adds 4 tokens overhead per message plus ceil(char_len/3) per text block.\nWith ~1200-char filler per tool turn and a short echo tool result (~10 chars):\n  assistant (tool call + 1200-char AText): 4 + ceil(1200/3) + tool-call-name ~= 4 + 400 + 4 = ~408 tokens\n  tool result (~10 chars): 4 + ceil(10/3) ~= 4 + 4 = ~8 tokens\nRunning totals (user message ~10 tokens, start ~10):\n  After Turn 1: ~10 + 408 + 8 = 426\n  After Turn 2: ~426 + 408 + 8 = 842\n  After Turn 3: ~842 + 408 + 8 = 1258\nChoose trigger_tokens in range (842, 1258) — e.g. 1000.\nPost-compaction estimate: ~10 + 10 + 408 + 8 = 436 (well below 1000).\nWith trigger_tokens = 1000 and tail_size = 2, exactly one compaction fires.\nIf a second compaction fires, it would exhaust the script list and raise \"Faux_provider: no more scripts\" — raise trigger_tokens if that happens.\nThe Ok None guard (decision 10) only prevents compaction when n <= tail_size + 1 = 3; after first compaction n = 4, so the guard does NOT prevent a second attempt — only correct trigger_tokens tuning does.\n\nASSERTIONS:\n- The event stream contains exactly one AE_compaction_start and one AE_compaction_end, and NO AE_compaction_error\n- AE_compaction_start appears AFTER the third AE_turn_end and BEFORE the final AE_turn_end\n- The run reaches AE_agent_end (no terminal error)\n- The session file contains exactly one type:\"compaction\" entry with a non-empty summary, immediately followed by a message (role user) whose text starts with compaction_framing, parented to the compaction entry\n- The content chain (excluding leaf entries) is gap-free; every leaf is childless\n- There are exactly two leaf entries for this single send: one written at compaction time and one at AE_agent_end (spec §3: \"Compaction writes an additional Leaf\")\n\nPrint \"[harness] autonomous_compaction ... PASS/FAIL: reason\". Keep the three existing harness_driver scenarios. Exit 0 only if all pass.",
+          "coding_guidelines_to_emphasize": [
+            "test-patterns.md — structured [harness] scenario ... PASS/FAIL output; meaningful exit codes",
+            "pera-specific.md — open Containers",
+            "error-handling.md — Result-not-raise"
+          ],
+          "test_requirements": {
+            "existing_tests": [
+              "All 3 existing harness_driver scenarios still pass"
+            ],
+            "new_tests": [
+              {
+                "name": "autonomous_compaction scenario",
+                "description": "Full-stack run: exactly one AE_compaction_start + AE_compaction_end (no error), correct event ordering, session file has compaction entry + synthetic message + two leaf entries, gap-free content chain"
+              }
+            ],
+            "test_command": "./_build/default/bin/drivers/harness_driver.exe",
+            "notes": "harness_driver must print 4 PASS lines after this stage (3 existing + autonomous_compaction). The 'session continues without an error event' property (SPECIFICATION.md §12) is directly observable in the output."
+          },
+          "acceptance_criteria": [
+            "dune build passes",
+            "harness_driver prints 4 PASS lines, exit 0",
+            "autonomous_compaction scenario: exactly one AE_compaction_start + AE_compaction_end in correct order",
+            "No AE_compaction_error event in the event stream",
+            "Session file has exactly one compaction entry with non-empty summary",
+            "Session file has exactly two leaf entries",
+            "Content chain is gap-free"
+          ]
+        }
+      ]
+    },
+    {
+      "epoch": 4,
+      "title": "Verification and docs",
+      "status": "pending",
+      "description": "Final verification sweep and documentation updates. Run all drivers, confirm no regressions.",
+      "stages": [
+        {
+          "stage": 7,
+          "title": "Docs + full verification sweep",
+          "status": "pending",
+          "description": "Update AGENTS.md and USAGE.md to mention compaction_driver and autonomous compaction (M6). Run full verification sweep across all drivers.",
+          "files_to_create": [],
+          "files_to_modify": [
+            "AGENTS.md",
+            "USAGE.md"
+          ],
+          "files_to_delete": [],
+          "depends_on": [5, 6],
+          "implementation_notes": "DOCS CHANGES:\n- AGENTS.md / USAGE.md: add compaction_driver to the driver list and a one-line \"autonomous compaction (M6)\" note; mention Agent_harness.config.compaction\n- SPECIFICATION.md: optional — bump the status line / note M6 is implemented. Do NOT rewrite §8; the implementation matches it.\n\nVERIFICATION COMMANDS:\n  dune build\n  dune runtest\n  ./_build/default/bin/drivers/session_driver.exe        # 6 PASS\n  ./_build/default/bin/drivers/compaction_driver.exe     # offline PASS, real PASS|SKIP\n  ./_build/default/bin/drivers/harness_driver.exe        # 4 PASS\n  ANTHROPIC_API_KEY=... ./_build/default/bin/drivers/compaction_driver.exe   # real_model PASS + printed summary\n\nConfirm loop_driver, conversation_driver, tool_driver, env_driver, live_driver still build and pass (they were touched only by the mechanical convert_to_llm edit in Stage 0).",
+          "coding_guidelines_to_emphasize": [],
+          "test_requirements": {
+            "existing_tests": [
+              "dune build: zero warnings",
+              "dune runtest: all tests pass (except pre-existing known failures)",
+              "session_driver: 6 PASS",
+              "compaction_driver: offline PASS, real PASS|SKIP",
+              "harness_driver: 4 PASS",
+              "loop_driver, conversation_driver, tool_driver, env_driver, live_driver: still build and pass"
+            ],
+            "new_tests": [],
+            "test_command": "dune build && dune runtest && ./_build/default/bin/drivers/session_driver.exe && ./_build/default/bin/drivers/compaction_driver.exe && ./_build/default/bin/drivers/harness_driver.exe",
+            "notes": "This stage is verification-only. No new code beyond documentation edits."
+          },
+          "acceptance_criteria": [
+            "dune build passes with zero warnings",
+            "dune runtest passes (excluding pre-existing known_failures)",
+            "session_driver prints 6 PASS lines, exit 0",
+            "compaction_driver prints offline_faux PASS and real_model PASS|SKIP, exit 0",
+            "harness_driver prints 4 PASS lines, exit 0",
+            "All other drivers still build and pass",
+            "AGENTS.md and USAGE.md mention compaction_driver and Agent_harness.config.compaction"
+          ]
+        }
+      ]
+    }
+  ]
+}

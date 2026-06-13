@@ -1,20 +1,34 @@
 open Containers
 
-type synthetic = |
+type synthetic = Compaction_summary of { summary : string } [@@deriving eq, show]
 
 type agent_message =
   | Real of Pera_provider.Provider.message
   | Synthetic of synthetic
 
-(** Compare two [agent_message] values for structural equality. The [Synthetic]
-    case is uninhabited so only the [Real] arm is needed. *)
+let compaction_framing = "Context from earlier conversation:\n\n"
+
+let synthetic_to_message = function
+  | Compaction_summary { summary } ->
+      Pera_provider.Provider.UserMessage
+        Pera_types.Types.
+          { role = "user"; content = [ UText (compaction_framing ^ summary) ] }
+
+let to_provider_message = function
+  | Real m -> m
+  | Synthetic s -> synthetic_to_message s
+
+(** Compare two [agent_message] values for structural equality. *)
 let agent_message_equal m1 m2 =
   match (m1, m2) with
-  | Real msg1, Real msg2 -> Pera_provider.Provider.equal_message msg1 msg2
+  | Real a, Real b -> Pera_provider.Provider.equal_message a b
+  | Synthetic a, Synthetic b -> equal_synthetic a b
+  | Real _, Synthetic _ | Synthetic _, Real _ -> false
 
 let pp_agent_message ppf = function
   | Real msg ->
       Format.fprintf ppf "Real(%s)" (Pera_provider.Provider.show_message msg)
+  | Synthetic s -> Format.fprintf ppf "Synthetic(%s)" (show_synthetic s)
 
 type tool_output =
   | Tool_text of string
@@ -94,6 +108,9 @@ type agent_event =
           fun fmt v -> Format.pp_print_string fmt (Yojson.Safe.to_string v)]);
       is_error : bool;
     }
+  | AE_compaction_start
+  | AE_compaction_end of { summary : string }
+  | AE_compaction_error of { message : string }
 [@@deriving eq, show]
 
 type before_tool_call_result = Allow | Deny of string [@@deriving eq, show]
@@ -170,6 +187,12 @@ let pp_agent_event ppf event =
   | AE_tool_execution_end { tool_call_id; tool_name; is_error; _ } ->
       Format.fprintf ppf "[AE_tool_execution_end] id=%s name=%s is_error=%b"
         tool_call_id tool_name is_error
+  | AE_compaction_start -> Format.pp_print_string ppf "[AE_compaction_start]"
+  | AE_compaction_end { summary } ->
+      Format.fprintf ppf "[AE_compaction_end] summary_len=%d"
+        (String.length summary)
+  | AE_compaction_error { message } ->
+      Format.fprintf ppf "[AE_compaction_error] %s" message
 
 (** Re-shadow the ppx-generated [show_agent_event] so it delegates to the
     hand-written [pp_agent_event] above rather than the derived OCaml-syntax
