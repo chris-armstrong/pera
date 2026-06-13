@@ -29,6 +29,15 @@ val write_model_change :
   t -> Pera_types.Types.model -> (unit, Pera_types.Types.file_error) result
 (** Append a [model_change] entry and advance [current_parent_id]. *)
 
+val write_compaction :
+  t ->
+  summary:string ->
+  first_kept_entry_id:Entry_id.t ->
+  (unit, Pera_types.Types.file_error) result
+(** Append a [compaction] entry parented at the current tip, then advance the
+    tip to it. The synthetic summary message is written separately by the caller
+    (a subsequent [write_message]), parenting to this entry. *)
+
 val session_id : t -> string
 (** The UUIDv7 session identifier generated at [create] time. *)
 
