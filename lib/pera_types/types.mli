@@ -234,6 +234,17 @@ type model = {
   id : string;
       (** Model identifier as given to the API, e.g. ["claude-sonnet-4-5"]. *)
   api : string;  (** API family, e.g. ["anthropic"] or ["openai-completions"]. *)
+  context_window : int;
+      (** Input context window in tokens for this model variant.
+
+          This is per-instance metadata because the [id]+[api] pair does not
+          uniquely determine the window: Claude 4.x families ship both 200K and
+          1M variants with the same id prefix, and ["openai-completions"] is a
+          protocol that covers everything from 4K local llamas to 256K
+          DeepSeek/Qwen. Whoever constructs the record knows which variant
+          they picked; they must record its window here. Consumed by
+          {!Pera_core.Model_window} to compute the autonomous-compaction
+          trigger threshold. *)
 }
 (** Identifies an LLM model and the API used to reach it. *)
 

@@ -30,9 +30,19 @@ let select_model registry argv =
     let api = argv.(1) in
     match api with
     | "anthropic" ->
-        Types.{ id = "claude-haiku-4-5-20251001"; api = "anthropic" }
+        Types.
+          {
+            id = "claude-haiku-4-5-20251001";
+            api = "anthropic";
+            context_window = 200_000;
+          }
     | "openai-completions" ->
-        Types.{ id = "kimi-k2.6"; api = "openai-completions" }
+        Types.
+          {
+            id = "kimi-k2.6";
+            api = "openai-completions";
+            context_window = 128_000;
+          }
     | _ ->
         Log.err (fun m -> m "unknown provider: %s" api);
         Log.err (fun m -> m "available: anthropic | openai-completions");
@@ -41,12 +51,23 @@ let select_model registry argv =
     (* Default to the first registered provider. *)
     match Provider_registry.to_list registry with
     | ("anthropic", _) :: _ ->
-        Types.{ id = "claude-haiku-4-5-20251001"; api = "anthropic" }
+        Types.
+          {
+            id = "claude-haiku-4-5-20251001";
+            api = "anthropic";
+            context_window = 200_000;
+          }
     | ("openai-completions", _) :: _ ->
-        Types.{ id = "kimi-k2.6"; api = "openai-completions" }
+        Types.
+          {
+            id = "kimi-k2.6";
+            api = "openai-completions";
+            context_window = 128_000;
+          }
     | (name, _) :: _ ->
-        (* Fallback: use whatever was registered first. *)
-        Types.{ id = "unknown"; api = name }
+        (* Fallback: use whatever was registered first.
+           TODO: 200K is a guess for the unknown provider; surface a CLI flag. *)
+        Types.{ id = "unknown"; api = name; context_window = 200_000 }
     | [] ->
         (* Should not reach here — we checked for empty registry before. *)
         print_endline "skipped: no API keys";

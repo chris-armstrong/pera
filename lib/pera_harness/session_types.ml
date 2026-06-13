@@ -160,7 +160,11 @@ let base_fields ~id ~type_str ~timestamp ~parent_id =
 let entry_to_json = function
   | SessionInfo e ->
     let model_json =
-      `Assoc [ ("id", `String e.model.id); ("api", `String e.model.api) ]
+      `Assoc
+        [ ("id", `String e.model.id)
+        ; ("api", `String e.model.api)
+        ; ("context_window", `Int e.model.context_window)
+        ]
     in
     let base = base_fields ~id:e.id ~type_str:"session_info" ~timestamp:e.timestamp ~parent_id:None in
     let extra =
@@ -179,7 +183,11 @@ let entry_to_json = function
     `Assoc base
   | ModelChange e ->
     let model_json =
-      `Assoc [ ("id", `String e.model.id); ("api", `String e.model.api) ]
+      `Assoc
+        [ ("id", `String e.model.id)
+        ; ("api", `String e.model.api)
+        ; ("context_window", `Int e.model.context_window)
+        ]
     in
     let base = base_fields ~id:e.id ~type_str:"model_change" ~timestamp:e.timestamp ~parent_id:e.parent_id in
     `Assoc (base @ [ ("model", model_json) ])

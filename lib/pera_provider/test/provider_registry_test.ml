@@ -66,7 +66,8 @@ let run_provider_and_get_events provider_mod =
   let options = { Provider.max_tokens = 100; temperature = None } in
   let stream =
     P.stream_simple inst
-      ~model:{ Pera_types.Types.id = "test"; api = "faux" }
+      ~model:
+        { Pera_types.Types.id = "test"; api = "faux"; context_window = 200_000 }
       ~context ~options ~sw
   in
   let events, result = collect_events stream [] in

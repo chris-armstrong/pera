@@ -12,7 +12,9 @@ let has_key json key =
     Option.is_some (List.assoc_opt ~eq:String.equal key fields)
   | _ -> false
 
-let fake_model = Pera_types.Types.{ id = "test-model"; api = "anthropic" }
+let fake_model =
+  Pera_types.Types.
+    { id = "test-model"; api = "anthropic"; context_window = 200_000 }
 
 let fake_user_message =
   Pera_provider.Provider.UserMessage
@@ -182,7 +184,8 @@ let test_multiple_appends_accumulate_lines env () =
   Result.get_exn (Session_writer.write_leaf t);
   Result.get_exn
     (Session_writer.write_model_change t
-       Pera_types.Types.{ id = "new-model"; api = "anthropic" });
+       Pera_types.Types.
+         { id = "new-model"; api = "anthropic"; context_window = 200_000 });
   let lines = read_jsonl_lines env path in
   Alcotest.(check int) "four lines" 4 (List.length lines);
   List.iteri
@@ -195,7 +198,21 @@ let test_multiple_appends_accumulate_lines env () =
       Alcotest.(check bool)
         (Printf.sprintf "line %d is valid JSON object" i)
         true valid)
-    lines
+    lines;
+  let session_info_line =
+    List.get_at_idx 0 lines |> Option.get_exn_or "session_info line"
+  in
+  Alcotest.(check int) "session_info model.context_window" 200_000
+    (member "model" session_info_line |> member "context_window" |> to_int);
+  let model_change_line =
+    List.get_at_idx 3 lines |> Option.get_exn_or "model_change line"
+  in
+  Alcotest.(check string) "model_change type" "model_change"
+    (get_str model_change_line "type");
+  Alcotest.(check string) "model_change model.id" "new-model"
+    (get_str (member "model" model_change_line) "id");
+  Alcotest.(check int) "model_change model.context_window" 200_000
+    (member "model" model_change_line |> member "context_window" |> to_int)
 
 (* ── Runner ──────────────────────────────────────────────────────────────── *)
 

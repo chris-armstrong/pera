@@ -16,7 +16,8 @@ open Session_jsonl_helpers
 
 (* ── Minimal message builders ─────────────────────────────────────────────── *)
 
-let test_model : Types.model = { id = "test-model"; api = "test" }
+let test_model : Types.model =
+  { id = "test-model"; api = "test"; context_window = 200_000 }
 
 let test_usage : Types.usage =
   {
@@ -280,7 +281,9 @@ let scenario_crash_resilience ~tmpdir ~env =
 
 let scenario_model_change ~tmpdir ~env =
   let path = Filename.concat tmpdir "s5.jsonl" in
-  let new_model : Types.model = { id = "new-model"; api = "test" } in
+  let new_model : Types.model =
+    { id = "new-model"; api = "test"; context_window = 200_000 }
+  in
   match Pera_harness.Session_writer.create ~path ~env ~model:test_model ~cwd:tmpdir with
   | Error e -> Fail (Printf.sprintf "create failed: %s" e.Types.message)
   | Ok w ->

@@ -111,4 +111,5 @@ type execution_error = { code : execution_error_code; message : string }
 type tool_error = { message : string; is_user_error : bool }
 [@@deriving eq, show]
 
-type model = { id : string; api : string } [@@deriving eq, show]
+type model = { id : string; api : string; context_window : int }
+[@@deriving eq, show]

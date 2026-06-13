@@ -4,7 +4,9 @@ open Pera_core_test_util
 
 (* ── Inlined helpers (from agent_loop_helpers, not in public library) ────── *)
 
-let test_model = Pera_types.Types.{ id = "test-model"; api = "faux" }
+let test_model =
+  Pera_types.Types.
+    { id = "test-model"; api = "faux"; context_window = 200_000 }
 
 let test_options = Pera_provider.Provider.{ max_tokens = 1024; temperature = None }
 

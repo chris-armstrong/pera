@@ -4,7 +4,9 @@ open Yojson.Safe.Util
 
 (* ── Helpers ─────────────────────────────────────────────────────────────── *)
 
-let test_model = Pera_types.Types.{ id = "test-model"; api = "faux" }
+let test_model =
+  Pera_types.Types.
+    { id = "test-model"; api = "faux"; context_window = 200_000 }
 
 let make_temp_dir = Harness_test_util.make_temp_dir
 
