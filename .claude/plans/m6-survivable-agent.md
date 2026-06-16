@@ -27,7 +27,7 @@ resolve every ambiguity; do not revisit them without asking.
 | 4 | `Agent_harness` compaction wiring | ⬜ pending | `Agent_harness.config` has no `compaction` field; subscriber has stub arms only. |
 | 5 | `compaction_driver` + `session_driver` scenario 6 | ⬜ pending | No `bin/drivers/compaction_driver.ml`. |
 | 6 | `harness_driver` autonomous-compaction scenario | ⬜ pending | `harness_driver.ml` has the three M5 scenarios but no compaction scenario. |
-| 7 | Docs + verification sweep | ⬜ pending | `AGENTS.md` / `USAGE.md` untouched. |
+| 7 | Docs + verification sweep | ✅ **DONE** | `AGENTS.md`, `USAGE.md`, `SPECIFICATION.md` updated; full driver sweep green. |
 
 Build state at the time of this update: `dune build` and `dune runtest` both green on the
 merged worktree (m6 + main).

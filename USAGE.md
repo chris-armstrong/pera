@@ -166,6 +166,84 @@ Output is a per-scenario `PASS` / `FAIL` / `SKIP` summary. Exit code is 0 if all
 
 ---
 
+## session_driver
+
+Exercises `Session_writer` directly (no agent loop). Writes sequences of session entries to a temp JSONL file and verifies structure and content chain integrity.
+
+```bash
+./_build/default/bin/drivers/session_driver.exe
+```
+
+No API keys are required.
+
+**Scenarios:**
+
+| Name | What it tests |
+|------|---------------|
+| `header_then_leaf` | Minimal session: session_info + leaf |
+| `user_assistant_turn` | session_info → user message → assistant message → leaf |
+| `tool_use_turn` | Turn with tool calls and tool results |
+| `two_turns` | Two consecutive turns |
+| `model_change` | `write_model_change` advances the tip |
+| `crash_resilience` | Writer tolerates write errors without corrupting the file |
+| `compaction` | `write_compaction` appends a compaction entry and advances the tip; synthetic message parents to it (M6) |
+
+Output is a per-scenario `PASS` / `FAIL` summary. Exit code is 0 if all pass.
+
+---
+
+## harness_driver
+
+Exercises the **full harness** (`pera_agent`) end-to-end using a faux provider and a real local filesystem. Runs all scenarios sequentially and writes session files to a temporary directory.
+
+```bash
+./_build/default/bin/drivers/harness_driver.exe
+```
+
+No API keys are required.
+
+**Scenarios:**
+
+| Name | What it tests |
+|------|---------------|
+| `text_only` | Single text-only turn, session written |
+| `tool_use` | Turn with tool calls executed by `Local_env` |
+| `subscriber_events` | Subscriber receives ordered `AE_*` events |
+| `autonomous_compaction` | Context crosses `trigger_tokens`; one compaction fires mid-run; session contains compaction entry + synthetic message (M6) |
+
+Output is a per-scenario `PASS` / `FAIL` summary. Exit code is 0 if all pass.
+
+---
+
+## compaction_driver
+
+Exercises the **`Compaction` module** (`pera_harness`) directly — the §12 layer test for the compaction algorithm without instantiating a full harness. Useful both as a regression guard and as a prompt-tuning tool (the `real_model` scenario prints the produced summary).
+
+```bash
+./_build/default/bin/drivers/compaction_driver.exe
+```
+
+**Scenarios:**
+
+| Name | Needs | What it tests |
+|------|-------|---------------|
+| `offline_faux` | — | `Compaction.compact` with `Faux_provider`; asserts shape of compacted message list |
+| `real_model` | `ANTHROPIC_API_KEY` | `Compaction.compact` against a real Anthropic model; prints the summary for human inspection |
+
+The `real_model` scenario is skipped (not failed) when `ANTHROPIC_API_KEY` is absent.
+
+```bash
+# Offline only
+./_build/default/bin/drivers/compaction_driver.exe
+
+# With real summarisation
+ANTHROPIC_API_KEY=sk-ant-... ./_build/default/bin/drivers/compaction_driver.exe
+```
+
+Output is a per-scenario `PASS` / `FAIL` / `SKIP` summary. Exit code is 0 if all non-skipped scenarios pass.
+
+---
+
 ## tool_driver
 
 Exercises the **tool layer** (`pera_tools`) against a real OS using the harness. Tests all four tools (`read`, `write`, `bash`, `grep`) end-to-end.

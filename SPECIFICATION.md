@@ -2,7 +2,7 @@
 
 > Source: `github.com/earendil-works/pi` (MIT).
 > Target: OCaml 5 + Eio.
-> Status: design draft v0.4.
+> Status: design draft v0.4. M6 (autonomous compaction, Level 3) is implemented.
 
 This document specifies the architecture of an OCaml port of the pi coding agent. Each section opens with what the component is and why it exists, then specifies the design and the load-bearing decisions. Implementation sequencing appears only where a checkpoint admits a property that earlier states cannot have.
 
