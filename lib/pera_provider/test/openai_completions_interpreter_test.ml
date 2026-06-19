@@ -46,10 +46,7 @@ let ame_tag e =
   let len = String.length s in
   let rec find_end i =
     if i >= len then i
-    else
-      match s.[i] with
-      | ' ' | '{' | '(' -> i
-      | _ -> find_end (i + 1)
+    else match s.[i] with ' ' | '{' | '(' -> i | _ -> find_end (i + 1)
   in
   String.sub s 0 (find_end 0)
 
@@ -347,7 +344,8 @@ let test_malformed_json_produces_error () =
   let events =
     run_interpreter ~reasoning_field:"reasoning_content" [ malformed_chunk () ]
   in
-  Alcotest.(check (list ame_testable)) "malformed JSON silently skipped" [] events
+  Alcotest.(check (list ame_testable))
+    "malformed JSON silently skipped" [] events
 
 (* ── Test 7: multiple tool calls ── *)
 
@@ -454,6 +452,50 @@ let test_explicit_null_content_field_is_ignored () =
     [ "AME_text_start"; "AME_text_delta"; "AME_done" ]
     tags
 
+(* ── Test 11: cache_read_tokens parsed from prompt_tokens_details ── *)
+
+let usage_chunk ~prompt_tokens ~completion_tokens ~cached_tokens =
+  make_framed ""
+    (`Assoc
+       [
+         ("id", `String "chatcmpl-test");
+         ("choices", `List []);
+         ( "usage",
+           `Assoc
+             [
+               ("prompt_tokens", `Int prompt_tokens);
+               ("completion_tokens", `Int completion_tokens);
+               ( "prompt_tokens_details",
+                 `Assoc [ ("cached_tokens", `Int cached_tokens) ] );
+             ] );
+       ])
+
+let test_cache_read_tokens_extracted_from_prompt_tokens_details () =
+  let framed_events =
+    [
+      role_chunk ();
+      text_content_chunk "Hi";
+      usage_chunk ~prompt_tokens:2000 ~completion_tokens:1 ~cached_tokens:1920;
+      finish_chunk "stop";
+    ]
+  in
+  let events =
+    run_interpreter ~reasoning_field:"reasoning_content" framed_events
+  in
+  let done_event =
+    List.find_opt (function Types.AME_done _ -> true | _ -> false) events
+    |> Option.get_exn_or "expected AME_done"
+  in
+  match done_event with
+  | Types.AME_done { message } ->
+      Alcotest.(check int) "input_tokens" 2000 message.usage.input_tokens;
+      Alcotest.(check int) "output_tokens" 1 message.usage.output_tokens;
+      Alcotest.(check int)
+        "cache_read_tokens" 1920 message.usage.cache_read_tokens;
+      Alcotest.(check int)
+        "cache_write_tokens" 0 message.usage.cache_write_tokens
+  | _ -> Alcotest.fail "unreachable"
+
 (* ── Test 10: partial snapshots are immutable ── *)
 
 let test_partial_snapshots_are_immutable () =
@@ -539,5 +581,10 @@ let () =
         [
           Alcotest.test_case "partial_snapshots_are_immutable" `Quick
             test_partial_snapshots_are_immutable;
+        ] );
+      ( "usage",
+        [
+          Alcotest.test_case "cache_read_tokens_from_prompt_tokens_details"
+            `Quick test_cache_read_tokens_extracted_from_prompt_tokens_details;
         ] );
     ]
