@@ -97,8 +97,9 @@ bin/drivers/              # Thin drivers / CLI entry points
   provider_driver.ml      # Raw provider streaming test
   env_driver.ml           # Execution environment smoke test
   tool_driver.ml          # Individual tool smoke test
-  harness_driver.ml       # Full harness integration test
-  session_driver.ml       # Session JSONL inspection
+  harness_driver.ml       # Full harness integration test (includes autonomous compaction scenario)
+  session_driver.ml       # Session JSONL inspection (includes compaction entry scenario)
+  compaction_driver.ml    # Compaction module layer test (offline faux + optional real-model)
   live_driver.ml          # Live agent with terminal UI
 ```
 
@@ -189,7 +190,7 @@ ln -sf ../../scripts/pre-commit .git/hooks/pre-commit
 - **New execution environment** → `pera_env`
 - **Agent loop changes** → `pera_core`
 - **Session infrastructure** (logging, compaction) → `pera_harness`
-- **Top-level assembly / CLI wiring** → `pera_agent`
+- **Top-level assembly / CLI wiring** → `pera_agent`; `Agent_harness.config.compaction` enables autonomous compaction (M6)
 - **Test doubles / testables** → `pera_core_test_util`
 
 ---

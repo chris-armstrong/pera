@@ -75,6 +75,24 @@ let check_leaf_non_advancing ~asst1 ~u2 =
            asst1_id)
   | Some _ -> Ok ()
 
+let check_compaction_entry compaction_entry =
+  let summary = get_string_opt "summary" compaction_entry in
+  let first_kept = get_string_opt "first_kept_entry_id" compaction_entry in
+  match (summary, first_kept) with
+  | None, _ -> Error "compaction entry missing 'summary'"
+  | _, None -> Error "compaction entry missing 'first_kept_entry_id'"
+  | Some s, Some _ ->
+      if String.equal s "S" then Ok ()
+      else Error (Printf.sprintf "compaction summary='%s', expected 'S'" s)
+
+let check_synth_entry_role synth_entry =
+  let msg_json = Yojson.Safe.Util.member "message" synth_entry in
+  match get_string_opt "role" msg_json with
+  | Some r when String.equal r "user" -> Ok ()
+  | Some r ->
+      Error (Printf.sprintf "synthetic role='%s', expected 'user'" r)
+  | None -> Error "synthetic message entry has no 'role' field"
+
 let check_model_change_fields ~mc ~user =
   let open Result.Syntax in
   let mc_type = get_string "type" mc in
@@ -101,6 +119,34 @@ let check_model_change_fields ~mc ~user =
         (Printf.sprintf
            "UserMessage parent_id='%s', expected ModelChange id='%s'" pid mc_id)
   | Some _ -> Ok ()
+
+let verify_compaction entries =
+  match entries with
+  | [ _si; _user; _asst; compaction_entry; synth_entry; _leaf ] -> (
+      match
+        check_types_match entries
+          [
+            "session_info";
+            "message";
+            "message";
+            "compaction";
+            "message";
+            "leaf";
+          ]
+      with
+      | Some msg -> Fail msg
+      | None ->
+          let checks =
+            let open Result.Syntax in
+            let* () = check_compaction_entry compaction_entry in
+            let* () = check_synth_entry_role synth_entry in
+            Ok ()
+          in
+          (match checks with
+          | Error msg -> Fail msg
+          | Ok () -> verify_chain_and_leaves entries))
+  | _ ->
+      Fail (Printf.sprintf "expected 6 entries, got %d" (List.length entries))
 
 let verify_header_then_leaf entries =
   match entries with
@@ -323,6 +369,45 @@ let scenario_crash_resilience ~tmpdir ~env =
                 | Some msg -> Fail ("type mismatch: " ^ msg)
                 | None -> Pass)))
 
+let scenario_compaction ~tmpdir ~env =
+  let path = Filename.concat tmpdir "s7.jsonl" in
+  match
+    Pera_harness.Session_writer.create ~path ~env ~model:test_model ~cwd:tmpdir
+  with
+  | Error e -> Fail (Printf.sprintf "create failed: %s" e.Types.message)
+  | Ok w ->
+      let write_result =
+        let open Result.Syntax in
+        let* () = Pera_harness.Session_writer.write_session_info w in
+        let* () =
+          Pera_harness.Session_writer.write_message w (make_user_msg "do task")
+        in
+        let* () =
+          Pera_harness.Session_writer.write_message w
+            (make_assistant_msg "working")
+        in
+        let first_kept_entry_id =
+          match Pera_harness.Session_writer.current_parent_id w with
+          | Some id -> id
+          | None ->
+              failwith
+                "invariant violated: current_parent_id must be set after \
+                 write_message"
+        in
+        let* () =
+          Pera_harness.Session_writer.write_compaction w ~summary:"S"
+            ~first_kept_entry_id
+        in
+        let synth_text = Pera_core.Agent_types.compaction_framing ^ "S" in
+        let* () =
+          Pera_harness.Session_writer.write_message w (make_user_msg synth_text)
+        in
+        Pera_harness.Session_writer.write_leaf w
+      in
+      (match write_result with
+      | Error e -> Fail (Printf.sprintf "write failed: %s" e.Types.message)
+      | Ok () -> verify_compaction (parse_session_file path))
+
 let scenario_model_change ~tmpdir ~env =
   let path = Filename.concat tmpdir "s5.jsonl" in
   let new_model : Types.model =
@@ -365,6 +450,7 @@ let () =
             ("two_turns", scenario_two_turns ~tmpdir ~env);
             ("model_change", scenario_model_change ~tmpdir ~env);
             ("crash_resilience", scenario_crash_resilience ~tmpdir ~env);
+            ("compaction", scenario_compaction ~tmpdir ~env);
           ]
         in
         List.iter
