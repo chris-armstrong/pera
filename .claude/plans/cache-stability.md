@@ -187,7 +187,7 @@ module Tool : sig
     name:string ->
     description:string ->
     schema:Pera_provider.Json_schema.t ->
-    mode:[ `Sequential | `Parallel ] ->
+    parallel_safe:bool ->
     execute:
       (ctx:'ctx ->
        args:Yojson.Safe.t ->
@@ -199,7 +199,7 @@ module Tool : sig
   val name : _ t -> string
   val description : _ t -> string
   val schema : _ t -> Pera_provider.Json_schema.t
-  val mode : _ t -> [ `Sequential | `Parallel ]
+  val parallel_safe : _ t -> bool
   val execute :
     'ctx t ->
     ctx:'ctx ->
@@ -212,6 +212,40 @@ end
 (* Keep `type 'ctx tool = 'ctx Tool.t` as a transitional alias if needed,
    removed at the end of PR 2. *)
 ```
+
+### Renaming `mode` → `parallel_safe`
+
+The existing `mode : [ `Sequential | `Parallel ]` field on `Agent_types.tool`
+reads like a scheduling instruction ("run me sequentially"), but it's
+actually a declaration of intrinsic safety ("I am not safe to run
+concurrently with sibling tools"). The loop combines per-tool declarations
+into a batch-level decision (`agent_loop.ml:204-218`): if any tool in the
+batch is `Sequential`, the whole batch goes serial.
+
+Renaming the field to `parallel_safe : bool` makes the semantics honest:
+
+| Old | New | Meaning |
+|---|---|---|
+| `mode = `Sequential` | `parallel_safe = false` | Tool cannot run concurrently with siblings |
+| `mode = `Parallel`   | `parallel_safe = true`  | Tool is safe to run concurrently |
+
+The four existing tools migrate mechanically:
+
+| Tool | Old | New |
+|---|---|---|
+| `bash_tool`  | `mode = `Sequential` | `parallel_safe = false` |
+| `write_tool` | `mode = `Sequential` | `parallel_safe = false` |
+| `read_tool`  | `mode = `Parallel`   | `parallel_safe = true`  |
+| `grep_tool`  | `mode = `Parallel`   | `parallel_safe = true`  |
+
+`agent_loop.ml:effective_execution_mode` flips from
+`match tool.mode with `Sequential -> true | `Parallel -> false` to
+`not (Tool.parallel_safe tool)`. Same behaviour, clearer intent.
+
+Out of scope for PR 2: argument-dependent safety (e.g., two `write_tool`
+calls to different paths could run in parallel), serialization groups,
+batch-size-aware short-circuit. The coarse-grain "intrinsic safety
+declaration" semantic is preserved exactly; only the spelling changes.
 
 ### Canonical serializer rules
 - Every `Assoc` key list emitted in **alphabetical order**, recursively.
