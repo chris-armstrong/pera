@@ -82,15 +82,13 @@ let grep (env : (module Pera_env.Execution_env.S)) =
   (* Memoised rg path: None = unchecked, Some None = not found,
      Some (Some p) = found at p *)
   let rg_path : string option option ref = ref None in
-  {
-    Pera_core.Agent_types.name = "grep";
-    description =
+  Pera_core.Agent_types.Tool.create ~name:"grep"
+    ~description:
       "Search for a regular expression pattern in files. Uses ripgrep (rg). \
        Results are in path:line:content format, up to 100 matches. No system \
-       grep fallback; ripgrep must be installed.";
-    schema = grep_schema;
-    mode = `Parallel;
-    execute =
+       grep fallback; ripgrep must be installed."
+    ~schema:grep_schema ~parallel_safe:true
+    ~execute:
       (fun ~ctx:() ~args ~sw ~cancel ->
         let open Result.Syntax in
         let* pattern = Tool_util.get_string "pattern" args in
@@ -143,5 +141,4 @@ let grep (env : (module Pera_env.Execution_env.S)) =
             let exit_code = result.Pera_env.Execution_env.exit_code in
             let stdout_str = Buffer.contents stdout_buf in
             let stderr_str = Buffer.contents stderr_buf in
-            handle_grep_output ~exit_code ~stdout_str ~stderr_str);
-  }
+            handle_grep_output ~exit_code ~stdout_str ~stderr_str)

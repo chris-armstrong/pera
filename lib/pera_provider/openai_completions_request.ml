@@ -184,18 +184,20 @@ let messages_to_json ?find_tool_name ~compat:_ messages =
      (e.g. per-endpoint field-name differences in message objects). *)
   List.map (message_to_json ?find_tool_name) messages
 
-(** Render a [Provider.tool_schema] to the OpenAI tools array format. *)
+(** Render a [Provider.tool_schema] to the OpenAI tools array format.
+    The nested [function] object fields are emitted in alphabetical key order
+    so the wire bytes are stable across identical tool definitions. *)
 let tool_to_json (tool : Provider.tool_schema) =
   `Assoc
     [
-      ("type", `String "function");
       ( "function",
         `Assoc
           [
-            ("name", `String tool.name);
             ("description", `String tool.description);
+            ("name", `String tool.name);
             ("parameters", Json_schema.to_json tool.schema);
           ] );
+      ("type", `String "function");
     ]
 
 let extract_tool_name acc = function

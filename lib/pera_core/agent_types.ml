@@ -39,18 +39,39 @@ type tool_output =
         fun fmt v -> Format.pp_print_string fmt (Yojson.Safe.to_string v)])
 [@@deriving eq, show]
 
-type 'ctx tool = {
-  name : string;
-  description : string;
-  schema : Pera_provider.Json_schema.t;
-  mode : [ `Sequential | `Parallel ];
-  execute :
-    ctx:'ctx ->
-    args:Yojson.Safe.t ->
-    sw:Eio.Switch.t ->
-    cancel:Eio.Cancel.t ->
-    (tool_output, Pera_types.Types.tool_error) result;
-}
+(** Opaque tool constructor and accessors. *)
+module Tool = struct
+  type 'ctx t = {
+    name : string;
+    description : string;
+    schema : Pera_provider.Json_schema.t;
+    parallel_safe : bool;
+    execute :
+      ctx:'ctx ->
+      args:Yojson.Safe.t ->
+      sw:Eio.Switch.t ->
+      cancel:Eio.Cancel.t ->
+      (tool_output, Pera_types.Types.tool_error) result;
+  }
+
+  let create ~name ~description ~schema ~parallel_safe ~execute =
+    {
+      name;
+      description;
+      schema;
+      parallel_safe;
+      execute;
+    }
+
+  let name t = t.name
+  let description t = t.description
+  let schema t = t.schema
+  let parallel_safe t = t.parallel_safe
+  let execute t ~ctx ~args ~sw ~cancel = t.execute ~ctx ~args ~sw ~cancel
+end
+
+(** Backwards-compatible alias. *)
+type 'ctx tool = 'ctx Tool.t
 
 type agent_event =
   | AE_agent_start

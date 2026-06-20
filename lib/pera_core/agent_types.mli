@@ -49,29 +49,51 @@ val equal_tool_output : tool_output -> tool_output -> bool
 val pp_tool_output : Format.formatter -> tool_output -> unit
 val show_tool_output : tool_output -> string
 
-type 'ctx tool = {
-  name : string;  (** Tool name as presented to the model. *)
-  description : string;  (** Short description of what the tool does. *)
-  schema : Pera_provider.Json_schema.t;
-      (** JSON schema for the tool's arguments; used for pre-call validation. *)
-  mode : [ `Sequential | `Parallel ];
-      (** Default execution mode for this tool. If any called tool is
-          [`Sequential], the whole batch runs sequentially. *)
-  execute :
+(** Opaque tool type with a smart constructor and accessors.
+
+    Hiding the record behind [Tool.t] lets us enforce invariants (e.g. stable
+    JSON canonicalisation) and prevents callers from constructing tools with
+    reordered or dynamic fields that silently break Anthropic prompt caching.
+
+    The ['ctx] parameter is the context type supplied by the caller; it is
+    passed unchanged to {!Tool.execute}. *)
+module Tool : sig
+  type 'ctx t
+
+  val create :
+    name:string ->
+    description:string ->
+    schema:Pera_provider.Json_schema.t ->
+    parallel_safe:bool ->
+    execute:
+      (ctx:'ctx ->
+       args:Yojson.Safe.t ->
+       sw:Eio.Switch.t ->
+       cancel:Eio.Cancel.t ->
+       (tool_output, Pera_types.Types.tool_error) result) ->
+    'ctx t
+  (** Construct a tool.
+
+      [parallel_safe] declares whether the tool can run concurrently with
+      sibling tool calls. If any tool in a batch is [parallel_safe = false], the
+      whole batch is forced to run sequentially. *)
+
+  val name : _ t -> string
+  val description : _ t -> string
+  val schema : _ t -> Pera_provider.Json_schema.t
+  val parallel_safe : _ t -> bool
+
+  val execute :
+    'ctx t ->
     ctx:'ctx ->
     args:Yojson.Safe.t ->
     sw:Eio.Switch.t ->
     cancel:Eio.Cancel.t ->
-    (tool_output, Pera_types.Types.tool_error) result;
-      (** Execute the tool. Returns [Ok output] on success or [Error tool_error]
-          on failure. Must not raise on expected failures; exceptions from
-          [execute] are caught by the loop and converted to error tool results.
-      *)
-}
-(** A tool that the agent loop can invoke.
+    (tool_output, Pera_types.Types.tool_error) result
+end
 
-    The ['ctx] parameter is the context type supplied by the caller; it is
-    passed unchanged to {!field-execute}. *)
+(** Backwards-compatible alias for the opaque {!Tool.t}. *)
+type 'ctx tool = 'ctx Tool.t
 
 (** {1 Agent events} *)
 
@@ -124,12 +146,12 @@ type agent_event =
   | AE_compaction_start
       (** Autonomous compaction has begun (threshold crossed). *)
   | AE_compaction_end of { summary : string }
-      (** Compaction succeeded; [summary] is the produced summary text. The
-          harness session subscriber writes the Compaction entry, the synthetic
-          user message, and a Leaf in response to this event. *)
+      (** Autonomous compaction succeeded; [summary] is the produced summary
+          text. The harness session subscriber writes the Compaction entry, the
+          synthetic user message, and a Leaf in response to this event. *)
   | AE_compaction_error of { message : string }
-      (** Compaction failed; [message] describes the failure. The context is
-          unchanged and the run continues uncompacted. *)
+      (** Autonomous compaction failed; [message] describes the failure. The
+          context is unchanged and the run continues uncompacted. *)
 
 val equal_agent_event : agent_event -> agent_event -> bool
 (** Derived structural equality for {!agent_event}. Uses [agent_message_equal]
@@ -169,8 +191,6 @@ type turn_update = {
       (** Enable or disable extended thinking; [None] to keep the current
           setting. *)
 }
-(** A requested update to the turn state, returned by the [prepare_next_turn]
-    hook. Each field is [None] to leave the current value unchanged. *)
 
 val equal_turn_update : turn_update -> turn_update -> bool
 val pp_turn_update : Format.formatter -> turn_update -> unit

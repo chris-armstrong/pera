@@ -5,6 +5,9 @@
  (libraries pera_harness_test_util pera_env alcotest eio))
 
 (tests
- (names read_tool_test write_tool_test bash_tool_test grep_tool_test)
- (modules read_tool_test write_tool_test bash_tool_test grep_tool_test)
- (libraries pera_tools_test_util pera_tools pera_env pera_types eio eio_main eio_linux alcotest containers))
+ (names read_tool_test write_tool_test bash_tool_test grep_tool_test
+        tool_canonical_test)
+ (modules read_tool_test write_tool_test bash_tool_test grep_tool_test
+          tool_canonical_test)
+ (libraries pera_tools_test_util pera_tools pera_env pera_types eio eio_main
+            eio_linux alcotest containers))

@@ -40,15 +40,13 @@ let bash (env : (module Pera_env.Execution_env.S)) =
       in
       Error { Pera_types.Types.message = msg; is_user_error = false }
   in
-  {
-    Pera_core.Agent_types.name = "bash";
-    description =
+  Pera_core.Agent_types.Tool.create ~name:"bash"
+    ~description:
       "Execute a bash command. Returns stdout and stderr combined. Output \
        truncated to last 2000 lines or 256 KB. Non-zero exit codes are \
-       surfaced as errors.";
-    schema = bash_schema;
-    mode = `Sequential;
-    execute =
+       surfaced as errors."
+    ~schema:bash_schema ~parallel_safe:false
+    ~execute:
       (fun ~ctx:() ~args ~sw ~cancel ->
         let open Result.Syntax in
         let* command = Tool_util.get_string "command" args in
@@ -67,5 +65,4 @@ let bash (env : (module Pera_env.Execution_env.S)) =
         in
         match exec_result with
         | Error e -> process_error ~error_msg:e.Pera_types.Types.message buf
-        | Ok result -> process_ok_result (Buffer.contents buf) result);
-  }
+        | Ok result -> process_ok_result (Buffer.contents buf) result)

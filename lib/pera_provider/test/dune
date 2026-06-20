@@ -1,6 +1,11 @@
 (include_subdirs no)
 
 (test
+ (name tool_canonical_test)
+ (modules tool_canonical_test)
+ (libraries pera_provider pera_types alcotest containers))
+
+(test
  (name json_schema_test)
  (modules json_schema_test)
  (libraries pera_provider alcotest containers))

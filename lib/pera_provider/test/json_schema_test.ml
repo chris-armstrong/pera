@@ -106,6 +106,112 @@ let test_to_json_renders_object_schema () =
         (List.mem ~eq:String.equal "notes" names)
   | _ -> Alcotest.fail "'required' is not a JSON array"
 
+let string_testable = Alcotest.testable Format.pp_print_string String.equal
+
+(* ── canonicalisation tests ─────────────────────────────────────────────── *)
+
+(** Canonical serialisation: object properties appear in alphabetical key
+    order regardless of declaration order. *)
+let test_to_json_sorts_object_properties_alphabetically () =
+  let schema =
+    Json_schema.object_
+      ~properties:
+        [
+          ("z", Json_schema.string ());
+          ("a", Json_schema.integer ());
+          ("m", Json_schema.boolean ());
+        ]
+      ~required:[ "z"; "a"; "m" ] ()
+  in
+  let json_str = Yojson.Safe.to_string (Json_schema.to_json schema) in
+  Alcotest.(check bool)
+    "properties emitted in alphabetical order" true
+    (String.find ~sub:{|["a","m","z"]|} json_str >= 0)
+
+(** Canonical serialisation: required field list is sorted alphabetically. *)
+let test_to_json_sorts_required_fields_alphabetically () =
+  let schema =
+    Json_schema.object_
+      ~properties:[ ("b", Json_schema.string ()); ("a", Json_schema.string ()) ]
+      ~required:[ "b"; "a" ] ()
+  in
+  let json = Json_schema.to_json schema in
+  let required =
+    match json with
+    | `Assoc fields -> (
+        match List.assoc_opt ~eq:String.equal "required" fields with
+        | Some (`List items) ->
+            List.filter_map (function `String s -> Some s | _ -> None) items
+        | _ -> Alcotest.fail "required is not a string list")
+    | _ -> Alcotest.fail "to_json did not return an object"
+  in
+  Alcotest.(check (list string)) "required sorted" [ "a"; "b" ] required
+
+(** Canonical serialisation: two schemas with the same fields in different
+    declaration orders produce identical bytes. *)
+let test_to_json_stable_across_declaration_order () =
+  let schema_a =
+    Json_schema.object_
+      ~properties:
+        [
+          ("name", Json_schema.string ());
+          ("age", Json_schema.integer ());
+          ("active", Json_schema.boolean ());
+        ]
+      ~required:[ "name"; "age" ] ()
+  in
+  let schema_b =
+    Json_schema.object_
+      ~properties:
+        [
+          ("active", Json_schema.boolean ());
+          ("name", Json_schema.string ());
+          ("age", Json_schema.integer ());
+        ]
+      ~required:[ "age"; "name" ] ()
+  in
+  Alcotest.check string_testable "same bytes for reordered fields"
+    (Yojson.Safe.to_string (Json_schema.to_json schema_a))
+    (Yojson.Safe.to_string (Json_schema.to_json schema_b))
+
+(** Canonical serialisation: nested object keys are also sorted. *)
+let test_to_json_sorts_nested_keys () =
+  let schema =
+    Json_schema.object_
+      ~properties:
+        [
+          ("user",
+           Json_schema.object_
+             ~properties:
+               [
+                 ("name", Json_schema.string ());
+                 ("id", Json_schema.integer ());
+               ]
+             ~required:[ "name"; "id" ] ());
+        ]
+      ~required:[] ()
+  in
+  let json_str = Yojson.Safe.to_string (Json_schema.to_json schema) in
+  Alcotest.(check bool)
+    "nested properties emitted in alphabetical order" true
+    (String.find ~sub:{|"id":{"type":"integer"},"name":{"type":"string"}|} json_str >= 0)
+
+(** Canonical serialisation: anyOf branches are sorted too. *)
+let test_to_json_sorts_anyof_branch_object_keys () =
+  let schema =
+    Json_schema.any_of
+      [
+        Json_schema.object_
+          ~properties:
+            [ ("z", Json_schema.string ()); ("a", Json_schema.integer ()) ]
+          ~required:[] ();
+      ]
+  in
+  let json_str = Yojson.Safe.to_string (Json_schema.to_json schema) in
+  Alcotest.(check bool)
+    "anyOf branch properties sorted" true
+    (String.find ~sub:{|"a":{"type":"integer"},"z":{"type":"string"}|} json_str >= 0)
+
 (* ── test_validate_required_field_missing ───────────────────────────────── *)
 
 (** An object schema with a required field must reject a value that omits it. *)
@@ -201,6 +307,19 @@ let test_validate_rejects_float_string_to_integer () =
 let () =
   Alcotest.run "json_schema"
     [
+      ( "canonicalisation",
+        [
+          Alcotest.test_case "object_properties_sorted_alphabetically" `Quick
+            test_to_json_sorts_object_properties_alphabetically;
+          Alcotest.test_case "required_fields_sorted_alphabetically" `Quick
+            test_to_json_sorts_required_fields_alphabetically;
+          Alcotest.test_case "stable_across_declaration_order" `Quick
+            test_to_json_stable_across_declaration_order;
+          Alcotest.test_case "nested_keys_sorted" `Quick
+            test_to_json_sorts_nested_keys;
+          Alcotest.test_case "anyof_branch_keys_sorted" `Quick
+            test_to_json_sorts_anyof_branch_object_keys;
+        ] );
       ( "mandatory",
         [
           Alcotest.test_case "validate_coerces_string_to_integer" `Quick

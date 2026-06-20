@@ -39,7 +39,9 @@ let is_substring ~sub s =
 (** Find a tool by name in a tool list. Raises [Failure] if not found. *)
 let find_tool ~name tools =
   match
-    List.find_opt (fun (t : unit tool) -> String.equal t.name name) tools
+    List.find_opt
+      (fun (t : unit tool) -> String.equal (Tool.name t) name)
+      tools
   with
   | Some t -> t
   | None -> failwith (Printf.sprintf "tool_driver: tool '%s' not found" name)
@@ -71,14 +73,14 @@ let print_verdict ~tool ~scenario = function
 (** Write a file via the write tool. Returns [Ok ()] or [Error string]. *)
 let write_file ~(t : unit tool) ~path ~content ~sw ~cancel =
   let args = `Assoc [ ("path", `String path); ("content", `String content) ] in
-  match t.execute ~ctx:() ~args ~sw ~cancel with
+  match Tool.execute t ~ctx:() ~args ~sw ~cancel with
   | Ok _ -> Ok ()
   | Error e -> Error e.message
 
 (** Read a file via the read tool. Returns [Ok string] or [Error string]. *)
 let read_file ~(t : unit tool) ~path ~sw ~cancel =
   let args = `Assoc [ ("path", `String path) ] in
-  match t.execute ~ctx:() ~args ~sw ~cancel with
+  match Tool.execute t ~ctx:() ~args ~sw ~cancel with
   | Ok (Tool_text s) -> Ok s
   | Ok _ -> Error "read returned non-text output"
   | Error e -> Error e.message
@@ -87,7 +89,7 @@ let read_file ~(t : unit tool) ~path ~sw ~cancel =
     [Error string]. *)
 let run_bash ~(t : unit tool) ~command ~sw ~cancel =
   let args = `Assoc [ ("command", `String command) ] in
-  match t.execute ~ctx:() ~args ~sw ~cancel with
+  match Tool.execute t ~ctx:() ~args ~sw ~cancel with
   | Ok (Tool_text s) -> Ok s
   | Ok _ -> Error "bash returned non-text output"
   | Error e -> Error e.message
@@ -127,7 +129,7 @@ let write_and_read_offset ~(write : unit tool) ~(read : unit tool) ~sw ~cancel =
             ("limit", `Int 2);
           ]
       in
-      match read.execute ~ctx:() ~args ~sw ~cancel with
+      match Tool.execute read ~ctx:() ~args ~sw ~cancel with
       | Ok (Tool_text s) -> Ok (String.trim s)
       | Ok _ -> Error "read returned non-text output"
       | Error e -> Error e.message)
@@ -138,14 +140,14 @@ let overwrite_twice ~(t : unit tool) ~sw ~cancel =
   let args_first =
     `Assoc [ ("path", `String "overwrite.txt"); ("content", `String "first") ]
   in
-  match t.execute ~ctx:() ~args:args_first ~sw ~cancel with
+  match Tool.execute t ~ctx:() ~args:args_first ~sw ~cancel with
   | Error e -> Error e.message
   | Ok _ -> (
       let args_second =
         `Assoc
           [ ("path", `String "overwrite.txt"); ("content", `String "second") ]
       in
-      match t.execute ~ctx:() ~args:args_second ~sw ~cancel with
+      match Tool.execute t ~ctx:() ~args:args_second ~sw ~cancel with
       | Ok (Tool_text msg) -> Ok msg
       | Ok _ -> Error "write returned non-text output"
       | Error e -> Error e.message)
@@ -160,7 +162,7 @@ let write_and_grep ~(write : unit tool) ~(grep : unit tool) ~sw ~cancel =
   | Error msg -> Error msg
   | Ok () -> (
       let args = `Assoc [ ("pattern", `String "unique_grep_pattern") ] in
-      match grep.execute ~ctx:() ~args ~sw ~cancel with
+      match Tool.execute grep ~ctx:() ~args ~sw ~cancel with
       | Ok (Tool_text s) -> Ok s
       | Ok _ -> Error "grep returned non-text output"
       | Error e -> Error e.message)
@@ -170,7 +172,7 @@ let write_and_grep ~(write : unit tool) ~(grep : unit tool) ~sw ~cancel =
 (** Scenario 1: Basic read — write "hello world", read it back, verify. *)
 let scenario_read_basic ~(read : unit tool) ~(write : unit tool) ~sw ~cancel =
   let scenario = "basic read" in
-  let tool_name = read.name in
+  let tool_name = Tool.name read in
   match
     write_file ~t:write ~path:"hello.txt" ~content:"hello world" ~sw ~cancel
   with
@@ -189,7 +191,7 @@ let scenario_read_offset ~(read : unit tool) ~(write : unit tool) ~sw ~cancel =
   match write_and_read_offset ~write ~read ~sw ~cancel with
   | Error msg ->
       let v = Fail msg in
-      print_verdict ~tool:read.name ~scenario v;
+      print_verdict ~tool:(Tool.name read) ~scenario v;
       v
   | Ok trimmed ->
       let v =
@@ -199,13 +201,13 @@ let scenario_read_offset ~(read : unit tool) ~(write : unit tool) ~sw ~cancel =
             (Printf.sprintf "expected output to start with '3', got: '%s'"
                trimmed)
       in
-      print_verdict ~tool:read.name ~scenario v;
+      print_verdict ~tool:(Tool.name read) ~scenario v;
       v
 
 (** Scenario 3: Write create — write a file, read via env to verify content. *)
 let scenario_write_create ~(read : unit tool) ~(write : unit tool) ~sw ~cancel =
   let scenario = "create file" in
-  let tool_name = write.name in
+  let tool_name = Tool.name write in
   match
     write_file ~t:write ~path:"created.txt" ~content:"write test" ~sw ~cancel
   with
@@ -224,7 +226,7 @@ let scenario_write_overwrite ~(write : unit tool) ~sw ~cancel =
   match overwrite_twice ~t:write ~sw ~cancel with
   | Error msg ->
       let v = Fail msg in
-      print_verdict ~tool:write.name ~scenario v;
+      print_verdict ~tool:(Tool.name write) ~scenario v;
       v
   | Ok msg ->
       let v =
@@ -234,7 +236,7 @@ let scenario_write_overwrite ~(write : unit tool) ~sw ~cancel =
             (Printf.sprintf "expected message containing '6 bytes', got: '%s'"
                msg)
       in
-      print_verdict ~tool:write.name ~scenario v;
+      print_verdict ~tool:(Tool.name write) ~scenario v;
       v
 
 (** Scenario 5: Bash echo — run "echo hello", check output. *)
@@ -243,21 +245,21 @@ let scenario_bash_echo ~(bash : unit tool) ~sw ~cancel =
   match run_bash ~t:bash ~command:"echo hello" ~sw ~cancel with
   | Error msg ->
       let v = Fail msg in
-      print_verdict ~tool:bash.name ~scenario v;
+      print_verdict ~tool:(Tool.name bash) ~scenario v;
       v
   | Ok content ->
       let v =
         if is_substring ~sub:"hello" content then Pass
         else Fail (Printf.sprintf "expected 'hello', got '%s'" content)
       in
-      print_verdict ~tool:bash.name ~scenario v;
+      print_verdict ~tool:(Tool.name bash) ~scenario v;
       v
 
 (** Scenario 6: Bash exit code — run "exit 99", check error message. *)
 let scenario_bash_exit_code ~(bash : unit tool) ~sw ~cancel =
   let scenario = "exit code handling" in
   let args = `Assoc [ ("command", `String "exit 99") ] in
-  match bash.execute ~ctx:() ~args ~sw ~cancel with
+  match Tool.execute bash ~ctx:() ~args ~sw ~cancel with
   | Error e ->
       let v =
         if is_substring ~sub:"99" e.message then Pass
@@ -265,11 +267,11 @@ let scenario_bash_exit_code ~(bash : unit tool) ~sw ~cancel =
           Fail
             (Printf.sprintf "error message did not contain '99': '%s'" e.message)
       in
-      print_verdict ~tool:bash.name ~scenario v;
+      print_verdict ~tool:(Tool.name bash) ~scenario v;
       v
   | Ok _ ->
       let v = Fail "expected Error for non-zero exit, got Ok" in
-      print_verdict ~tool:bash.name ~scenario v;
+      print_verdict ~tool:(Tool.name bash) ~scenario v;
       v
 
 (** Scenario 7: Grep pattern search — create file with unique pattern, search
@@ -281,10 +283,10 @@ let scenario_grep_search ~(grep : unit tool) ~(write : unit tool) env ~sw
   match E.Sh.find_executable ~name:"rg" with
   | None ->
       let v = Skip "ripgrep not installed" in
-      print_verdict ~tool:grep.name ~scenario v;
+      print_verdict ~tool:(Tool.name grep) ~scenario v;
       v
   | Some _ -> (
-      let tool_name = grep.name in
+      let tool_name = Tool.name grep in
       match write_and_grep ~write ~grep ~sw ~cancel with
       | Error msg ->
           let v = Fail msg in
@@ -314,14 +316,14 @@ let scenario_read_truncation ~(read : unit tool) ~(write : unit tool) ~sw
   match write_file ~t:write ~path:"big.txt" ~content ~sw ~cancel with
   | Error msg ->
       let v = Fail (Printf.sprintf "write failed: %s" msg) in
-      print_verdict ~tool:read.name ~scenario v;
+      print_verdict ~tool:(Tool.name read) ~scenario v;
       v
   | Ok () ->
       let args = `Assoc [ ("path", `String "big.txt") ] in
-      (match read.execute ~ctx:() ~args ~sw ~cancel with
+      (match Tool.execute read ~ctx:() ~args ~sw ~cancel with
       | Error e ->
           let v = Fail (Printf.sprintf "read failed: %s" e.message) in
-          print_verdict ~tool:read.name ~scenario v;
+          print_verdict ~tool:(Tool.name read) ~scenario v;
           v
       | Ok (Tool_text output) ->
           let input_len = String.length content in
@@ -337,11 +339,11 @@ let scenario_read_truncation ~(read : unit tool) ~(write : unit tool) ~sw
                     is_shorter=%b has_marker=%b output_len=%d input_len=%d"
                    is_shorter has_marker output_len input_len)
           in
-          print_verdict ~tool:read.name ~scenario v;
+          print_verdict ~tool:(Tool.name read) ~scenario v;
           v
       | Ok _ ->
           let v = Fail "read returned non-text output" in
-          print_verdict ~tool:read.name ~scenario v;
+          print_verdict ~tool:(Tool.name read) ~scenario v;
           v)
 
 (** Scenario 9: Call read.execute with no "path" key in args; verify Error is
@@ -350,14 +352,14 @@ let scenario_read_missing_path_arg ~(read : unit tool) ~sw ~cancel =
   let scenario = "read missing path arg" in
   let args = `Assoc [] in
   let v =
-    match read.execute ~ctx:() ~args ~sw ~cancel with
+    match Tool.execute read ~ctx:() ~args ~sw ~cancel with
     | Ok _ -> Fail "expected Error for missing path arg, got Ok"
     | Error e ->
         if String.is_empty e.message then
           Fail "Error returned but message is empty"
         else Pass
   in
-  print_verdict ~tool:read.name ~scenario v;
+  print_verdict ~tool:(Tool.name read) ~scenario v;
   v
 
 (* ── Main ─────────────────────────────────────────────────────────────────── *)

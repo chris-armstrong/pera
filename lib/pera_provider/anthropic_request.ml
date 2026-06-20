@@ -110,13 +110,15 @@ let messages_to_json messages =
   let flushed_state = flush_pending_tool_results final_state in
   List.rev flushed_state.rendered
 
-(** Render a [Provider.tool_schema] to the Anthropic tools array format. *)
+(** Render a [Provider.tool_schema] to the Anthropic tools array format.
+    Fields are emitted in alphabetical key order so the wire bytes are stable
+    across identical tool definitions. *)
 let tool_to_json (tool : Provider.tool_schema) =
   `Assoc
     [
-      ("name", `String tool.name);
       ("description", `String tool.description);
       ("input_schema", Json_schema.to_json tool.schema);
+      ("name", `String tool.name);
     ]
 
 let build_request_body ~model ~context ~options =

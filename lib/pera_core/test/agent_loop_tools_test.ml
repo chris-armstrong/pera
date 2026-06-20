@@ -44,14 +44,8 @@ let make_config ?(before_tool_call = None) ?(after_tool_call = None)
 
 (** Make a simple tool that returns Tool_text and records invocations. *)
 let make_simple_tool name execute_fn =
-  Agent_types.
-    {
-      name;
-      description = "test tool";
-      schema = empty_schema;
-      mode = `Parallel;
-      execute = execute_fn;
-    }
+  Agent_types.Tool.create ~name ~description:"test tool" ~schema:empty_schema
+    ~parallel_safe:true ~execute:execute_fn
 
 (** {1 Test 1: single tool call executes and feeds result back} *)
 
@@ -131,40 +125,30 @@ let test_parallel_tool_results_appended_in_source_order () =
   let completion_order : string list ref = ref [] in
   (* Tool 1: waits until tool 2 has run, then completes *)
   let tool1 =
-    Agent_types.
-      {
-        name = "tool1";
-        description = "tool that waits";
-        schema = empty_schema;
-        mode = `Parallel;
-        execute =
-          (fun ~ctx:_ ~args:_ ~sw:_ ~cancel:_ ->
-            (* Wait until tool2 signals *)
-            Eio.Mutex.use_rw ~protect:false mutex (fun () ->
-                while not !tool2_done do
-                  Eio.Condition.await cond mutex
-                done);
-            completion_order := !completion_order @ [ "tool1" ];
-            Ok (Agent_types.Tool_text "result1"));
-      }
+    Agent_types.Tool.create ~name:"tool1" ~description:"tool that waits"
+      ~schema:empty_schema ~parallel_safe:true
+      ~execute:
+        (fun ~ctx:_ ~args:_ ~sw:_ ~cancel:_ ->
+          (* Wait until tool2 signals *)
+          Eio.Mutex.use_rw ~protect:false mutex (fun () ->
+              while not !tool2_done do
+                Eio.Condition.await cond mutex
+              done);
+          completion_order := !completion_order @ [ "tool1" ];
+          Ok (Agent_types.Tool_text "result1"))
   in
   (* Tool 2: runs freely and signals tool 1 *)
   let tool2 =
-    Agent_types.
-      {
-        name = "tool2";
-        description = "fast tool";
-        schema = empty_schema;
-        mode = `Parallel;
-        execute =
-          (fun ~ctx:_ ~args:_ ~sw:_ ~cancel:_ ->
-            (* Signal tool1 to proceed *)
-            Eio.Mutex.use_rw ~protect:false mutex (fun () ->
-                tool2_done := true;
-                Eio.Condition.broadcast cond);
-            completion_order := !completion_order @ [ "tool2" ];
-            Ok (Agent_types.Tool_text "result2"));
-      }
+    Agent_types.Tool.create ~name:"tool2" ~description:"fast tool"
+      ~schema:empty_schema ~parallel_safe:true
+      ~execute:
+        (fun ~ctx:_ ~args:_ ~sw:_ ~cancel:_ ->
+          (* Signal tool1 to proceed *)
+          Eio.Mutex.use_rw ~protect:false mutex (fun () ->
+              tool2_done := true;
+              Eio.Condition.broadcast cond);
+          completion_order := !completion_order @ [ "tool2" ];
+          Ok (Agent_types.Tool_text "result2"))
   in
   let tc1 = make_tool_call "call-1" "tool1" (`Assoc []) in
   let tc2 = make_tool_call "call-2" "tool2" (`Assoc []) in
@@ -232,30 +216,20 @@ let test_sequential_mode_runs_in_source_order () =
   Faux_provider.reset_recorded ();
   let start_order : string list ref = ref [] in
   let tool1 =
-    Agent_types.
-      {
-        name = "tool1";
-        description = "first tool";
-        schema = empty_schema;
-        mode = `Sequential;
-        execute =
-          (fun ~ctx:_ ~args:_ ~sw:_ ~cancel:_ ->
-            start_order := !start_order @ [ "tool1" ];
-            Ok (Agent_types.Tool_text "r1"));
-      }
+    Agent_types.Tool.create ~name:"tool1" ~description:"first tool"
+      ~schema:empty_schema ~parallel_safe:false
+      ~execute:
+        (fun ~ctx:_ ~args:_ ~sw:_ ~cancel:_ ->
+          start_order := !start_order @ [ "tool1" ];
+          Ok (Agent_types.Tool_text "r1"))
   in
   let tool2 =
-    Agent_types.
-      {
-        name = "tool2";
-        description = "second tool";
-        schema = empty_schema;
-        mode = `Sequential;
-        execute =
-          (fun ~ctx:_ ~args:_ ~sw:_ ~cancel:_ ->
-            start_order := !start_order @ [ "tool2" ];
-            Ok (Agent_types.Tool_text "r2"));
-      }
+    Agent_types.Tool.create ~name:"tool2" ~description:"second tool"
+      ~schema:empty_schema ~parallel_safe:false
+      ~execute:
+        (fun ~ctx:_ ~args:_ ~sw:_ ~cancel:_ ->
+          start_order := !start_order @ [ "tool2" ];
+          Ok (Agent_types.Tool_text "r2"))
   in
   let tc1 = make_tool_call "c1" "tool1" (`Assoc []) in
   let tc2 = make_tool_call "c2" "tool2" (`Assoc []) in
@@ -296,30 +270,20 @@ let test_per_tool_sequential_forces_batch_sequential () =
   (* tool1 is Sequential; tool2 is Parallel — but the batch should be
      sequential because tool1 is Sequential *)
   let tool1 =
-    Agent_types.
-      {
-        name = "tool1";
-        description = "sequential tool";
-        schema = empty_schema;
-        mode = `Sequential;
-        execute =
-          (fun ~ctx:_ ~args:_ ~sw:_ ~cancel:_ ->
-            start_order := !start_order @ [ "tool1" ];
-            Ok (Agent_types.Tool_text "r1"));
-      }
+    Agent_types.Tool.create ~name:"tool1" ~description:"sequential tool"
+      ~schema:empty_schema ~parallel_safe:false
+      ~execute:
+        (fun ~ctx:_ ~args:_ ~sw:_ ~cancel:_ ->
+          start_order := !start_order @ [ "tool1" ];
+          Ok (Agent_types.Tool_text "r1"))
   in
   let tool2 =
-    Agent_types.
-      {
-        name = "tool2";
-        description = "parallel tool";
-        schema = empty_schema;
-        mode = `Parallel;
-        execute =
-          (fun ~ctx:_ ~args:_ ~sw:_ ~cancel:_ ->
-            start_order := !start_order @ [ "tool2" ];
-            Ok (Agent_types.Tool_text "r2"));
-      }
+    Agent_types.Tool.create ~name:"tool2" ~description:"parallel tool"
+      ~schema:empty_schema ~parallel_safe:true
+      ~execute:
+        (fun ~ctx:_ ~args:_ ~sw:_ ~cancel:_ ->
+          start_order := !start_order @ [ "tool2" ];
+          Ok (Agent_types.Tool_text "r2"))
   in
   let tc1 = make_tool_call "c1" "tool1" (`Assoc []) in
   let tc2 = make_tool_call "c2" "tool2" (`Assoc []) in
@@ -356,17 +320,13 @@ let test_schema_validation_failure_becomes_error_result_without_execute () =
   (* Tool expects {x: integer} but we pass {x: "not-an-int"} — a string that
      cannot be coerced to integer *)
   let tool =
-    Agent_types.
-      {
-        name = "typed_tool";
-        description = "tool with int schema";
-        schema = int_field_schema;
-        mode = `Parallel;
-        execute =
-          (fun ~ctx:_ ~args:_ ~sw:_ ~cancel:_ ->
-            incr execute_count;
-            Ok (Agent_types.Tool_text "ok"));
-      }
+    Agent_types.Tool.create ~name:"typed_tool"
+      ~description:"tool with int schema" ~schema:int_field_schema
+      ~parallel_safe:true
+      ~execute:
+        (fun ~ctx:_ ~args:_ ~sw:_ ~cancel:_ ->
+          incr execute_count;
+          Ok (Agent_types.Tool_text "ok"))
   in
   (* Pass a string that cannot be parsed as a number — should fail validation *)
   let bad_args = `Assoc [ ("x", `String "not-an-int") ] in

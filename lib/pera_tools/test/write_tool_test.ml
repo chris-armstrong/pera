@@ -26,7 +26,7 @@ let test_write_creates_file_with_correct_content () =
           [ ("path", `String "out.txt"); ("content", `String "hello world") ]
       in
       Eio.Cancel.sub (fun cancel ->
-          match tool.execute ~ctx:() ~args ~sw ~cancel with
+          match Tool.execute tool ~ctx:() ~args ~sw ~cancel with
           | Ok (Tool_text _) -> (
               (* Verify content via env *)
               match E.Fs.read_text_file ~path:"out.txt" ~sw with
@@ -44,7 +44,7 @@ let test_write_creates_parent_directories () =
         `Assoc [ ("path", `String "a/b/c.txt"); ("content", `String "nested") ]
       in
       Eio.Cancel.sub (fun cancel ->
-          match tool.execute ~ctx:() ~args ~sw ~cancel with
+          match Tool.execute tool ~ctx:() ~args ~sw ~cancel with
           | Ok (Tool_text _) -> (
               match E.Fs.exists ~path:"a/b/c.txt" ~sw with
               | Ok true -> ()
@@ -69,7 +69,7 @@ let test_write_overwrites_existing_file () =
           ]
       in
       Eio.Cancel.sub (fun cancel ->
-          match tool.execute ~ctx:() ~args ~sw ~cancel with
+          match Tool.execute tool ~ctx:() ~args ~sw ~cancel with
           | Ok (Tool_text _) -> (
               match E.Fs.read_text_file ~path:"overwrite.txt" ~sw with
               | Ok content ->
@@ -88,7 +88,7 @@ let test_write_returns_bytes_written () =
           [ ("path", `String "bytes_test.txt"); ("content", `String "hello") ]
       in
       Eio.Cancel.sub (fun cancel ->
-          match tool.execute ~ctx:() ~args ~sw ~cancel with
+          match Tool.execute tool ~ctx:() ~args ~sw ~cancel with
           | Ok (Tool_text s) ->
               Alcotest.(check bool)
                 "reports 5 bytes written" true

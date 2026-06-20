@@ -24,7 +24,9 @@ let build_system_prompt tools =
   let descs =
     List.map
       (fun (t : unit Pera_core.Agent_types.tool) ->
-        Printf.sprintf "- %s: %s" t.name t.description)
+        Printf.sprintf "- %s: %s"
+          (Pera_core.Agent_types.Tool.name t)
+          (Pera_core.Agent_types.Tool.description t))
       tools
   in
   if List.is_empty descs then base

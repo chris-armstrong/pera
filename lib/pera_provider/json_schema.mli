@@ -66,7 +66,17 @@ val optional : t -> t
 
 val to_json : t -> Yojson.Safe.t
 (** [to_json schema] renders [schema] as a JSON Schema draft-07 object suitable
-    for sending to an LLM API. *)
+    for sending to an LLM API.
+
+    The output is canonical: every JSON object has its keys sorted
+    alphabetically (recursively), and object [required] lists are sorted
+    alphabetically. Two schemas with the same logical content therefore produce
+    identical serialised bytes regardless of declaration order. This stability is
+    required for Anthropic prompt caching, which matches request prefixes at
+    the byte level.
+
+    Callers should serialise the result with [Yojson.Safe.to_string], not
+    [Yojson.Safe.pretty_to_string], to keep bytes compact and stable. *)
 
 val validate : t -> Yojson.Safe.t -> (unit, string) result
 (** [validate schema value] checks that [value] conforms to [schema].
