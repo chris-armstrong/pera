@@ -69,8 +69,8 @@ These were resolved in conversation on 2026-06-19. Do not revisit.
    available for long-running agents. Same TTL applies to every breakpoint in
    the request.
 
-5. **Migrate all existing tools** to the opaque `Tool.t` constructor in PR 2.
-   No transitional period, no deprecated record-access path.
+5. **Migrate all existing tools** to the opaque `Tool.t` constructor in
+   Commit 2. No transitional period, no deprecated record-access path.
 
 ## What this plan does *not* cover
 
@@ -88,9 +88,13 @@ These were resolved in conversation on 2026-06-19. Do not revisit.
 - **Cross-session cache key persistence.** Anthropic caches per-organization
   automatically.
 
-## PR sequence
+## Commit sequence
 
-| PR | Scope | Estimated LoC | Behaviour change |
+> Each item previously described as a "PR" is implemented as one focused
+> commit on the `plan-cache-stability` branch. The original numbering is
+> preserved for cross-reference to the design discussion.
+
+| Commit | Scope | Estimated LoC | Behaviour change |
 |---|---|---|---|
 | 1 | `cache_policy` + `cache_ttl` types in `pera_types`, threaded through request options. No request body change. | ~60 | None — type plumbing only |
 | 2 | Opaque `Tool.t`, alphabetical canonical `Json_schema.to_json`, migrate 4 tools + tests | ~150–200 | Tool wire-JSON byte order changes; semantically identical to providers |
@@ -99,18 +103,14 @@ These were resolved in conversation on 2026-06-19. Do not revisit.
 | 5 | Session-level fingerprint + "prefix changed" warning | ~70 | Logs warnings only |
 | 6 | Surface `cache_read_tokens` / `cache_write_tokens` in status output | TBD | Display only |
 
-PRs 1–3 are the meaningful slice. After PR 3, Anthropic caching works at
-parity with pi-harness, and PR 2's canonicalization ensures users can't
-accidentally bust it via re-ordered schemas. PRs 4–6 are quality-of-life that
+Commits 1–3 are the meaningful slice. After Commit 3, Anthropic caching works at
+parity with pi-harness, and Commit 2's canonicalization ensures users can't
+accidentally bust it via re-ordered schemas. Commits 4–6 are quality-of-life that
 catch the remaining classes of cache-busting bugs cheaply.
-
-All PRs target the PR-#14 branch
-(`worktree-bridge-cse_01Q7KUxnaVYkTKTAot8JGY2n`). They merge in order; later
-PRs rebase on top of earlier merges.
 
 ---
 
-## PR 1 — Cache-policy types
+## Commit 1 — Cache-policy types
 
 ### Files
 - `lib/pera_types/types.ml(i)` — add types
@@ -129,12 +129,12 @@ type cache_ttl =
 [@@deriving eq, show]
 
 type cache_policy =
-  | None
+  | No_cache
   | Conversation
   | SystemAndToolsOnly
 [@@deriving eq, show]
 
-(* Default for new code paths: cache_policy = None.
+(* Default for new code paths: cache_policy = No_cache.
    Opt-in everywhere; no surprise cache writes. *)
 ```
 
@@ -159,7 +159,7 @@ accepts the policy but ignores it.
 
 ---
 
-## PR 2 — Opaque `Tool.t` + canonical JSON serializer
+## Commit 2 — Opaque `Tool.t` + canonical JSON serializer
 
 ### Files
 - `lib/pera_core/agent_types.ml(i)` — make `'ctx tool` private; add `Tool`
@@ -273,7 +273,7 @@ declaration" semantic is preserved exactly; only the spelling changes.
 
 ---
 
-## PR 3 — Anthropic request: place `cache_control` per policy
+## Commit 3 — Anthropic request: place `cache_control` per policy
 
 ### Files
 - `lib/pera_provider/anthropic_request.ml(i)` — accept `cache_policy` and
@@ -291,7 +291,7 @@ adapted to Pera's structure:
 
 | Variant | System block | Last tool | Last user message |
 |---|---|---|---|
-| `None` | — | — | — |
+| `No_cache` | — | — | — |
 | `Conversation` | ✓ | ✓ | ✓ |
 | `SystemAndToolsOnly` | ✓ | ✓ | — |
 
@@ -348,7 +348,7 @@ these (`anthropic_interpreter.ml:134-148`).
 
 ---
 
-## PR 4 — Construction-time dynamic-content linter
+## Commit 4 — Construction-time dynamic-content linter
 
 ### Files
 - New module `lib/pera_core/cache_lint.ml(i)` or inline helper in
@@ -390,7 +390,7 @@ date string). Default false.
 
 ---
 
-## PR 5 — Session-level fingerprint and "prefix changed" warning
+## Commit 5 — Session-level fingerprint and "prefix changed" warning
 
 ### Files
 - `lib/pera_harness/` (location TBD — wherever session is constructed)
@@ -427,7 +427,7 @@ warning rather than discovering it via mysteriously higher token bills.
 
 ---
 
-## PR 6 — Surface cache_read / cache_write in status output
+## Commit 6 — Surface cache_read / cache_write in status output
 
 Display layer. Depends on what status surface Pera has at the time. Pi shows
 session-cumulative `↑in ↓out R{cacheRead} W{cacheWrite}` in a TUI footer
