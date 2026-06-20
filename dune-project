@@ -157,6 +157,8 @@
    (>= 1.0))
   (ppx_deriving
    (>= 1.6))
+  (logs
+   (>= 0.7))
   (alcotest
    (and
     (>= 1.7)
