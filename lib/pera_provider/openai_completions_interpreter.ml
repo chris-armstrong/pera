@@ -398,7 +398,12 @@ let finalize_tool_calls state =
 
 (** Extract usage from the top-level chunk JSON when
     [stream_options.include_usage] is true. Usage appears only on the final
-    chunk. *)
+    chunk.
+
+    Cache-read tokens follow the OpenAI shape
+    ([usage.prompt_tokens_details.cached_tokens]) which is also used by Kimi
+    (Moonshot), GLM (Zhipu), and Ollama Cloud. Providers that use a different
+    field (e.g. DeepSeek's [prompt_cache_hit_tokens]) are not covered here. *)
 let extract_usage json =
   match json with
   | `Assoc fields -> (
@@ -406,11 +411,16 @@ let extract_usage json =
       | Some (`Assoc u) ->
           let input_tokens = json_int_field u "prompt_tokens" in
           let output_tokens = json_int_field u "completion_tokens" in
+          let cache_read_tokens =
+            match List.assoc_opt ~eq:String.equal "prompt_tokens_details" u with
+            | Some (`Assoc details) -> json_int_field details "cached_tokens"
+            | _ -> 0
+          in
           Some
             {
               Types.input_tokens;
               output_tokens;
-              cache_read_tokens = 0;
+              cache_read_tokens;
               cache_write_tokens = 0;
               cost_usd = None;
             }
