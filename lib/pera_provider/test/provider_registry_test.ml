@@ -63,7 +63,14 @@ let run_provider_and_get_events provider_mod =
   let context =
     Provider.{ system = ""; messages = []; tools = []; thinking = false }
   in
-  let options = { Provider.max_tokens = 100; temperature = None } in
+  let options =
+    {
+      Provider.max_tokens = 100;
+      temperature = None;
+      cache_policy = Pera_types.Types.No_cache;
+      cache_ttl = Pera_types.Types.Five_minutes;
+    }
+  in
   let stream =
     P.stream_simple inst
       ~model:

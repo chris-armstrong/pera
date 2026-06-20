@@ -113,3 +113,14 @@ type tool_error = { message : string; is_user_error : bool }
 
 type model = { id : string; api : string; context_window : int }
 [@@deriving eq, show]
+
+type cache_ttl =
+  | Five_minutes
+  | One_hour
+[@@deriving eq, show]
+
+type cache_policy =
+  | No_cache
+  | Conversation
+  | SystemAndToolsOnly
+[@@deriving eq, show]

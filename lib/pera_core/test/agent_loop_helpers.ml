@@ -63,7 +63,13 @@ let test_model =
 
 (** Simple stream options for loop calls. *)
 let test_options =
-  Pera_provider.Provider.{ max_tokens = 1024; temperature = None }
+  Pera_provider.Provider.
+    {
+      max_tokens = 1024;
+      temperature = None;
+      cache_policy = Pera_types.Types.No_cache;
+      cache_ttl = Pera_types.Types.Five_minutes;
+    }
 
 (** {1 Script builders} *)
 

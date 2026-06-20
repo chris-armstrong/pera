@@ -251,3 +251,34 @@ type model = {
 val equal_model : model -> model -> bool
 val pp_model : Format.formatter -> model -> unit
 val show_model : model -> string
+
+(** {1 Cache control} *)
+
+type cache_ttl =
+  | Five_minutes  (** Ephemeral cache with default 5-minute TTL. *)
+  | One_hour  (** Ephemeral cache with extended 1-hour TTL. *)
+(** Time-to-live for Anthropic prompt cache entries. The same TTL is applied to
+    every breakpoint in a request. *)
+
+val equal_cache_ttl : cache_ttl -> cache_ttl -> bool
+val pp_cache_ttl : Format.formatter -> cache_ttl -> unit
+val show_cache_ttl : cache_ttl -> string
+
+type cache_policy =
+  | No_cache  (** Do not emit any [cache_control] markers. *)
+  | Conversation
+      (** Emit markers on the system block, last tool, and last user message.
+          This is pi-harness's default and caches the full conversational
+          prefix. *)
+  | SystemAndToolsOnly
+      (** Emit markers on the system block and last tool only — no
+          message-history breakpoint. Appropriate for one-shot batch agents
+          that share system+tools across many independent requests. *)
+(** Controls where [cache_control: ephemeral] markers are placed in Anthropic
+    API requests. Has no effect on non-Anthropic providers.
+
+    Default for all new code paths is [No_cache] — opt-in everywhere. *)
+
+val equal_cache_policy : cache_policy -> cache_policy -> bool
+val pp_cache_policy : Format.formatter -> cache_policy -> unit
+val show_cache_policy : cache_policy -> string

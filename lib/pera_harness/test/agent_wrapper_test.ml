@@ -8,7 +8,14 @@ let test_model =
   Pera_types.Types.
     { id = "test-model"; api = "faux"; context_window = 200_000 }
 
-let test_options = Pera_provider.Provider.{ max_tokens = 1024; temperature = None }
+let test_options =
+  Pera_provider.Provider.
+    {
+      max_tokens = 1024;
+      temperature = None;
+      cache_policy = Pera_types.Types.No_cache;
+      cache_ttl = Pera_types.Types.Five_minutes;
+    }
 
 let default_convert_to_llm msgs =
   List.map Pera_core.Agent_types.to_provider_message msgs

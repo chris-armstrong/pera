@@ -96,7 +96,13 @@ let run_default_scenario ~model_id ~prompt_text ~max_tokens =
         thinking = false;
       }
   in
-  let options = Provider.{ max_tokens; temperature = None } in
+  let options = Provider.
+      {
+        max_tokens;
+        temperature = None;
+        cache_policy = Types.No_cache;
+        cache_ttl = Types.Five_minutes;
+      } in
   Printf.printf "model: %s\n" model_id;
   Printf.printf "prompt: %s\n" prompt_text;
   Printf.printf "---\n%!";
@@ -143,7 +149,15 @@ let run_thinking_scenario () =
         thinking = true;
       }
   in
-  let options = Provider.{ max_tokens = 16000; temperature = None } in
+  let options =
+    Provider.
+      {
+        max_tokens = 16000;
+        temperature = None;
+        cache_policy = Types.No_cache;
+        cache_ttl = Types.Five_minutes;
+      }
+  in
   Printf.printf "thinking scenario: model=%s\n%!" model.Types.id;
   Printf.printf "---\n%!";
   Eio_main.run @@ fun env ->
@@ -197,7 +211,13 @@ let run_openai_completions_scenario ~model_id ~prompt_text ~max_tokens ~thinking
             thinking;
           }
       in
-      let options = Provider.{ max_tokens; temperature = None } in
+      let options = Provider.
+      {
+        max_tokens;
+        temperature = None;
+        cache_policy = Types.No_cache;
+        cache_ttl = Types.Five_minutes;
+      } in
       let base_url =
         match Sys.getenv_opt "OPENAI_BASE_URL" with
         | Some u -> u

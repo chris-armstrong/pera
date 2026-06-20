@@ -113,7 +113,14 @@ let make_config ?(tools = []) ?(get_follow_up_messages = None) ~model stream_fn 
     {
       model;
       system = "You are a helpful test assistant.";
-      options = Provider.{ max_tokens = 1024; temperature = None };
+      options =
+        Provider.
+          {
+            max_tokens = 1024;
+            temperature = None;
+            cache_policy = Types.No_cache;
+            cache_ttl = Types.Five_minutes;
+          };
       stream_fn;
       convert_to_llm = default_convert_to_llm;
       tool_ctx = ();

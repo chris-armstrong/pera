@@ -71,7 +71,13 @@ let test_stream_fn_resolves_registered_provider () =
     { Pera_types.Types.id = "test-model"; api = "faux"; context_window = 200_000 }
   in
   let options =
-    Pera_provider.Provider.{ max_tokens = 1024; temperature = None }
+    Pera_provider.Provider.
+      {
+        max_tokens = 1024;
+        temperature = None;
+        cache_policy = Pera_types.Types.No_cache;
+        cache_ttl = Pera_types.Types.Five_minutes;
+      }
   in
   let stream = stream_fn ~model ~context ~options ~sw in
   let events, result = collect_assistant_events stream in
@@ -111,7 +117,13 @@ let test_stream_fn_unknown_api_returns_error_stream () =
     }
   in
   let options =
-    Pera_provider.Provider.{ max_tokens = 1024; temperature = None }
+    Pera_provider.Provider.
+      {
+        max_tokens = 1024;
+        temperature = None;
+        cache_policy = Pera_types.Types.No_cache;
+        cache_ttl = Pera_types.Types.Five_minutes;
+      }
   in
   let stream = stream_fn ~model ~context ~options ~sw in
   let _events, result = collect_assistant_events stream in
@@ -143,7 +155,13 @@ let test_stream_fn_preserves_provider_semantics () =
     { Pera_types.Types.id = "test-model"; api = "faux"; context_window = 200_000 }
   in
   let options =
-    Pera_provider.Provider.{ max_tokens = 1024; temperature = None }
+    Pera_provider.Provider.
+      {
+        max_tokens = 1024;
+        temperature = None;
+        cache_policy = Pera_types.Types.No_cache;
+        cache_ttl = Pera_types.Types.Five_minutes;
+      }
   in
   let config =
     Agent_loop.

@@ -73,7 +73,14 @@ let default_convert_to_llm msgs =
 let test_model = Types.{ id = "faux-model"; api = "faux"; context_window = 200_000 }
 
 (** Default options for loop calls. *)
-let test_options = Provider.{ max_tokens = 1024; temperature = None }
+let test_options =
+  Provider.
+    {
+      max_tokens = 1024;
+      temperature = None;
+      cache_policy = Types.No_cache;
+      cache_ttl = Types.Five_minutes;
+    }
 
 (** Empty JSON schema for tools that take no args. *)
 let empty_schema = Json_schema.object_ ~properties:[] ~required:[] ()

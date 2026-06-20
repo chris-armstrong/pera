@@ -85,7 +85,13 @@ let faux_model =
 
 (** Simple stream options — Faux_provider ignores these. *)
 let faux_options =
-  Pera_provider.Provider.{ max_tokens = 1024; temperature = None }
+  Pera_provider.Provider.
+    {
+      max_tokens = 1024;
+      temperature = None;
+      cache_policy = Pera_types.Types.No_cache;
+      cache_ttl = Pera_types.Types.Five_minutes;
+    }
 
 (** ----------------------------------------------------------------------- Test
     1: A single-turn script emits events and then resolves with the scripted

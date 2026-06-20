@@ -82,7 +82,12 @@ let create ~config ~env ~sw =
         system = build_system_prompt tools;
         options =
           Pera_provider.Provider.
-            { max_tokens = config.max_tokens; temperature = None };
+            {
+              max_tokens = config.max_tokens;
+              temperature = None;
+              cache_policy = Pera_types.Types.No_cache;
+              cache_ttl = Pera_types.Types.Five_minutes;
+            };
         stream_fn = config.stream_fn;
         convert_to_llm;
         tool_ctx = ();
