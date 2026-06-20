@@ -1,5 +1,11 @@
 # Pera — Agent Project Context
 
+## Mandatory guidelines
+
+* When working on major/complex changes, plan them and ask the user for feedback first
+* Ask the user questions when things are unclear or ambiguous
+* **Always** read and understand the code guidelines listed in `docs/guidelines/index.md` before planning or working on code.
+
 ## What this project is
 
 Pera is an OCaml port of the **pi coding agent** (`github.com/earendil-works/pi`, MIT).  
@@ -94,18 +100,11 @@ pera-harness  (depends on pera-types)
 pera-tools  (depends on pera-types, pera-harness, pera-core, pera-provider)
 ```
 
----
-
-## Coding guidelines
-
-**Entry point:** `docs/guidelines/index.md`
-
-This file lists **all mandatory guideline documents** that must be read before writing or reviewing code.
 
 
-### Guideline priority order
+### Coding Guideline priority order
 
-When guidelines conflict:
+When code guidelines conflict:
 
 1. Correctness (no bugs)
 2. Type safety (catch errors at compile time)
