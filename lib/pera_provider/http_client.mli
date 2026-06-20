@@ -1,7 +1,7 @@
 (** Http_client — thin HTTP transport abstraction over cohttp-eio + TLS.
 
-    Implementation details are hidden behind this interface. Callers depend
-    only on the types declared here. *)
+    Implementation details are hidden behind this interface. Callers depend only
+    on the types declared here. *)
 
 type t
 (** An abstract HTTP client bound to a single base URL.

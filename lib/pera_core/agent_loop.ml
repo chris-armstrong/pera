@@ -257,7 +257,7 @@ let execute_one_tool ~config ~sw ~out_stream ~final_agent_msg
     let* () =
       Pera_provider.Json_schema.validate tool.schema tc.arguments
       |> Result.map_err (fun err ->
-             fail_tool (Printf.sprintf "Schema validation failed: %s" err))
+          fail_tool (Printf.sprintf "Schema validation failed: %s" err))
     in
     (* Step 3: call before_tool_call if set *)
     let before_result =
@@ -306,7 +306,12 @@ let execute_one_tool ~config ~sw ~out_stream ~final_agent_msg
     (* Step 6: call after_tool_call if set *)
     Option.iter
       (fun f ->
-        f { tool_call = tc; result = execute_result; tool_ctx = config.tool_ctx })
+        f
+          {
+            tool_call = tc;
+            result = execute_result;
+            tool_ctx = config.tool_ctx;
+          })
       config.after_tool_call;
     (* Step 7: emit execution end *)
     push_event out_stream
@@ -404,9 +409,7 @@ let rec run_inner ~config ~model_ref ~options_ref ~messages_ref ~pending ~sw
         Option.iter (apply_turn_update ~model_ref ~messages_ref) (f ctx)
   in
   let get_steering_messages () =
-    match config.get_steering_messages with
-    | None -> []
-    | Some f -> f ()
+    match config.get_steering_messages with None -> [] | Some f -> f ()
   in
   (* Step 1: append pending messages to the history *)
   let appended_messages =

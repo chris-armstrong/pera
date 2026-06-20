@@ -1,11 +1,11 @@
-(** Shared helpers for JSONL session-file inspection used by session and
-    harness drivers. *)
+(** Shared helpers for JSONL session-file inspection used by session and harness
+    drivers. *)
 
 type verdict = Pass | Fail of string
 
 val parse_session_file : string -> Yojson.Safe.t list
-(** Read the file at [path], split on newlines, and parse each non-empty line
-    as JSON. Raises on malformed JSON. *)
+(** Read the file at [path], split on newlines, and parse each non-empty line as
+    JSON. Raises on malformed JSON. *)
 
 val get_string : string -> Yojson.Safe.t -> string
 (** [get_string key json] extracts [key] from [json] as a string. Raises
@@ -16,9 +16,9 @@ val get_string_opt : string -> Yojson.Safe.t -> string option
     absent or non-string. *)
 
 val check_content_chain : Yojson.Safe.t list -> string option
-(** Filter out leaf entries and verify each remaining entry's [parent_id]
-    equals the previous entry's [id]. Returns [None] on success, [Some msg]
-    on the first violation. *)
+(** Filter out leaf entries and verify each remaining entry's [parent_id] equals
+    the previous entry's [id]. Returns [None] on success, [Some msg] on the
+    first violation. *)
 
 val assert_leaves_childless : Yojson.Safe.t list -> Yojson.Safe.t option
 (** Returns [Some entry] if any entry references a leaf's [id] as its
@@ -29,8 +29,8 @@ val verify_chain_and_leaves : Yojson.Safe.t list -> verdict
     descriptive [Fail]. *)
 
 val make_temp_dir : Eio_unix.Stdenv.base -> prefix:string -> string
-(** Create a temporary directory under the system temp dir with a unique
-    name derived from [prefix], the PID, and the current timestamp. *)
+(** Create a temporary directory under the system temp dir with a unique name
+    derived from [prefix], the PID, and the current timestamp. *)
 
 val cleanup : string -> unit
 (** Remove [path] recursively (best-effort). *)

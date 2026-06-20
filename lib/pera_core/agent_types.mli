@@ -16,8 +16,8 @@ val pp_synthetic : Format.formatter -> synthetic -> unit
 val show_synthetic : synthetic -> string
 
 val compaction_framing : string
-(** ["Context from earlier conversation:\n\n"] — the user-role framing
-    prepended to a compaction summary when it is rendered for the LLM. *)
+(** ["Context from earlier conversation:\n\n"] — the user-role framing prepended
+    to a compaction summary when it is rendered for the LLM. *)
 
 val synthetic_to_message : synthetic -> Pera_provider.Provider.message
 (** Render a synthetic message into the provider message the LLM sees. For
@@ -213,5 +213,5 @@ type stream_fn =
 (** {1 Equality helpers} *)
 
 val agent_message_equal : agent_message -> agent_message -> bool
-(** Structural equality for {!agent_message}. Uses [Provider.equal_message]
-    for [Real] messages and [equal_synthetic] for [Synthetic] messages. *)
+(** Structural equality for {!agent_message}. Uses [Provider.equal_message] for
+    [Real] messages and [equal_synthetic] for [Synthetic] messages. *)

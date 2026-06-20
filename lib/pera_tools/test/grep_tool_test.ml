@@ -19,8 +19,7 @@ let run_grep_test (body : (module Execution_env.S) -> Eio.Switch.t -> unit) =
   let tmpdir = make_temp_dir env in
   Eio.Switch.run @@ fun sw ->
   let module E =
-    (val Pera_env.Local_env.create ~env ~cwd:tmpdir
-        : Pera_env.Execution_env.S)
+    (val Pera_env.Local_env.create ~env ~cwd:tmpdir : Pera_env.Execution_env.S)
   in
   require_rg (module E);
   body (module E) sw
@@ -106,8 +105,7 @@ let test_grep_ripgrep_not_found_returns_error () =
   Eio_main.run @@ fun env ->
   Eio.Switch.run @@ fun sw ->
   let module E =
-    (val Pera_env.Local_env.create ~env ~cwd:"/tmp"
-        : Pera_env.Execution_env.S)
+    (val Pera_env.Local_env.create ~env ~cwd:"/tmp" : Pera_env.Execution_env.S)
   in
   let module MockSh = struct
     let exec = E.Sh.exec

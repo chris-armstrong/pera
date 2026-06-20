@@ -3,14 +3,12 @@
 
     Requires ANTHROPIC_API_KEY. Skipped if absent.
 
-    Three scenarios (each tests a distinct tool and property):
-    1. bash_echo      — bash tool; stdout captured in session tool result.
-    2. read_preseeded — read tool; we write the file before the harness runs
-                        so the sentinel is fully deterministic and no write
-                        tool is involved.
-    3. multi_turn     — two sequential sends; send 1 writes a file, send 2
-                        reads it back; sentinel in the read tool result proves
-                        the model used the tool rather than recalling context.
+    Three scenarios (each tests a distinct tool and property): 1. bash_echo —
+    bash tool; stdout captured in session tool result. 2. read_preseeded — read
+    tool; we write the file before the harness runs so the sentinel is fully
+    deterministic and no write tool is involved. 3. multi_turn — two sequential
+    sends; send 1 writes a file, send 2 reads it back; sentinel in the read tool
+    result proves the model used the tool rather than recalling context.
 
     Exit code: 0 if all pass, 1 otherwise. *)
 
@@ -23,7 +21,11 @@ open Session_jsonl_helpers
 (* ── Model ────────────────────────────────────────────────────────────────── *)
 
 let default_model : Types.model =
-  { id = "claude-haiku-4-5-20251001"; api = "anthropic"; context_window = 200_000 }
+  {
+    id = "claude-haiku-4-5-20251001";
+    api = "anthropic";
+    context_window = 200_000;
+  }
 
 let model_of_argv () =
   if Array.length Sys.argv > 1 then
@@ -64,9 +66,9 @@ let collect_tool_result_strings entries =
       else
         let msg = Yojson.Safe.Util.member "message" e in
         match get_string_opt "role" msg with
-        | Some "tool_result" ->
+        | Some "tool_result" -> (
             let content = Yojson.Safe.Util.member "content" msg in
-            (match content with
+            match content with
             | `String s -> Some s
             | other -> Some (Yojson.Safe.to_string other))
         | _ -> None)
@@ -77,8 +79,8 @@ let has_tool_results entries =
 
 let contains_sub ~needle s = String.find ~sub:needle s >= 0
 
-(** True if [needle] appears in any assistant text or tool result in
-    [entries]. *)
+(** True if [needle] appears in any assistant text or tool result in [entries].
+*)
 let session_output_contains ~needle entries =
   List.exists (contains_sub ~needle) (collect_assistant_texts entries)
   || List.exists (contains_sub ~needle) (collect_tool_result_strings entries)
@@ -87,24 +89,34 @@ let session_output_contains ~needle entries =
 
 let make_harness_config ~model ~tmpdir ~session_path ~stream_fn ~exec_env :
     Pera_agent.Agent_harness.config =
-  { cwd = tmpdir; model; session_path; stream_fn; max_tokens = 1024; exec_env }
+  {
+    cwd = tmpdir;
+    model;
+    session_path;
+    stream_fn;
+    max_tokens = 1024;
+    exec_env;
+    compaction = None;
+  }
 
 (* ── Verify helpers ───────────────────────────────────────────────────────── *)
 
 let verify_bash_echo sentinel entries =
-  if not (has_tool_results entries) then Fail "no tool_result entries in session"
+  if not (has_tool_results entries) then
+    Fail "no tool_result entries in session"
   else if not (session_output_contains ~needle:sentinel entries) then
     Fail
-      (Printf.sprintf "sentinel '%s' not found in tool output or assistant response"
-         sentinel)
+      (Printf.sprintf
+         "sentinel '%s' not found in tool output or assistant response" sentinel)
   else verify_chain_and_leaves entries
 
 let verify_read_preseeded ~sentinel entries =
-  if not (has_tool_results entries) then Fail "no tool_result entries in session"
+  if not (has_tool_results entries) then
+    Fail "no tool_result entries in session"
   else if not (session_output_contains ~needle:sentinel entries) then
     Fail
-      (Printf.sprintf "sentinel '%s' not found in tool result or assistant response"
-         sentinel)
+      (Printf.sprintf
+         "sentinel '%s' not found in tool result or assistant response" sentinel)
   else verify_chain_and_leaves entries
 
 let verify_multi_turn ~sentinel entries =
@@ -117,8 +129,8 @@ let verify_multi_turn ~sentinel entries =
   if not read_result_has_sentinel then
     Fail
       (Printf.sprintf
-         "sentinel '%s' not found in any tool result — read tool did not execute or \
-          returned wrong content"
+         "sentinel '%s' not found in any tool result — read tool did not \
+          execute or returned wrong content"
          sentinel)
   else
     match List.last_opt (collect_assistant_texts entries) with
@@ -146,13 +158,16 @@ let scenario_bash_echo ~model ~tmpdir ~env ~registry =
   let adapter = Provider_adapter.create ~registry ~env ~sw in
   let stream_fn = Provider_adapter.stream_fn adapter in
   let exec_env = Pera_env.Local_env.create ~env ~cwd:tmpdir in
-  let config = make_harness_config ~model ~tmpdir ~session_path ~stream_fn ~exec_env in
+  let config =
+    make_harness_config ~model ~tmpdir ~session_path ~stream_fn ~exec_env
+  in
   match Pera_agent.Agent_harness.create ~config ~env ~sw with
   | Error e -> Fail (Printf.sprintf "create failed: %s" e.Types.message)
   | Ok h ->
       Pera_agent.Agent_harness.send h
         (Printf.sprintf
-           "Use the bash tool to run the command `echo %s` and report the exact output."
+           "Use the bash tool to run the command `echo %s` and report the \
+            exact output."
            sentinel);
       verify_bash_echo sentinel (parse_session_file session_path)
 
@@ -161,18 +176,22 @@ let scenario_read_preseeded ~model ~tmpdir ~env ~registry =
      job is to call the read tool and report the contents. *)
   let seed_file = Filename.concat tmpdir "preseeded.txt" in
   let sentinel = "pera_sentinel_xyz" in
-  Stdlib.Out_channel.(with_open_text seed_file (fun oc -> output_string oc sentinel));
+  Stdlib.Out_channel.(
+    with_open_text seed_file (fun oc -> output_string oc sentinel));
   Eio.Switch.run @@ fun sw ->
   let session_path = Filename.concat tmpdir "read_preseeded.jsonl" in
   let adapter = Provider_adapter.create ~registry ~env ~sw in
   let stream_fn = Provider_adapter.stream_fn adapter in
   let exec_env = Pera_env.Local_env.create ~env ~cwd:tmpdir in
-  let config = make_harness_config ~model ~tmpdir ~session_path ~stream_fn ~exec_env in
+  let config =
+    make_harness_config ~model ~tmpdir ~session_path ~stream_fn ~exec_env
+  in
   match Pera_agent.Agent_harness.create ~config ~env ~sw with
   | Error e -> Fail (Printf.sprintf "create failed: %s" e.Types.message)
   | Ok h ->
       Pera_agent.Agent_harness.send h
-        (Printf.sprintf "Use the read tool to read %s and tell me its contents." seed_file);
+        (Printf.sprintf "Use the read tool to read %s and tell me its contents."
+           seed_file);
       verify_read_preseeded ~sentinel (parse_session_file session_path)
 
 let scenario_multi_turn ~model ~tmpdir ~env ~registry =
@@ -187,17 +206,20 @@ let scenario_multi_turn ~model ~tmpdir ~env ~registry =
   let adapter = Provider_adapter.create ~registry ~env ~sw in
   let stream_fn = Provider_adapter.stream_fn adapter in
   let exec_env = Pera_env.Local_env.create ~env ~cwd:tmpdir in
-  let config = make_harness_config ~model ~tmpdir ~session_path ~stream_fn ~exec_env in
+  let config =
+    make_harness_config ~model ~tmpdir ~session_path ~stream_fn ~exec_env
+  in
   match Pera_agent.Agent_harness.create ~config ~env ~sw with
   | Error e -> Fail (Printf.sprintf "create failed: %s" e.Types.message)
   | Ok h ->
       Pera_agent.Agent_harness.send h
         (Printf.sprintf
-           "Use the write tool to write exactly `%s` to the file %s."
-           sentinel data_file);
+           "Use the write tool to write exactly `%s` to the file %s." sentinel
+           data_file);
       Pera_agent.Agent_harness.send h
         (Printf.sprintf
-           "Use the read tool to read the file %s and tell me exactly what it contains."
+           "Use the read tool to read the file %s and tell me exactly what it \
+            contains."
            data_file);
       verify_multi_turn ~sentinel (parse_session_file session_path)
 
@@ -219,15 +241,15 @@ let () =
             Printf.printf "model: %s\n%!" model.Types.id;
             let scenarios =
               [
-                ( "bash_echo",
-                  scenario_bash_echo ~model ~tmpdir ~env ~registry );
+                ("bash_echo", scenario_bash_echo ~model ~tmpdir ~env ~registry);
                 ( "read_preseeded",
                   scenario_read_preseeded ~model ~tmpdir ~env ~registry );
-                ( "multi_turn",
-                  scenario_multi_turn ~model ~tmpdir ~env ~registry );
+                ("multi_turn", scenario_multi_turn ~model ~tmpdir ~env ~registry);
               ]
             in
-            List.iter (fun (name, v) -> print_verdict ~tag:"live" ~scenario:name v) scenarios;
+            List.iter
+              (fun (name, v) -> print_verdict ~tag:"live" ~scenario:name v)
+              scenarios;
             Printf.printf "\n";
             let passed = count_passed scenarios in
             let total = List.length scenarios in

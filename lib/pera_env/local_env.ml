@@ -78,7 +78,7 @@ let create ~env ~cwd =
 
     let find_executable ~name =
       let path_var = try Sys.getenv "PATH" with Not_found -> "" in
-      let sep = if String.equal (Sys.os_type) "Win32" then ';' else ':' in
+      let sep = if String.equal Sys.os_type "Win32" then ';' else ':' in
       String.split_on_char sep path_var
       |> List.filter (fun s -> not (String.is_empty s))
       |> List.find_map (fun dir ->

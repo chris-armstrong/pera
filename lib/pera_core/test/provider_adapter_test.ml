@@ -68,7 +68,11 @@ let test_stream_fn_resolves_registered_provider () =
       ]
   in
   let model =
-    { Pera_types.Types.id = "test-model"; api = "faux"; context_window = 200_000 }
+    {
+      Pera_types.Types.id = "test-model";
+      api = "faux";
+      context_window = 200_000;
+    }
   in
   let options =
     Pera_provider.Provider.{ max_tokens = 1024; temperature = None }
@@ -140,7 +144,11 @@ let test_stream_fn_preserves_provider_semantics () =
   (* Build a loop config using the adapter's stream_fn.
      The model.api must match the registered name 'faux'. *)
   let model =
-    { Pera_types.Types.id = "test-model"; api = "faux"; context_window = 200_000 }
+    {
+      Pera_types.Types.id = "test-model";
+      api = "faux";
+      context_window = 200_000;
+    }
   in
   let options =
     Pera_provider.Provider.{ max_tokens = 1024; temperature = None }

@@ -39,7 +39,8 @@ val run_scenario :
   name:string ->
   messages:Agent_types.agent_message list ->
   sw:Eio.Switch.t ->
-  check_result:(Agent_types.agent_event list -> Agent_types.agent_message list -> bool) ->
+  check_result:
+    (Agent_types.agent_event list -> Agent_types.agent_message list -> bool) ->
   unit Agent_loop.agent_loop_config ->
   bool
 (** Run a named scenario, printing each event, and return whether [check_result]
@@ -48,28 +49,16 @@ val run_scenario :
 (** {1 Scenarios} *)
 
 val scenario_simple_text :
-  model:Types.model ->
-  Agent_types.stream_fn ->
-  Eio.Switch.t ->
-  bool
+  model:Types.model -> Agent_types.stream_fn -> Eio.Switch.t -> bool
 
 val scenario_echo_tool :
-  model:Types.model ->
-  Agent_types.stream_fn ->
-  Eio.Switch.t ->
-  bool
+  model:Types.model -> Agent_types.stream_fn -> Eio.Switch.t -> bool
 
 val scenario_multi_turn :
-  model:Types.model ->
-  Agent_types.stream_fn ->
-  Eio.Switch.t ->
-  bool
+  model:Types.model -> Agent_types.stream_fn -> Eio.Switch.t -> bool
 
 val scenario_parallel_echo :
-  model:Types.model ->
-  Agent_types.stream_fn ->
-  Eio.Switch.t ->
-  bool
+  model:Types.model -> Agent_types.stream_fn -> Eio.Switch.t -> bool
 
 (** {1 Entry helpers} *)
 

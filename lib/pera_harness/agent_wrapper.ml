@@ -16,7 +16,8 @@ type 'ctx t = {
   mutable subscribers : (Pera_core.Agent_types.agent_event -> unit) list;
   mutable is_running : bool;
   mutable in_flight_tools : (string * string) list;
-      (** [(tool_call_id, tool_name)] pairs, keyed by id for independent removal *)
+      (** [(tool_call_id, tool_name)] pairs, keyed by id for independent removal
+      *)
   mutable messages : Pera_core.Agent_types.agent_message list;
   sub_mutex : Eio.Mutex.t;  (** protects [subscribers] list only *)
 }
@@ -24,7 +25,7 @@ type 'ctx t = {
 (** {1 State update} *)
 
 (** [update_state t event] mutates the observable state fields of [t] based on
-    the event.  Called from the actor fibre before fan-out. *)
+    the event. Called from the actor fibre before fan-out. *)
 let update_state t event =
   match event with
   | Pera_core.Agent_types.AE_tool_execution_start { tool_call_id; tool_name; _ }
@@ -66,9 +67,7 @@ let create ~config ~sw =
             t.in_flight_tools <- [];
             Eio.Cancel.protect (fun () -> Eio.Promise.resolve reply ()))
           (fun () ->
-            let stream =
-              Pera_core.Agent_loop.run t.config ~messages ~sw
-            in
+            let stream = Pera_core.Agent_loop.run t.config ~messages ~sw in
             ignore
               (Pera_provider.Event_stream.iter stream ~f:(fun event ->
                    update_state t event;
@@ -79,10 +78,10 @@ let create ~config ~sw =
         loop ()
       in
       (try loop () with
-       | Eio.Cancel.Cancelled _ -> ()
-       | exn ->
-         Printf.eprintf "agent_wrapper: actor loop terminated: %s\n%!"
-           (Printexc.to_string exn));
+      | Eio.Cancel.Cancelled _ -> ()
+      | exn ->
+          Printf.eprintf "agent_wrapper: actor loop terminated: %s\n%!"
+            (Printexc.to_string exn));
       `Stop_daemon);
   t
 
@@ -92,7 +91,7 @@ let subscribe t f =
   fun () ->
     Eio.Mutex.use_rw ~protect:false t.sub_mutex (fun () ->
         t.subscribers <-
-          List.filter (fun sub -> not (Stdlib.(==) sub f)) t.subscribers)
+          List.filter (fun sub -> not (Stdlib.( == ) sub f)) t.subscribers)
 
 let send t ~messages =
   let p, resolver = Eio.Promise.create () in
@@ -100,7 +99,5 @@ let send t ~messages =
   Eio.Promise.await p
 
 let is_streaming t = t.is_running
-
 let pending_tool_call_names t = List.map snd t.in_flight_tools
-
 let current_messages t = t.messages

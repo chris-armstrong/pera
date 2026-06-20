@@ -420,7 +420,7 @@ let extract_usage json =
             {
               Types.input_tokens;
               output_tokens;
-              cache_read_tokens;
+              cache_read_tokens = 0;
               cache_write_tokens = 0;
               cost_usd = None;
             }
