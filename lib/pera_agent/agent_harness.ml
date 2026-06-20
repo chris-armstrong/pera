@@ -17,9 +17,8 @@ type config = {
 
 let build_system_prompt tools =
   let base =
-    "You are a helpful coding assistant. Work methodically, \
-     verify your understanding before acting, and prefer small \
-     targeted changes."
+    "You are a helpful coding assistant. Work methodically, verify your \
+     understanding before acting, and prefer small targeted changes."
   in
   let descs =
     List.map
@@ -29,8 +28,12 @@ let build_system_prompt tools =
           (Pera_core.Agent_types.Tool.description t))
       tools
   in
-  if List.is_empty descs then base
-  else base ^ "\n\nAvailable tools:\n" ^ String.concat "\n" descs
+  let prompt =
+    if List.is_empty descs then base
+    else base ^ "\n\nAvailable tools:\n" ^ String.concat "\n" descs
+  in
+  Pera_core.Cache_lint.warn_if_dynamic ~field:"system prompt" prompt;
+  prompt
 
 let convert_to_llm messages =
   List.map Pera_core.Agent_types.to_provider_message messages
@@ -53,13 +56,13 @@ let session_subscriber writer event =
           (Ok ()) tool_results
     | Pera_core.Agent_types.AE_agent_end _ ->
         Pera_harness.Session_writer.write_leaf writer
-    | Pera_core.Agent_types.AE_agent_start
-    | Pera_core.Agent_types.AE_turn_start
+    | Pera_core.Agent_types.AE_agent_start | Pera_core.Agent_types.AE_turn_start
     | Pera_core.Agent_types.AE_message_start _
     | Pera_core.Agent_types.AE_message_update _
     | Pera_core.Agent_types.AE_tool_execution_start _
     | Pera_core.Agent_types.AE_tool_execution_update _
-    | Pera_core.Agent_types.AE_tool_execution_end _ -> Ok ()
+    | Pera_core.Agent_types.AE_tool_execution_end _ ->
+        Ok ()
     | Pera_core.Agent_types.AE_compaction_start -> Ok ()
     | Pera_core.Agent_types.AE_compaction_error _ -> Ok ()
     | Pera_core.Agent_types.AE_compaction_end _ -> Ok ()
@@ -112,11 +115,11 @@ let create ~config ~env ~sw =
   Ok { wrapper; writer; session_info_written = false }
 
 let send t text =
-  if not t.session_info_written then (
-    match Pera_harness.Session_writer.write_session_info t.writer with
-    | Ok () -> t.session_info_written <- true
-    | Error e ->
-        Printf.eprintf "session_info write: %s\n%!" e.Pera_types.Types.message);
+  (if not t.session_info_written then
+     match Pera_harness.Session_writer.write_session_info t.writer with
+     | Ok () -> t.session_info_written <- true
+     | Error e ->
+         Printf.eprintf "session_info write: %s\n%!" e.Pera_types.Types.message);
   let um =
     Pera_provider.Provider.UserMessage
       Pera_types.Types.{ role = "user"; content = [ UText text ] }

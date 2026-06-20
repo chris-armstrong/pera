@@ -1,7 +1,9 @@
 (library
  (name pera_core)
  (public_name pera-core)
- (modules agent_types agent_loop provider_adapter token_estimator model_window)
- (libraries pera_types pera_provider containers yojson eio eio_main eio_linux)
+ (modules agent_types agent_loop provider_adapter token_estimator model_window
+          cache_lint)
+ (libraries pera_types pera_provider containers yojson eio eio_main eio_linux
+            logs re.perl)
  (preprocess
   (pps ppx_deriving.eq ppx_deriving.show)))

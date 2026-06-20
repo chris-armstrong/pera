@@ -93,6 +93,10 @@
     (>= 1.0))
    (eio_linux
     (>= 1.0))
+   (logs
+    (>= 0.7))
+   (re
+    (>= 1.10))
    (ppx_deriving
     (>= 1.6))
    (qcheck-core
