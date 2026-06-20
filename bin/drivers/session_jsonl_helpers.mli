@@ -41,6 +41,12 @@ val print_verdict : tag:string -> scenario:string -> verdict -> unit
 val count_passed : (string * verdict) list -> int
 (** Count scenarios whose verdict is [Pass]. *)
 
+val collect_cumulative_usage : Yojson.Safe.t list -> Pera_types.Types.usage
+(** [collect_cumulative_usage entries] sums the token fields of every
+    assistant message's [usage] block in [entries]. [cost_usd] of the result
+    is [None] — cost aggregation is provider-specific and not meaningful when
+    summed across turns. *)
+
 val parse_session_file_lenient : string -> Yojson.Safe.t list
 (** [parse_session_file_lenient path] reads the file at [path], splits on
     newlines, and returns only the lines that parse as valid JSON, silently

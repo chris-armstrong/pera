@@ -122,6 +122,7 @@ let run_default_scenario ~model_id ~prompt_text ~max_tokens =
       Printf.printf "done: stop_reason=%s content=[%s]\n"
         (stop_reason_string final_msg.Types.stop_reason)
         (summarise_content final_msg.Types.content);
+      Printf.printf "usage: %s\n" (Usage_status.format final_msg.Types.usage);
       exit 0
   | Error msg ->
       Printf.printf "error: %s\n" msg;
@@ -181,6 +182,7 @@ let run_thinking_scenario () =
       Printf.printf "done: stop_reason=%s content=[%s]\n"
         (stop_reason_string final_msg.Types.stop_reason)
         (summarise_content final_msg.Types.content);
+      Printf.printf "usage: %s\n" (Usage_status.format final_msg.Types.usage);
       let has_thinking_event =
         List.exists
           (function Types.AME_thinking_start _ -> true | _ -> false)
@@ -316,6 +318,7 @@ let run_openai_completions_scenario ~model_id ~prompt_text ~max_tokens ~thinking
              Printf.printf "done: stop_reason=%s content=[%s]\n"
                (stop_reason_string final_msg.Types.stop_reason)
                (summarise_content final_msg.Types.content);
+             Printf.printf "usage: %s\n" (Usage_status.format final_msg.Types.usage);
              let has_output =
                List.exists
                  (function
