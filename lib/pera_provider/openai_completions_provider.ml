@@ -28,8 +28,7 @@ let handle_ame stream done_message ame =
       Event_stream.close stream message
   | Types.AME_error { message; _ } ->
       done_message := Some (Error message);
-      Event_stream.close_error stream message
-        (Pera_types.Types.Provider { message })
+      Event_stream.close_provider_error stream message
   | event -> Event_stream.push stream event
 
 (** Feed a single framed SSE event through the OpenAI interpreter and dispatch
@@ -70,9 +69,7 @@ let process_chunks stream ~(compat : Openai_completions_request.compat) =
     let msg = "stream ended without a finish_reason or [DONE] sentinel" in
     match !done_message with
     | Some _ -> () (* stream already closed in handle_ame *)
-    | None ->
-        Event_stream.close_error stream msg
-          (Pera_types.Types.Provider { message = msg })
+    | None -> Event_stream.close_provider_error stream msg
   in
   (on_chunk, finalise)
 

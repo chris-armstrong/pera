@@ -36,6 +36,15 @@ val close_error :
 (** [close_error t msg stop_err] signals that the stream failed, and resolves
     the result promise with [Error (msg, stop_err)]. *)
 
+val close_provider_error : ('event, 'result) t -> string -> unit
+(** [close_provider_error t msg] is [close_error t msg (Provider {message=msg})].
+    Use for provider-specific protocol errors (malformed response, unknown stop
+    reason, content filter, missing terminal event). *)
+
+val close_internal_error : ('event, 'result) t -> string -> unit
+(** [close_internal_error t msg] is [close_error t msg (Internal {message=msg})].
+    Use for programming/configuration errors (unknown API, unexpected exception). *)
+
 val take :
   ('event, 'result) t ->
   [ `Event of 'event

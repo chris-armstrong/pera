@@ -592,6 +592,6 @@ let run config ~messages ~sw =
               let final_messages = !messages_ref in
               push_event out_stream
                 (Agent_types.AE_agent_end { messages = final_messages });
-              Pera_provider.Event_stream.close_error out_stream err_msg
-                (Pera_types.Types.Internal { message = err_msg })));
+              Pera_provider.Event_stream.close_internal_error out_stream
+                err_msg));
   out_stream

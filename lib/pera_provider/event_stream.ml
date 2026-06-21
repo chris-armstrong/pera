@@ -29,6 +29,12 @@ let close_error t msg stop_err =
   Eio.Promise.resolve resolver (Error (msg, stop_err));
   Eio.Stream.add t.stream None
 
+let close_provider_error t msg =
+  close_error t msg (Pera_types.Types.Provider { message = msg })
+
+let close_internal_error t msg =
+  close_error t msg (Pera_types.Types.Internal { message = msg })
+
 let take t =
   match Eio.Stream.take t.stream with
   | Some event -> `Event event

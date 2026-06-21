@@ -48,14 +48,10 @@ let process_chunks stream =
   let finalise () =
     match !done_message with
     | Some (Ok message) -> Event_stream.close stream message
-    | Some (Error msg) ->
-        Event_stream.close_error stream msg
-          (Pera_types.Types.Provider { message = msg })
+    | Some (Error msg) -> Event_stream.close_provider_error stream msg
     | None ->
-        Event_stream.close_error stream
+        Event_stream.close_provider_error stream
           "stream ended without a final message_stop event"
-          (Pera_types.Types.Provider
-             { message = "stream ended without a final message_stop event" })
   in
   (on_chunk, finalise)
 
