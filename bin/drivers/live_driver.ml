@@ -149,6 +149,35 @@ let build_anthropic_registry () =
 
 (* ── Scenarios ────────────────────────────────────────────────────────────── *)
 
+(** Format a [stop_error] for human-readable output. *)
+let format_stop_error = function
+  | Pera_types.Types.Transport -> "transport"
+  | Pera_types.Types.Http { status } -> Printf.sprintf "HTTP %d" status
+  | Pera_types.Types.Provider { message } ->
+      Printf.sprintf "provider error: %s" message
+  | Pera_types.Types.Internal { message } ->
+      Printf.sprintf "internal error: %s" message
+
+(** Check the harness for a provider error after [send]. Returns [Some fail]
+    if an error occurred, [None] if the run completed without infrastructure
+    errors. *)
+let check_harness_error h =
+  match Pera_agent.Agent_harness.last_error h with
+  | None -> None
+  | Some (msg, stop_err) ->
+      Some
+        (Fail
+           (Printf.sprintf "provider error (%s): %s"
+              (format_stop_error stop_err)
+              msg))
+
+(** If the harness has no error, run [f]; otherwise return the error failure
+    with zero usage. *)
+let if_no_error h f =
+  match check_harness_error h with
+  | Some fail -> (fail, zero_usage)
+  | None -> f ()
+
 let scenario_bash_echo ~model ~tmpdir ~env ~registry =
   Eio.Switch.run @@ fun sw ->
   let session_path = Filename.concat tmpdir "bash_echo.jsonl" in
@@ -164,9 +193,10 @@ let scenario_bash_echo ~model ~tmpdir ~env ~registry =
         (Printf.sprintf
            "Use the bash tool to run the command `echo %s` and report the exact output."
            sentinel);
-      let entries = parse_session_file session_path in
-      ( verify_bash_echo sentinel entries,
-        collect_cumulative_usage entries )
+      if_no_error h (fun () ->
+          let entries = parse_session_file session_path in
+          ( verify_bash_echo sentinel entries,
+            collect_cumulative_usage entries ))
 
 let scenario_read_preseeded ~model ~tmpdir ~env ~registry =
   (* Write the sentinel ourselves before the harness runs — the model's only
@@ -185,9 +215,10 @@ let scenario_read_preseeded ~model ~tmpdir ~env ~registry =
   | Ok h ->
       Pera_agent.Agent_harness.send h
         (Printf.sprintf "Use the read tool to read %s and tell me its contents." seed_file);
-      let entries = parse_session_file session_path in
-      ( verify_read_preseeded ~sentinel entries,
-        collect_cumulative_usage entries )
+      if_no_error h (fun () ->
+          let entries = parse_session_file session_path in
+          ( verify_read_preseeded ~sentinel entries,
+            collect_cumulative_usage entries ))
 
 let scenario_multi_turn ~model ~tmpdir ~env ~registry =
   (* Send 1: write a sentinel to disk. Send 2: use the read tool to read it
@@ -209,13 +240,15 @@ let scenario_multi_turn ~model ~tmpdir ~env ~registry =
         (Printf.sprintf
            "Use the write tool to write exactly `%s` to the file %s."
            sentinel data_file);
-      Pera_agent.Agent_harness.send h
-        (Printf.sprintf
-           "Use the read tool to read the file %s and tell me exactly what it contains."
-           data_file);
-      let entries = parse_session_file session_path in
-      ( verify_multi_turn ~sentinel entries,
-        collect_cumulative_usage entries )
+      if_no_error h (fun () ->
+          Pera_agent.Agent_harness.send h
+            (Printf.sprintf
+               "Use the read tool to read the file %s and tell me exactly what it contains."
+               data_file);
+          if_no_error h (fun () ->
+              let entries = parse_session_file session_path in
+              ( verify_multi_turn ~sentinel entries,
+                collect_cumulative_usage entries )))
 
 (* ── Main ─────────────────────────────────────────────────────────────────── *)
 

@@ -71,11 +71,14 @@ let result_testable =
             (match msg.Pera_types.Types.content with
             | [ AText t ] -> t
             | _ -> "<complex>")
-      | Error msg -> Format.fprintf ppf "Error(%s)" msg)
+      | Error (msg, stop_err) ->
+          Format.fprintf ppf "Error(%s, %s)" msg
+            (Pera_types.Types.show_stop_error stop_err))
     (fun r1 r2 ->
       match (r1, r2) with
       | Ok m1, Ok m2 -> Pera_types.Types.equal_assistant_message m1 m2
-      | Error e1, Error e2 -> String.equal e1 e2
+      | Error (e1, s1), Error (e2, s2) ->
+          String.equal e1 e2 && Pera_types.Types.equal_stop_error s1 s2
       | _, _ -> false)
 
 (** A model value suitable for Faux_provider calls (the model is ignored). *)
@@ -223,9 +226,9 @@ let test_error_script_closes_stream_with_error () =
   Alcotest.(check int) "one event before error" 1 (List.length collected_events);
   (* Assert: result is Error *)
   match result with
-  | Error msg ->
+  | Error (err_msg, _stop_err) ->
       Alcotest.(check string)
-        "error message matches" "simulated transport failure" msg
+        "error message matches" "simulated transport failure" err_msg
   | Ok _ -> Alcotest.fail "expected Error result from error script"
 
 let () =

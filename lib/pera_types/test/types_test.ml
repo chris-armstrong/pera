@@ -64,6 +64,21 @@ let test_tool_call_round_trips_arguments () =
       | _ -> Alcotest.fail "expected int value for 'n'")
   | _ -> Alcotest.fail "expected Assoc"
 
+let test_is_retryable_classifies_stop_errors () =
+  Alcotest.(check bool) "Transport retryable" true (is_retryable Transport);
+  Alcotest.(check bool) "HTTP 500 retryable" true
+    (is_retryable (Http { status = 500 }));
+  Alcotest.(check bool) "HTTP 429 retryable" true
+    (is_retryable (Http { status = 429 }));
+  Alcotest.(check bool) "HTTP 400 not retryable" false
+    (is_retryable (Http { status = 400 }));
+  Alcotest.(check bool) "HTTP 404 not retryable" false
+    (is_retryable (Http { status = 404 }));
+  Alcotest.(check bool) "Provider not retryable" false
+    (is_retryable (Provider { message = "content_filter" }));
+  Alcotest.(check bool) "Internal not retryable" false
+    (is_retryable (Internal { message = "bug" }))
+
 let () =
   Alcotest.run "pera_types"
     [
@@ -77,5 +92,10 @@ let () =
         [
           Alcotest.test_case "tool_call round-trips JSON object arguments"
             `Quick test_tool_call_round_trips_arguments;
+        ] );
+      ( "stop_error",
+        [
+          Alcotest.test_case "is_retryable classifies retryable and non-retryable errors"
+            `Quick test_is_retryable_classifies_stop_errors;
         ] );
     ]

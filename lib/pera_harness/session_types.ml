@@ -59,7 +59,7 @@ let stop_reason_to_string = function
   | Pera_types.Types.ToolUse -> "tool_use"
   | Pera_types.Types.MaxTokens -> "max_tokens"
   | Pera_types.Types.StopSequence -> "stop_sequence"
-  | Pera_types.Types.Error -> "error"
+  | Pera_types.Types.Error _ -> "error"
   | Pera_types.Types.Aborted -> "aborted"
 
 let user_content_to_json = function

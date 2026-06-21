@@ -85,7 +85,7 @@ let test_stream_fn_resolves_registered_provider () =
   Alcotest.(check int) "two events emitted" 2 (List.length events);
   (* Assert: result is Ok with expected final message *)
   match result with
-  | Error e -> Alcotest.failf "expected Ok result, got Error '%s'" e
+  | Error (e, _) -> Alcotest.failf "expected Ok result, got Error '%s'" e
   | Ok msg -> (
       match msg.Pera_types.Types.content with
       | [ Pera_types.Types.AText t ] ->
@@ -130,10 +130,10 @@ let test_stream_fn_unknown_api_returns_error_stream () =
   (* Assert: result is Error with message containing the unknown api name *)
   match result with
   | Ok _ -> Alcotest.fail "expected Error result for unknown API"
-  | Error msg ->
+  | Error (err_msg, _stop_err) ->
       Alcotest.(check bool)
         "error message contains the unknown api name" true
-        (String.mem ~sub:"nonexistent-api" msg)
+        (String.mem ~sub:"nonexistent-api" err_msg)
 
 (** {1 Test 3: stream_fn preserves provider semantics through Agent_loop.run} *)
 
@@ -215,7 +215,8 @@ let test_stream_fn_preserves_provider_semantics () =
     events;
   (* Assert final messages: user + assistant *)
   match result with
-  | Error msg -> Alcotest.failf "expected Ok result, got Error '%s'" msg
+  | Error (err_msg, _stop_err) ->
+      Alcotest.failf "expected Ok result, got Error '%s'" err_msg
   | Ok final_messages -> (
       Alcotest.(check int) "two final messages" 2 (List.length final_messages);
       let assistant_msg =

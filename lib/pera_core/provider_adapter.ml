@@ -17,9 +17,10 @@ let build_entry ~env ~sw (api_name, (module P : Pera_provider.Provider.S)) =
 (** Create an event stream that immediately closes with an error message. *)
 let error_stream ~sw api_name =
   let stream = Pera_provider.Event_stream.create ~capacity:32 in
+  let msg = Printf.sprintf "Unknown API: %s" api_name in
   Eio.Fiber.fork ~sw (fun () ->
-      Pera_provider.Event_stream.close_error stream
-        (Printf.sprintf "Unknown API: %s" api_name));
+      Pera_provider.Event_stream.close_error stream msg
+        (Pera_types.Types.Internal { message = msg }));
   stream
 
 let create ~registry ~env ~sw =

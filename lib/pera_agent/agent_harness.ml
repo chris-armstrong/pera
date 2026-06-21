@@ -44,6 +44,16 @@ let session_subscriber writer event =
     match event with
     | Pera_core.Agent_types.AE_message_end
         { message = Real (Pera_provider.Provider.AssistantMessage am) } ->
+        (match am.Pera_types.Types.stop_reason with
+        | Pera_types.Types.Error stop_err ->
+            let msg =
+              Option.value ~default:"unknown error"
+                am.Pera_types.Types.provenance.error_message
+            in
+            Printf.eprintf "[harness] provider error (%s): %s\n%!"
+              (Pera_types.Types.show_stop_error stop_err)
+              msg
+        | _ -> ());
         Pera_harness.Session_writer.write_message writer
           (Pera_provider.Provider.AssistantMessage am)
     | Pera_core.Agent_types.AE_message_end _ -> Ok ()
@@ -134,3 +144,5 @@ let send t text =
   Pera_harness.Agent_wrapper.send t.wrapper ~messages
 
 let subscribe t f = Pera_harness.Agent_wrapper.subscribe t.wrapper f
+
+let last_error t = Pera_harness.Agent_wrapper.last_error t.wrapper

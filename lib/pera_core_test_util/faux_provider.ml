@@ -47,12 +47,14 @@ let stream_fn_of_scripts ?pause scripts =
                   Option.iter (fun f -> f ()) pause)
                 error_events;
               Pera_provider.Event_stream.close_error stream error_message
+                Pera_types.Types.Transport
         with
         | () -> ()
         | exception exn -> (
+            let err_msg = Printexc.to_string exn in
             try
-              Pera_provider.Event_stream.close_error stream
-                (Printexc.to_string exn)
+              Pera_provider.Event_stream.close_error stream err_msg
+                (Pera_types.Types.Internal { message = err_msg })
             with _ -> ()));
     stream
 

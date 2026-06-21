@@ -77,7 +77,7 @@ let stop_reason_string = function
   | Types.ToolUse -> "tool_use"
   | Types.MaxTokens -> "max_tokens"
   | Types.StopSequence -> "stop_sequence"
-  | Types.Error -> "error"
+  | Types.Error _ -> "error"
   | Types.Aborted -> "aborted"
 
 let run_default_scenario ~model_id ~prompt_text ~max_tokens =
@@ -124,7 +124,7 @@ let run_default_scenario ~model_id ~prompt_text ~max_tokens =
         (summarise_content final_msg.Types.content);
       Printf.printf "usage: %s\n" (Usage_status.format final_msg.Types.usage);
       exit 0
-  | Error msg ->
+  | Error (msg, _stop_err) ->
       Printf.printf "error: %s\n" msg;
       exit 1
 
@@ -174,7 +174,7 @@ let run_thinking_scenario () =
         Printf.printf "%s\n%!" (describe_event event))
   in
   match result with
-  | Error msg ->
+  | Error (msg, _stop_err) ->
       Printf.printf "thinking scenario: FAIL: stream error: %s\n" msg;
       exit 1
   | Ok final_msg ->
@@ -309,7 +309,7 @@ let run_openai_completions_scenario ~model_id ~prompt_text ~max_tokens ~thinking
          in
          Markdown_renderer.finish md;
          (match result with
-         | Error msg ->
+         | Error (msg, _stop_err) ->
              Printf.printf "openai-completions scenario: FAIL: stream error: %s\n"
                msg;
              exit 1

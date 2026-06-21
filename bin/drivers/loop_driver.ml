@@ -134,8 +134,8 @@ let run_scenario ~name ~messages ~sw config ~check_result =
       let passed = check_result !events final_messages in
       if passed then Printf.printf "  PASS\n%!" else Printf.printf "  FAIL\n%!";
       passed
-  | Error err ->
-      Printf.printf "  => stream error: %s\n%!" err;
+  | Error (err_msg, _stop_err) ->
+      Printf.printf "  => stream error: %s\n%!" err_msg;
       let passed = check_result !events [] in
       if passed then Printf.printf "  PASS\n%!" else Printf.printf "  FAIL\n%!";
       passed

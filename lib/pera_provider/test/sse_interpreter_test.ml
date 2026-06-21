@@ -35,7 +35,7 @@ let pp_stop_reason fmt = function
   | Types.ToolUse -> Format.pp_print_string fmt "ToolUse"
   | Types.MaxTokens -> Format.pp_print_string fmt "MaxTokens"
   | Types.StopSequence -> Format.pp_print_string fmt "StopSequence"
-  | Types.Error -> Format.pp_print_string fmt "Error"
+  | Types.Error _ -> Format.pp_print_string fmt "Error"
   | Types.Aborted -> Format.pp_print_string fmt "Aborted"
 
 let pp_assistant_content fmt = function
