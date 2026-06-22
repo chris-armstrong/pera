@@ -16,15 +16,20 @@ type 'ctx t = {
   mutable subscribers : (Pera_core.Agent_types.agent_event -> unit) list;
   mutable is_running : bool;
   mutable in_flight_tools : (string * string) list;
-      (** [(tool_call_id, tool_name)] pairs, keyed by id for independent removal *)
+      (** [(tool_call_id, tool_name)] pairs, keyed by id for independent removal
+      *)
   mutable messages : Pera_core.Agent_types.agent_message list;
+  mutable cache_fingerprint : Cache_fingerprint.t;
+  mutable last_error : (string * Pera_types.Types.stop_error) option;
+      (** The most recent provider error, if any. Set on [AE_message_end] with
+          [stop_reason = Error _]. *)
   sub_mutex : Eio.Mutex.t;  (** protects [subscribers] list only *)
 }
 
 (** {1 State update} *)
 
 (** [update_state t event] mutates the observable state fields of [t] based on
-    the event.  Called from the actor fibre before fan-out. *)
+    the event. Called from the actor fibre before fan-out. *)
 let update_state t event =
   match event with
   | Pera_core.Agent_types.AE_tool_execution_start { tool_call_id; tool_name; _ }
@@ -36,6 +41,16 @@ let update_state t event =
           (fun (id, _) -> not (String.equal id tool_call_id))
           t.in_flight_tools
   | Pera_core.Agent_types.AE_agent_end { messages } -> t.messages <- messages
+  | Pera_core.Agent_types.AE_message_end
+      { message = Real (Pera_provider.Provider.AssistantMessage am) } -> (
+      match am.Pera_types.Types.stop_reason with
+      | Pera_types.Types.Error stop_err ->
+          t.last_error <-
+            Some
+              ( Option.value ~default:"unknown error"
+                  am.Pera_types.Types.provenance.error_message,
+                stop_err )
+      | _ -> ())
   | _ -> ()
 
 (** {1 Public interface} *)
@@ -49,6 +64,9 @@ let create ~config ~sw =
       is_running = false;
       in_flight_tools = [];
       messages = [];
+      cache_fingerprint =
+        Cache_fingerprint.compute ~system:config.system ~tools:config.tools;
+      last_error = None;
       sub_mutex = Eio.Mutex.create ();
     }
   in
@@ -60,29 +78,41 @@ let create ~config ~sw =
       let rec loop () =
         let (Run { messages; reply }) = Eio.Stream.take t.mailbox in
         t.is_running <- true;
+        t.last_error <- None;
+        let current_fingerprint =
+          Cache_fingerprint.compute ~system:t.config.system
+            ~tools:t.config.tools
+        in
+        Cache_fingerprint.check_and_warn ~previous:t.cache_fingerprint
+          ~current:current_fingerprint
+          ~cache_policy:t.config.options.cache_policy;
+        t.cache_fingerprint <- current_fingerprint;
         Fun.protect
           ~finally:(fun () ->
             t.is_running <- false;
             t.in_flight_tools <- [];
             Eio.Cancel.protect (fun () -> Eio.Promise.resolve reply ()))
           (fun () ->
-            let stream =
-              Pera_core.Agent_loop.run t.config ~messages ~sw
+            let stream = Pera_core.Agent_loop.run t.config ~messages ~sw in
+            let iter_result =
+              Pera_provider.Event_stream.iter stream ~f:(fun event ->
+                  update_state t event;
+                  let subs =
+                    Eio.Mutex.use_ro t.sub_mutex (fun () -> t.subscribers)
+                  in
+                  List.iter (fun sub -> sub event) subs)
             in
-            ignore
-              (Pera_provider.Event_stream.iter stream ~f:(fun event ->
-                   update_state t event;
-                   let subs =
-                     Eio.Mutex.use_ro t.sub_mutex (fun () -> t.subscribers)
-                   in
-                   List.iter (fun sub -> sub event) subs)));
+            match iter_result with
+            | Ok _ -> ()
+            | Error (msg, stop_err) ->
+                t.last_error <- Some (msg, stop_err));
         loop ()
       in
       (try loop () with
-       | Eio.Cancel.Cancelled _ -> ()
-       | exn ->
-         Printf.eprintf "agent_wrapper: actor loop terminated: %s\n%!"
-           (Printexc.to_string exn));
+      | Eio.Cancel.Cancelled _ -> ()
+      | exn ->
+          Printf.eprintf "agent_wrapper: actor loop terminated: %s\n%!"
+            (Printexc.to_string exn));
       `Stop_daemon);
   t
 
@@ -92,7 +122,7 @@ let subscribe t f =
   fun () ->
     Eio.Mutex.use_rw ~protect:false t.sub_mutex (fun () ->
         t.subscribers <-
-          List.filter (fun sub -> not (Stdlib.(==) sub f)) t.subscribers)
+          List.filter (fun sub -> not (Stdlib.( == ) sub f)) t.subscribers)
 
 let send t ~messages =
   let p, resolver = Eio.Promise.create () in
@@ -100,7 +130,6 @@ let send t ~messages =
   Eio.Promise.await p
 
 let is_streaming t = t.is_running
-
 let pending_tool_call_names t = List.map snd t.in_flight_tools
-
 let current_messages t = t.messages
+let last_error t = t.last_error

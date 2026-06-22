@@ -1,5 +1,12 @@
 open Containers
 open Pera_provider
+open Pera_types
+
+let stop_error_testable : Types.stop_error Alcotest.testable =
+  Alcotest.testable Types.pp_stop_error Types.equal_stop_error
+
+let result_testable =
+  Alcotest.(result string (pair string stop_error_testable))
 
 (* Test 1: producer fibre pushes 3 events and closes; consumer collects via iter *)
 let test_producer_consumer_fibre () =
@@ -18,7 +25,7 @@ let test_producer_consumer_fibre () =
   let events = List.rev !collected in
   Alcotest.(check (list string))
     "all 3 events arrive" [ "e1"; "e2"; "e3" ] events;
-  Alcotest.(check (result string string))
+  Alcotest.(check result_testable)
     "result is Ok final" (Ok "final") final_result
 
 (* Test 2: producer calls close_error; consumer's iter returns Error *)
@@ -30,15 +37,18 @@ let test_close_error_propagates () =
   in
   Eio.Fiber.fork ~sw (fun () ->
       Event_stream.push stream "e1";
-      Event_stream.close_error stream "something went wrong");
+      Event_stream.close_error stream "something went wrong"
+        Types.Transport);
   let collected = ref [] in
   let final_result =
     Event_stream.iter stream ~f:(fun e -> collected := e :: !collected)
   in
   Alcotest.(check (list string))
     "one event before error" [ "e1" ] (List.rev !collected);
-  Alcotest.(check (result string string))
-    "result is Error" (Error "something went wrong") final_result
+  Alcotest.(check result_testable)
+    "result is Error"
+    (Error ("something went wrong", Types.Transport))
+    final_result
 
 (* Test 3: backpressure — capacity 1 stream blocks producer on 2nd push until consumer takes 1st *)
 let test_backpressure_bounded_capacity () =

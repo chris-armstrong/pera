@@ -47,3 +47,9 @@ val pending_tool_call_names : 'ctx t -> string list
 val current_messages : 'ctx t -> Pera_core.Agent_types.agent_message list
 (** [current_messages t] returns the full conversation history as of the last
     [AE_agent_end] event.  Returns [[]] before the first run completes. *)
+
+val last_error :
+  'ctx t -> (string * Pera_types.Types.stop_error) option
+(** [last_error t] returns the most recent provider error, if any. Set on
+    [AE_message_end] when [stop_reason = Error _]. The pair is
+    [(human_message, structured_error)]. *)

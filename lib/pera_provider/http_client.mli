@@ -11,8 +11,10 @@ type t
     The [sw] parameter accepted by {!create} is retained for API symmetry but
     does not govern individual request lifetimes. *)
 
-type error
-(** An opaque HTTP transport error. *)
+type error = { message : string; status : int option }
+(** An HTTP transport error. [status] is [Some code] for non-2xx HTTP
+    responses; [None] for transport-level failures (DNS, connect timeout,
+    TLS, connection reset). *)
 
 val error_to_string : error -> string
 (** [error_to_string e] converts a transport error to a human-readable string.

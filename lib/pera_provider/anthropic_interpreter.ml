@@ -96,9 +96,9 @@ let parse_stop_reason s =
   | "tool_use" -> Types.ToolUse
   | "max_tokens" -> Types.MaxTokens
   | "stop_sequence" -> Types.StopSequence
-  (* Forward-compat: Anthropic can add stop reasons; treat unknown as Error
-     rather than silently claiming normal completion. *)
-  | _ -> Types.Error
+  (* Forward-compat: Anthropic can add stop reasons; treat unknown as a
+     provider error rather than silently claiming normal completion. *)
+  | other -> Types.Error (Types.Provider { message = "unknown stop_reason: " ^ other })
 
 (** Extract an integer field from a JSON object, returning 0 if absent or not an
     integer. *)

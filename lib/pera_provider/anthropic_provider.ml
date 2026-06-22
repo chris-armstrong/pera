@@ -48,9 +48,9 @@ let process_chunks stream =
   let finalise () =
     match !done_message with
     | Some (Ok message) -> Event_stream.close stream message
-    | Some (Error msg) -> Event_stream.close_error stream msg
+    | Some (Error msg) -> Event_stream.close_provider_error stream msg
     | None ->
-        Event_stream.close_error stream
+        Event_stream.close_provider_error stream
           "stream ended without a final message_stop event"
   in
   (on_chunk, finalise)
@@ -77,7 +77,13 @@ let do_request ~provider ~model ~context ~options ~sw:_ stream =
   in
   match http_result with
   | Error http_err ->
-      Event_stream.close_error stream (Http_client.error_to_string http_err)
+      let stop_err =
+        match http_err.status with
+        | Some code -> Pera_types.Types.Http { status = code }
+        | None -> Pera_types.Types.Transport
+      in
+      Event_stream.close_error stream
+        (Http_client.error_to_string http_err) stop_err
   | Ok () -> finalise ()
 
 let create ~env ~sw =

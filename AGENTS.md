@@ -4,7 +4,7 @@
 
 * When working on major/complex changes, plan them and ask the user for feedback first
 * Ask the user questions when things are unclear or ambiguous
-* **Always** read and understand the code guidelines listed in `docs/guidelines/index.md` before planning or working on code.
+* **Always load and read the individual code file** listed in `docs/guidelines/index.md` before planning or writing any code.
 
 ## What this project is
 

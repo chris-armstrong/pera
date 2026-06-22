@@ -93,7 +93,7 @@ let partial_of_event (event : Pera_types.Types.assistant_message_event) =
     should terminate the whole run (Error or Aborted). *)
 let stop_reason_is_terminal (stop_reason : Pera_types.Types.stop_reason) =
   match stop_reason with
-  | Pera_types.Types.Error | Pera_types.Types.Aborted -> true
+  | Pera_types.Types.Error _ | Pera_types.Types.Aborted -> true
   | Pera_types.Types.EndTurn | Pera_types.Types.ToolUse
   | Pera_types.Types.MaxTokens | Pera_types.Types.StopSequence ->
       false
@@ -173,7 +173,13 @@ let consume_provider_stream ~provider_stream out_stream =
       let stream_result = Pera_provider.Event_stream.result provider_stream in
       match stream_result with
       | Ok final -> final
-      | Error _err -> { !partial_ref with stop_reason = Pera_types.Types.Error }
+      | Error (err_msg, stop_err) ->
+          {
+            !partial_ref with
+            stop_reason = Pera_types.Types.Error stop_err;
+            provenance =
+              { !partial_ref.provenance with error_message = Some err_msg };
+          }
     end
   in
   let final_agent_msg =
@@ -485,7 +491,7 @@ let rec run_inner ~config ~model_ref ~options_ref ~messages_ref ~pending ~sw
                   terminal via Error so the caller takes the Terminate path. *)
               Error [])
       | Pera_types.Types.EndTurn | Pera_types.Types.MaxTokens
-      | Pera_types.Types.StopSequence | Pera_types.Types.Error
+      | Pera_types.Types.StopSequence | Pera_types.Types.Error _
       | Pera_types.Types.Aborted ->
           Ok []
     in
@@ -514,7 +520,7 @@ let rec run_inner ~config ~model_ref ~options_ref ~messages_ref ~pending ~sw
             match final_msg.stop_reason with
             | Pera_types.Types.ToolUse -> true
             | Pera_types.Types.EndTurn | Pera_types.Types.MaxTokens
-            | Pera_types.Types.StopSequence | Pera_types.Types.Error
+            | Pera_types.Types.StopSequence | Pera_types.Types.Error _
             | Pera_types.Types.Aborted ->
                 false
           in
@@ -581,10 +587,11 @@ let run config ~messages ~sw =
               would then block forever.  Emit AE_agent_end and close the stream
               under Eio.Cancel.protect so these operations succeed even when
               the switch has been cancelled. *)
+          let err_msg = Printexc.to_string exn in
           Eio.Cancel.protect (fun () ->
               let final_messages = !messages_ref in
               push_event out_stream
                 (Agent_types.AE_agent_end { messages = final_messages });
-              Pera_provider.Event_stream.close_error out_stream
-                (Printexc.to_string exn)));
+              Pera_provider.Event_stream.close_internal_error out_stream
+                err_msg));
   out_stream

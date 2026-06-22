@@ -72,7 +72,9 @@ val collect_agent_events :
     Pera_core.Agent_types.agent_message list )
   Pera_provider.Event_stream.t ->
   Pera_core.Agent_types.agent_event list
-  * (Pera_core.Agent_types.agent_message list, string) result
+  * ( Pera_core.Agent_types.agent_message list,
+      string * Pera_types.Types.stop_error )
+      result
 (** [collect_agent_events stream] drains an [Event_stream] of [agent_event]
     values into a list and returns [(events, result)] where [result] is the
     final stream result returned by [Event_stream.iter]. *)

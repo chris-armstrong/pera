@@ -1,7 +1,7 @@
 (executables
  (names provider_driver loop_driver conversation_driver)
  (modules provider_driver loop_driver conversation_driver conversation_driver_helpers driver_log markdown_renderer)
- (libraries pera_core pera_core_test_util pera_provider pera_types eio_main containers logs logs.fmt cmarkit))
+ (libraries usage_status pera_core pera_core_test_util pera_provider pera_types eio_main containers logs logs.fmt cmarkit))
 
 (executable
  (name tool_driver)
@@ -28,5 +28,5 @@
 (executable
  (name live_driver)
  (modules live_driver session_jsonl_helpers)
- (libraries pera_agent pera_core pera_provider pera_env pera_types
+ (libraries usage_status pera_agent pera_core pera_provider pera_env pera_types
             eio eio_main eio_linux containers yojson unix))

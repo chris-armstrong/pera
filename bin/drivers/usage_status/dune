@@ -1,0 +1,9 @@
+(library
+ (name usage_status)
+ (modules usage_status)
+ (libraries pera_types containers decimal))
+
+(test
+ (name usage_status_test)
+ (modules usage_status_test)
+ (libraries usage_status pera_types alcotest containers decimal))

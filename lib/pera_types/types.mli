@@ -76,12 +76,40 @@ type stop_reason =
   | ToolUse  (** The model stopped to issue one or more tool calls. *)
   | MaxTokens  (** The generation was cut short by the token limit. *)
   | StopSequence  (** A configured stop sequence was encountered. *)
-  | Error  (** The provider returned an error during generation. *)
+  | Error of stop_error
+      (** The provider returned an infrastructure error. The payload
+          distinguishes transport failures from HTTP error responses. *)
   | Aborted  (** The in-progress stream was cancelled by the caller. *)
+
+and stop_error =
+  | Transport
+      (** DNS failure, connection timeout, TLS error, connection reset —
+          the request never reached the server. Always retryable. *)
+  | Http of { status : http_status }
+      (** The server responded with a non-2xx HTTP status code. *)
+  | Provider of { message : string }
+      (** Provider-specific error: malformed response, unknown stop reason,
+          content filter, or missing terminal event. Not retryable. *)
+  | Internal of { message : string }
+      (** Internal programming or configuration error. Not retryable. *)
+
+(** HTTP status code. An open [int] rather than a closed variant so new codes
+    (e.g. 529) don't require type changes. Use {!is_retryable} to classify. *)
+and http_status = int
 
 val equal_stop_reason : stop_reason -> stop_reason -> bool
 val pp_stop_reason : Format.formatter -> stop_reason -> unit
 val show_stop_reason : stop_reason -> string
+
+val equal_stop_error : stop_error -> stop_error -> bool
+val pp_stop_error : Format.formatter -> stop_error -> unit
+val show_stop_error : stop_error -> string
+
+val is_retryable : stop_error -> bool
+(** [is_retryable e] is [true] when the error is likely transient and a retry
+    may succeed. [Transport] is always retryable. [Http 5xx] and [Http 429]
+    are retryable. [Http 4xx] (except 429), [Provider], and [Internal] are
+    not. *)
 
 type usage = {
   input_tokens : int;

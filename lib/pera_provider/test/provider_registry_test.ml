@@ -43,7 +43,7 @@ let rec collect_events stream acc =
   match Pera_provider.Event_stream.take stream with
   | `Event e -> collect_events stream (e :: acc)
   | `Done _ -> (List.rev acc, Ok ())
-  | `Error msg -> (List.rev acc, Error msg)
+  | `Error (msg, _stop_err) -> (List.rev acc, Error msg)
 
 (** {2 Provider stream helpers} *)
 

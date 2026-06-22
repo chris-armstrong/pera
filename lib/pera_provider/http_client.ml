@@ -17,9 +17,12 @@ type t = {
   conn : connection option ref;
 }
 
-type error = string
+type error = { message : string; status : int option }
+(** [status] is [Some code] when the error is an HTTP response with a non-2xx
+    status code; [None] for transport-level failures (DNS, connect timeout,
+    TLS, connection reset). *)
 
-let error_to_string e = e
+let error_to_string e = e.message
 
 let make_tls_config () =
   match Ca_certs.authenticator () with
@@ -88,7 +91,7 @@ let create ~env ~sw base_url =
     | _ -> Ok None
   in
   match tls_result with
-  | Error m -> Error m
+  | Error m -> Error { message = m; status = None }
   | Ok tls_config_opt ->
       let client, conn =
         make_persistent_client ~sw ~clock net tls_config_opt base_uri
@@ -105,7 +108,12 @@ let check_response_status (resp : Cohttp.Response.t) =
   let code = Cohttp.Code.code_of_status (Cohttp.Response.status resp) in
   Log.info (fun m -> m "HTTP response status: %d" code);
   if Cohttp.Code.is_success code then Ok ()
-  else Error (Printf.sprintf "HTTP error %d" code)
+  else
+    Error
+      {
+        message = Printf.sprintf "HTTP error %d" code;
+        status = Some code;
+      }
 
 let read_body_chunks body ~on_chunk =
   let reader = Eio.Buf_read.of_flow body ~max_size:max_int in
@@ -144,5 +152,10 @@ let post_stream ~client ~headers ~body ~on_chunk path =
       | r -> r
       | exception exn2 ->
           Error
-            (Printf.sprintf "HTTP request failed: %s" (Printexc.to_string exn2))
+            {
+              message =
+                Printf.sprintf "HTTP request failed: %s"
+                  (Printexc.to_string exn2);
+              status = None;
+            }
       )

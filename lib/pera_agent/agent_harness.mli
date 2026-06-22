@@ -36,3 +36,9 @@ val subscribe :
   t -> (Pera_core.Agent_types.agent_event -> unit) -> unit -> unit
 (** [subscribe t f] registers [f] to receive every agent event.  Returns an
     unsubscribe function. *)
+
+val last_error :
+  t -> (string * Pera_types.Types.stop_error) option
+(** [last_error t] returns the most recent provider error, if any. The pair is
+    [(human_message, structured_error)]. Check after [send] to distinguish
+    infrastructure failures from scenario-level verification failures. *)

@@ -17,6 +17,7 @@ depends: [
   "uuidm" {>= "0.9"}
   "decimal" {>= "1.0"}
   "ppx_deriving" {>= "1.6"}
+  "logs" {>= "0.7"}
   "alcotest" {>= "1.7" & with-test}
   "odoc" {with-doc}
 ]

@@ -1,6 +1,7 @@
 open Containers
 
-type synthetic = Compaction_summary of { summary : string } [@@deriving eq, show]
+type synthetic = Compaction_summary of { summary : string }
+[@@deriving eq, show]
 
 type agent_message =
   | Real of Pera_provider.Provider.message
@@ -55,13 +56,8 @@ module Tool = struct
   }
 
   let create ~name ~description ~schema ~parallel_safe ~execute =
-    {
-      name;
-      description;
-      schema;
-      parallel_safe;
-      execute;
-    }
+    Cache_lint.warn_if_dynamic ~field:"tool description" description;
+    { name; description; schema; parallel_safe; execute }
 
   let name t = t.name
   let description t = t.description
@@ -70,8 +66,8 @@ module Tool = struct
   let execute t ~ctx ~args ~sw ~cancel = t.execute ~ctx ~args ~sw ~cancel
 end
 
-(** Backwards-compatible alias. *)
 type 'ctx tool = 'ctx Tool.t
+(** Backwards-compatible alias. *)
 
 type agent_event =
   | AE_agent_start

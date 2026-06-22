@@ -1,6 +1,35 @@
 open Containers
 open Pera_types
 
+(** {1 Cache-control helpers} *)
+
+(** Sort an assoc list alphabetically by key. *)
+let sort_assoc_pairs pairs =
+  List.sort (fun (a, _) (b, _) -> String.compare a b) pairs
+
+(** Build an Anthropic [cache_control] marker for the given TTL. *)
+let cache_marker ttl =
+  match ttl with
+  | Types.Five_minutes -> `Assoc [ ("type", `String "ephemeral") ]
+  | Types.One_hour ->
+      `Assoc
+        (sort_assoc_pairs
+           [ ("type", `String "ephemeral"); ("ttl", `String "1h") ])
+
+(** Add a [cache_control] marker to an existing JSON object, keeping its keys
+    alphabetically sorted. *)
+let with_cache_control marker (`Assoc pairs) =
+  `Assoc (sort_assoc_pairs (("cache_control", marker) :: pairs))
+
+(** Tag the last JSON object in a list with a cache-control marker. *)
+let tag_last_assoc marker blocks =
+  match List.rev blocks with
+  | [] -> blocks
+  | (`Assoc _ as last) :: rest ->
+      let tagged = with_cache_control marker last in
+      List.rev (tagged :: rest)
+  | _ -> blocks
+
 (** Render a single [tool_result_content] as an Anthropic [tool_result] content
     block. *)
 let tool_result_block (trc : Types.tool_result_content) =
@@ -110,9 +139,9 @@ let messages_to_json messages =
   let flushed_state = flush_pending_tool_results final_state in
   List.rev flushed_state.rendered
 
-(** Render a [Provider.tool_schema] to the Anthropic tools array format.
-    Fields are emitted in alphabetical key order so the wire bytes are stable
-    across identical tool definitions. *)
+(** Render a [Provider.tool_schema] to the Anthropic tools array format. Fields
+    are emitted in alphabetical key order so the wire bytes are stable across
+    identical tool definitions. *)
 let tool_to_json (tool : Provider.tool_schema) =
   `Assoc
     [
@@ -121,25 +150,91 @@ let tool_to_json (tool : Provider.tool_schema) =
       ("name", `String tool.name);
     ]
 
+(** Render the system prompt. When the cache policy includes the system
+    breakpoint, emit it as a content-block array with a [cache_control] marker
+    on the last text block. *)
+let system_to_json cache_policy ttl system =
+  if String.is_empty system then None
+  else
+    match cache_policy with
+    | Types.No_cache -> Some (`String system)
+    | Types.Conversation | Types.SystemAndToolsOnly ->
+        let marker = cache_marker ttl in
+        let block =
+          with_cache_control marker
+            (`Assoc [ ("type", `String "text"); ("text", `String system) ])
+        in
+        Some (`List [ block ])
+
+(** Tag the last tool in the rendered tools array with a cache-control marker.
+*)
+let tag_last_tool marker tools = tag_last_assoc marker tools
+
+(** Tag the last content block of the last user message with a cache-control
+    marker. The last rendered message is expected to be a user message at turn
+    start; any other role is an invariant violation. *)
+let tag_last_user_message marker messages =
+  let update_message (`Assoc fields) =
+    let content =
+      match List.assoc_opt ~eq:String.equal "content" fields with
+      | Some (`List xs) -> xs
+      | other ->
+          failwith
+            (Fmt.str "tag_last_user_message: expected content list, got %s"
+               (Yojson.Safe.to_string (Option.value ~default:`Null other)))
+    in
+    let new_content = tag_last_assoc marker content in
+    let new_fields =
+      List.map
+        (fun (k, v) ->
+          if String.equal k "content" then (k, `List new_content) else (k, v))
+        fields
+    in
+    `Assoc (sort_assoc_pairs new_fields)
+  in
+  match List.rev messages with
+  | (`Assoc fields as last) :: rest -> (
+      match List.assoc_opt ~eq:String.equal "role" fields with
+      | Some (`String "user") -> List.rev (update_message last :: rest)
+      | _ ->
+          failwith
+            "tag_last_user_message: expected last message to have role 'user'")
+  | _ -> messages
+
 let build_request_body ~model ~context ~options =
   let open Provider in
   let messages_json = messages_to_json context.messages in
+  let tools_json = List.map tool_to_json context.tools in
+  let marker = cache_marker options.cache_ttl in
+  let tagged_tools =
+    match options.cache_policy with
+    | Types.No_cache -> tools_json
+    | Types.Conversation | Types.SystemAndToolsOnly ->
+        tag_last_tool marker tools_json
+  in
+  let tagged_messages =
+    match options.cache_policy with
+    | Types.Conversation -> tag_last_user_message marker messages_json
+    | Types.No_cache | Types.SystemAndToolsOnly -> messages_json
+  in
   let base_fields =
     [
       ("model", `String model.Types.id);
       ("max_tokens", `Int options.max_tokens);
       ("stream", `Bool true);
-      ("messages", `List messages_json);
+      ("messages", `List tagged_messages);
     ]
   in
   let with_system =
-    if String.is_empty context.system then base_fields
-    else base_fields @ [ ("system", `String context.system) ]
+    match
+      system_to_json options.cache_policy options.cache_ttl context.system
+    with
+    | None -> base_fields
+    | Some sys -> base_fields @ [ ("system", sys) ]
   in
   let with_tools =
-    if List.is_empty context.tools then with_system
-    else
-      with_system @ [ ("tools", `List (List.map tool_to_json context.tools)) ]
+    if List.is_empty tagged_tools then with_system
+    else with_system @ [ ("tools", `List tagged_tools) ]
   in
   let with_temperature =
     match options.temperature with

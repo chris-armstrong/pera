@@ -89,6 +89,16 @@ let make_harness_config ~model ~tmpdir ~session_path ~stream_fn ~exec_env :
     Pera_agent.Agent_harness.config =
   { cwd = tmpdir; model; session_path; stream_fn; max_tokens = 1024; exec_env }
 
+let zero_usage : Types.usage =
+  Types.
+    {
+      input_tokens = 0;
+      output_tokens = 0;
+      cache_read_tokens = 0;
+      cache_write_tokens = 0;
+      cost_usd = None;
+    }
+
 (* ── Verify helpers ───────────────────────────────────────────────────────── *)
 
 let verify_bash_echo sentinel entries =
@@ -139,6 +149,35 @@ let build_anthropic_registry () =
 
 (* ── Scenarios ────────────────────────────────────────────────────────────── *)
 
+(** Format a [stop_error] as a short category label for the outer message. *)
+let format_stop_error = function
+  | Pera_types.Types.Transport -> "transport"
+  | Pera_types.Types.Http { status } -> Printf.sprintf "HTTP %d" status
+  | Pera_types.Types.Provider { message } ->
+      Printf.sprintf "provider: %s" message
+  | Pera_types.Types.Internal { message } ->
+      Printf.sprintf "internal: %s" message
+
+(** Check the harness for an infrastructure or internal error after [send].
+    Returns [Some fail] if an error occurred, [None] if the run completed
+    without errors. *)
+let check_harness_error h =
+  match Pera_agent.Agent_harness.last_error h with
+  | None -> None
+  | Some (msg, stop_err) ->
+      Some
+        (Fail
+           (Printf.sprintf "infrastructure error (%s): %s"
+              (format_stop_error stop_err)
+              msg))
+
+(** If the harness has no error, run [f]; otherwise return the error failure
+    with zero usage. *)
+let if_no_error h f =
+  match check_harness_error h with
+  | Some fail -> (fail, zero_usage)
+  | None -> f ()
+
 let scenario_bash_echo ~model ~tmpdir ~env ~registry =
   Eio.Switch.run @@ fun sw ->
   let session_path = Filename.concat tmpdir "bash_echo.jsonl" in
@@ -148,13 +187,16 @@ let scenario_bash_echo ~model ~tmpdir ~env ~registry =
   let exec_env = Pera_env.Local_env.create ~env ~cwd:tmpdir in
   let config = make_harness_config ~model ~tmpdir ~session_path ~stream_fn ~exec_env in
   match Pera_agent.Agent_harness.create ~config ~env ~sw with
-  | Error e -> Fail (Printf.sprintf "create failed: %s" e.Types.message)
+  | Error e -> (Fail (Printf.sprintf "create failed: %s" e.Types.message), zero_usage)
   | Ok h ->
       Pera_agent.Agent_harness.send h
         (Printf.sprintf
            "Use the bash tool to run the command `echo %s` and report the exact output."
            sentinel);
-      verify_bash_echo sentinel (parse_session_file session_path)
+      if_no_error h (fun () ->
+          let entries = parse_session_file session_path in
+          ( verify_bash_echo sentinel entries,
+            collect_cumulative_usage entries ))
 
 let scenario_read_preseeded ~model ~tmpdir ~env ~registry =
   (* Write the sentinel ourselves before the harness runs — the model's only
@@ -169,11 +211,14 @@ let scenario_read_preseeded ~model ~tmpdir ~env ~registry =
   let exec_env = Pera_env.Local_env.create ~env ~cwd:tmpdir in
   let config = make_harness_config ~model ~tmpdir ~session_path ~stream_fn ~exec_env in
   match Pera_agent.Agent_harness.create ~config ~env ~sw with
-  | Error e -> Fail (Printf.sprintf "create failed: %s" e.Types.message)
+  | Error e -> (Fail (Printf.sprintf "create failed: %s" e.Types.message), zero_usage)
   | Ok h ->
       Pera_agent.Agent_harness.send h
         (Printf.sprintf "Use the read tool to read %s and tell me its contents." seed_file);
-      verify_read_preseeded ~sentinel (parse_session_file session_path)
+      if_no_error h (fun () ->
+          let entries = parse_session_file session_path in
+          ( verify_read_preseeded ~sentinel entries,
+            collect_cumulative_usage entries ))
 
 let scenario_multi_turn ~model ~tmpdir ~env ~registry =
   (* Send 1: write a sentinel to disk. Send 2: use the read tool to read it
@@ -189,17 +234,21 @@ let scenario_multi_turn ~model ~tmpdir ~env ~registry =
   let exec_env = Pera_env.Local_env.create ~env ~cwd:tmpdir in
   let config = make_harness_config ~model ~tmpdir ~session_path ~stream_fn ~exec_env in
   match Pera_agent.Agent_harness.create ~config ~env ~sw with
-  | Error e -> Fail (Printf.sprintf "create failed: %s" e.Types.message)
+  | Error e -> (Fail (Printf.sprintf "create failed: %s" e.Types.message), zero_usage)
   | Ok h ->
       Pera_agent.Agent_harness.send h
         (Printf.sprintf
            "Use the write tool to write exactly `%s` to the file %s."
            sentinel data_file);
-      Pera_agent.Agent_harness.send h
-        (Printf.sprintf
-           "Use the read tool to read the file %s and tell me exactly what it contains."
-           data_file);
-      verify_multi_turn ~sentinel (parse_session_file session_path)
+      if_no_error h (fun () ->
+          Pera_agent.Agent_harness.send h
+            (Printf.sprintf
+               "Use the read tool to read the file %s and tell me exactly what it contains."
+               data_file);
+          if_no_error h (fun () ->
+              let entries = parse_session_file session_path in
+              ( verify_multi_turn ~sentinel entries,
+                collect_cumulative_usage entries )))
 
 (* ── Main ─────────────────────────────────────────────────────────────────── *)
 
@@ -227,9 +276,15 @@ let () =
                   scenario_multi_turn ~model ~tmpdir ~env ~registry );
               ]
             in
-            List.iter (fun (name, v) -> print_verdict ~tag:"live" ~scenario:name v) scenarios;
+            List.iter
+              (fun (name, (v, usage)) ->
+                print_verdict ~tag:"live" ~scenario:name v;
+                Printf.printf "  usage: %s\n" (Usage_status.format usage))
+              scenarios;
             Printf.printf "\n";
-            let passed = count_passed scenarios in
+            let passed =
+              count_passed (List.map (fun (name, (v, _)) -> (name, v)) scenarios)
+              in
             let total = List.length scenarios in
             Printf.printf "%d/%d scenarios passed.\n" passed total;
             if passed = total then 0 else 1

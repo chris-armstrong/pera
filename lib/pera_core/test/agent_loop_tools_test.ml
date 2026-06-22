@@ -431,9 +431,9 @@ let test_tool_raising_is_caught_as_error_result () =
   let events, result = collect_agent_events loop_stream in
   (* run should complete (not raise) *)
   (match result with
-  | Error msg ->
+  | Error (err_msg, _stop_err) ->
       Alcotest.failf "expected Ok result after tool exception, got Error: %s"
-        msg
+        err_msg
   | Ok _ -> ());
   (* tool_execution_end is_error=true *)
   let end_events =
