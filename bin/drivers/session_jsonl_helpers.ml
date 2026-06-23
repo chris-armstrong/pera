@@ -18,15 +18,19 @@ let get_string_opt key json =
 
 let check_content_chain entries =
   let content =
-    List.filter (fun e -> not (String.equal (get_string "type" e) "leaf")) entries
+    List.filter
+      (fun e -> not (String.equal (get_string "type" e) "leaf"))
+      entries
   in
   let rec check = function
     | [] | [ _ ] -> None
-    | prev :: (cur :: _ as rest) ->
+    | prev :: (cur :: _ as rest) -> (
         let prev_id = get_string "id" prev in
-        (match get_string_opt "parent_id" cur with
+        match get_string_opt "parent_id" cur with
         | None ->
-            Some (Printf.sprintf "entry '%s' has no parent_id" (get_string "id" cur))
+            Some
+              (Printf.sprintf "entry '%s' has no parent_id"
+                 (get_string "id" cur))
         | Some pid when not (String.equal pid prev_id) ->
             Some
               (Printf.sprintf "chain broken at '%s': parent='%s' expected='%s'"
@@ -39,7 +43,8 @@ let assert_leaves_childless entries =
   let leaf_ids =
     List.filter_map
       (fun e ->
-        if String.equal (get_string "type" e) "leaf" then Some (get_string "id" e)
+        if String.equal (get_string "type" e) "leaf" then
+          Some (get_string "id" e)
         else None)
       entries
   in
@@ -53,8 +58,8 @@ let assert_leaves_childless entries =
 let verify_chain_and_leaves entries =
   match check_content_chain entries with
   | Some msg -> Fail ("content chain broken: " ^ msg)
-  | None ->
-      (match assert_leaves_childless entries with
+  | None -> (
+      match assert_leaves_childless entries with
       | Some e ->
           Fail (Printf.sprintf "leaf has child entry '%s'" (get_string "id" e))
       | None -> Pass)
@@ -78,7 +83,9 @@ let print_verdict ~tag ~scenario = function
 
 let count_passed scenarios =
   List.length
-    (List.filter (fun (_, v) -> match v with Pass -> true | Fail _ -> false) scenarios)
+    (List.filter
+       (fun (_, v) -> match v with Pass -> true | Fail _ -> false)
+       scenarios)
 
 let int_field key json =
   match Yojson.Safe.Util.member key json with
@@ -129,6 +136,5 @@ let parse_session_file_lenient path =
   let nonempty = List.filter (fun s -> not (String.is_empty s)) lines in
   List.filter_map
     (fun line ->
-      try Some (Yojson.Safe.from_string line)
-      with Yojson.Json_error _ -> None)
+      try Some (Yojson.Safe.from_string line) with Yojson.Json_error _ -> None)
     nonempty

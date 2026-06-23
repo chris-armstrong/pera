@@ -2,5 +2,15 @@
  (name pera_agent)
  (public_name pera-agent)
  (modules agent_harness)
- (libraries pera_harness pera_tools pera_env pera_core pera_provider pera_types
-            eio eio_main eio_linux containers yojson))
+ (libraries
+  pera_harness
+  pera_tools
+  pera_env
+  pera_core
+  pera_provider
+  pera_types
+  eio
+  eio_main
+  eio_linux
+  containers
+  yojson))

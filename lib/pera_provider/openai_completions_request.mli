@@ -12,8 +12,8 @@ type compat = {
       (** When [true], tool-result messages must include a [name] field. *)
   enable_thinking_field : string option;
       (** If [Some field], send [field: true] when [context.thinking = true].
-          [None] for providers that enable thinking via model selection
-          (e.g. OpenAI o-series). *)
+          [None] for providers that enable thinking via model selection (e.g.
+          OpenAI o-series). *)
 }
 (** Per-endpoint compatibility configuration for the OpenAI chat-completions
     API.
@@ -50,9 +50,9 @@ val compat_of_string : string -> compat
 (** Select a compatibility preset by name.
 
     - ["openai"] → {!default_compat}
-    - ["zen"]    → {!opencode_zen_compat}
-    - ["go"]     → {!opencode_go_compat}
-    Unknown values fall back to {!default_compat}. *)
+    - ["zen"] → {!opencode_zen_compat}
+    - ["go"] → {!opencode_go_compat} Unknown values fall back to
+      {!default_compat}. *)
 
 val messages_to_json :
   ?find_tool_name:(tool_call_id:string -> string option) ->

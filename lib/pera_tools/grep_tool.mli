@@ -4,8 +4,7 @@
     capped at 100 matches. Mode: Parallel. No system grep fallback; no OCaml Re
     fallback. *)
 
-val grep :
-  (module Pera_env.Execution_env.S) -> unit Pera_core.Agent_types.tool
+val grep : (module Pera_env.Execution_env.S) -> unit Pera_core.Agent_types.tool
 (** [grep env] constructs a grep tool that searches files through [env].
 
     Schema arguments:

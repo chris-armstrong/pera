@@ -3,7 +3,9 @@ open Pera_core
 open Pera_provider
 open Pera_types
 
-let src = Logs.Src.create "pera.driver.conversation_helpers" ~doc:"Conversation driver helpers"
+let src =
+  Logs.Src.create "pera.driver.conversation_helpers"
+    ~doc:"Conversation driver helpers"
 
 module Log = (val Logs.src_log src : Logs.LOG)
 
@@ -59,8 +61,7 @@ let describe_provider_event = function
   | Types.AME_tool_call_end { index; _ } ->
       Printf.sprintf "[tool_call_end] index=%d" index
   | Types.AME_done _ -> "[done]"
-  | Types.AME_error { message; _ } ->
-      Printf.sprintf "[error] %s" message
+  | Types.AME_error { message; _ } -> Printf.sprintf "[error] %s" message
 
 (** Format an [agent_event] as a one-liner for driver output. *)
 let describe_agent_event = function
@@ -71,8 +72,7 @@ let describe_agent_event = function
   | Agent_types.AE_turn_end { tool_results; _ } ->
       Printf.sprintf "[turn_end] tool_results=%d" (List.length tool_results)
   | Agent_types.AE_message_start _ -> "[message_start]"
-  | Agent_types.AE_message_update { event; _ } ->
-      describe_provider_event event
+  | Agent_types.AE_message_update { event; _ } -> describe_provider_event event
   | Agent_types.AE_message_end _ -> "[message_end]"
   | Agent_types.AE_tool_execution_start { tool_name; tool_call_id; _ } ->
       Printf.sprintf "[tool_start] name=%s id=%s" tool_name tool_call_id
@@ -88,8 +88,7 @@ let describe_agent_event = function
 (** {1 Helpers} *)
 
 (** Default convert_to_llm: project agent messages to provider messages. *)
-let default_convert_to_llm msgs =
-  List.map Agent_types.to_provider_message msgs
+let default_convert_to_llm msgs = List.map Agent_types.to_provider_message msgs
 
 (** Build a user [agent_message]. *)
 let make_user_message text =
@@ -98,7 +97,8 @@ let make_user_message text =
 
 (** {1 Loop configuration} *)
 
-let make_config ?(tools = []) ?(get_follow_up_messages = None) ~model stream_fn =
+let make_config ?(tools = []) ?(get_follow_up_messages = None) ~model stream_fn
+    =
   Agent_loop.
     {
       model;
@@ -193,8 +193,7 @@ let scenario_simple_text ~model stream_fn sw =
   let messages = [ make_user_message "Please say exactly: Hello World" ] in
   let config = make_config ~model stream_fn in
   run_scenario ~name:"simple_text" ~messages ~sw config
-    ~check_result:(fun events _final ->
-      check_agent_end_is_last events)
+    ~check_result:(fun events _final -> check_agent_end_is_last events)
 
 (** Scenario 2: echo tool — expect tool call + result + final text turn. *)
 let scenario_echo_tool ~model stream_fn sw =
@@ -204,7 +203,8 @@ let scenario_echo_tool ~model stream_fn sw =
     ~check_result:(fun events _final ->
       let has_tool_start =
         List.exists
-          (function Agent_types.AE_tool_execution_start _ -> true | _ -> false)
+          (function
+            | Agent_types.AE_tool_execution_start _ -> true | _ -> false)
           events
       in
       let has_tool_end =
@@ -278,18 +278,9 @@ type scenario_result = { name : string; passed : bool }
 
 let run_all_scenarios ~model stream_fn sw =
   [
-    {
-      name = "simple_text";
-      passed = scenario_simple_text ~model stream_fn sw;
-    };
-    {
-      name = "echo_tool";
-      passed = scenario_echo_tool ~model stream_fn sw;
-    };
-    {
-      name = "multi_turn";
-      passed = scenario_multi_turn ~model stream_fn sw;
-    };
+    { name = "simple_text"; passed = scenario_simple_text ~model stream_fn sw };
+    { name = "echo_tool"; passed = scenario_echo_tool ~model stream_fn sw };
+    { name = "multi_turn"; passed = scenario_multi_turn ~model stream_fn sw };
     {
       name = "parallel_echo";
       passed = scenario_parallel_echo ~model stream_fn sw;
@@ -300,13 +291,13 @@ let run_named_scenario name ~model stream_fn sw =
   match name with
   | "simple_text" ->
       [ { name; passed = scenario_simple_text ~model stream_fn sw } ]
-  | "echo_tool" ->
-      [ { name; passed = scenario_echo_tool ~model stream_fn sw } ]
+  | "echo_tool" -> [ { name; passed = scenario_echo_tool ~model stream_fn sw } ]
   | "multi_turn" ->
       [ { name; passed = scenario_multi_turn ~model stream_fn sw } ]
   | "parallel_echo" ->
       [ { name; passed = scenario_parallel_echo ~model stream_fn sw } ]
   | _ ->
       Log.err (fun m -> m "unknown scenario: %s" name);
-      Log.err (fun m -> m "available: simple_text | echo_tool | multi_turn | parallel_echo");
+      Log.err (fun m ->
+          m "available: simple_text | echo_tool | multi_turn | parallel_echo");
       exit 1

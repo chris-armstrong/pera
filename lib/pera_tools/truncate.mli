@@ -1,7 +1,7 @@
 (** Pure text truncation module.
 
-    Provides line- and byte-based truncation for tool output.
-    No IO. No Eio. Pure string manipulation. *)
+    Provides line- and byte-based truncation for tool output. No IO. No Eio.
+    Pure string manipulation. *)
 
 val max_lines : int
 (** Maximum number of lines before truncation (2000). *)
@@ -10,14 +10,14 @@ val max_bytes : int
 (** Maximum number of bytes before truncation (262,144 — 256 KB). *)
 
 type truncation_info = {
-  truncated : bool;
-      (** Whether the content was truncated. *)
+  truncated : bool;  (** Whether the content was truncated. *)
   total_lines : int;
       (** Total number of lines in the input content (before truncation). *)
   output_lines : int;
       (** Number of lines in the output content (after truncation). *)
-  truncated_by : [`Lines | `Bytes] option;
-      (** Which limit caused the truncation, if any. [None] when not truncated. *)
+  truncated_by : [ `Lines | `Bytes ] option;
+      (** Which limit caused the truncation, if any. [None] when not truncated.
+      *)
 }
 (** Information about the truncation result. *)
 

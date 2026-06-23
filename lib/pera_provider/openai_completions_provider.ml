@@ -1,7 +1,9 @@
 open Containers
 open Pera_types
 
-let src = Logs.Src.create "pera.openai_completions" ~doc:"Pera OpenAI completions provider"
+let src =
+  Logs.Src.create "pera.openai_completions"
+    ~doc:"Pera OpenAI completions provider"
 
 module Log = (val Logs.src_log src : Logs.LOG)
 
@@ -45,8 +47,7 @@ let handle_framed interp_state stream done_message framed =
 let log_chunks = Option.is_some (Sys.getenv_opt "PERA_LOG_CHUNKS")
 
 let process_chunk sse_state interp_state stream done_message chunk =
-  if log_chunks then
-    Log.warn (fun m -> m "chunk: %S" chunk);
+  if log_chunks then Log.warn (fun m -> m "chunk: %S" chunk);
   let new_sse_state, framed_events = Sse_parser.feed !sse_state chunk in
   sse_state := new_sse_state;
   List.iter (handle_framed interp_state stream done_message) framed_events

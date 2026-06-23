@@ -5,8 +5,7 @@ open Pera_core_test_util
 (* ── Inlined helpers (from agent_loop_helpers, not in public library) ────── *)
 
 let test_model =
-  Pera_types.Types.
-    { id = "test-model"; api = "faux"; context_window = 200_000 }
+  Pera_types.Types.{ id = "test-model"; api = "faux"; context_window = 200_000 }
 
 let test_options =
   Pera_provider.Provider.
@@ -26,7 +25,12 @@ let make_assistant_message ?(stop_reason = Pera_types.Types.EndTurn) content =
       content;
       stop_reason;
       provenance =
-        { api = "faux"; provider = "faux"; model = "faux"; error_message = None };
+        {
+          api = "faux";
+          provider = "faux";
+          model = "faux";
+          error_message = None;
+        };
       usage =
         {
           input_tokens = 0;
@@ -68,7 +72,8 @@ let make_tool_use_turn_script tool_calls =
   let final_msg = make_tool_use_assistant_message tool_calls in
   let first_tc =
     List.nth_opt tool_calls 0
-    |> Option.get_exn_or "make_tool_use_turn_script: tool_calls must be non-empty"
+    |> Option.get_exn_or
+         "make_tool_use_turn_script: tool_calls must be non-empty"
   in
   Faux_provider.Turn
     Faux_provider.
@@ -141,7 +146,8 @@ let test_subscriber_receives_all_events () =
   in
   Alcotest.(check bool) "received AE_agent_start" true has_agent_start;
   Alcotest.(check bool) "received AE_agent_end" true has_agent_end;
-  Alcotest.(check bool) "received at least 3 events" true
+  Alcotest.(check bool)
+    "received at least 3 events" true
     (List.length !received >= 3)
 
 (** Test 2: multiple subscribers both receive every event *)
@@ -158,9 +164,11 @@ let test_multiple_subscribers_all_notified () =
   let _u1 = Agent_wrapper.subscribe wrapper (collect_into buf1) in
   let _u2 = Agent_wrapper.subscribe wrapper (collect_into buf2) in
   Agent_wrapper.send wrapper ~messages:[ make_user_agent_message "go" ];
-  Alcotest.(check bool) "both subscribers got events" true
+  Alcotest.(check bool)
+    "both subscribers got events" true
     (List.length !buf1 > 0 && List.length !buf2 > 0);
-  Alcotest.(check int) "both subscribers received same count" (List.length !buf1)
+  Alcotest.(check int)
+    "both subscribers received same count" (List.length !buf1)
     (List.length !buf2)
 
 (** Test 3: unsubscribing stops notifications *)
@@ -192,11 +200,11 @@ let test_concurrent_sends_both_complete () =
   let completed2 = ref false in
   Eio.Fiber.both
     (fun () ->
-       Agent_wrapper.send wrapper ~messages:[ make_user_agent_message "msg1" ];
-       completed1 := true)
+      Agent_wrapper.send wrapper ~messages:[ make_user_agent_message "msg1" ];
+      completed1 := true)
     (fun () ->
-       Agent_wrapper.send wrapper ~messages:[ make_user_agent_message "msg2" ];
-       completed2 := true);
+      Agent_wrapper.send wrapper ~messages:[ make_user_agent_message "msg2" ];
+      completed2 := true);
   Alcotest.(check bool) "first send completed" true !completed1;
   Alcotest.(check bool) "second send completed" true !completed2
 
@@ -255,10 +263,12 @@ let test_is_streaming_false_before_and_after_send () =
   let stream_fn = Faux_provider.stream_fn_of_scripts [ script ] in
   let config = make_config stream_fn in
   let wrapper = Agent_wrapper.create ~config ~sw in
-  Alcotest.(check bool) "is_streaming false before send" false
+  Alcotest.(check bool)
+    "is_streaming false before send" false
     (Agent_wrapper.is_streaming wrapper);
   Agent_wrapper.send wrapper ~messages:[ make_user_agent_message "hi" ];
-  Alcotest.(check bool) "is_streaming false after send" false
+  Alcotest.(check bool)
+    "is_streaming false after send" false
     (Agent_wrapper.is_streaming wrapper)
 
 (** Test 8: pending_tool_call_names updated at AE_tool_execution_start *)
@@ -288,14 +298,15 @@ let test_pending_tool_calls_updated_during_execution () =
         | _ -> ())
   in
   Agent_wrapper.send wrapper ~messages:[ make_user_agent_message "go" ];
-  Alcotest.(check bool) "echo in pending at tool_execution_start" true
+  Alcotest.(check bool)
+    "echo in pending at tool_execution_start" true
     (List.mem ~eq:String.equal "echo" !seen_pending)
 
-(** Test 9: pending_tool_calls keyed by id for duplicate tool names.
-    Two parallel calls to the same tool name (distinct tool_call_ids).
-    A barrier ensures both tools start before either completes, so we can
-    verify that ending one leaves the other in pending_tool_call_names.
-    This proves removal is by tool_call_id, not by tool_name. *)
+(** Test 9: pending_tool_calls keyed by id for duplicate tool names. Two
+    parallel calls to the same tool name (distinct tool_call_ids). A barrier
+    ensures both tools start before either completes, so we can verify that
+    ending one leaves the other in pending_tool_call_names. This proves removal
+    is by tool_call_id, not by tool_name. *)
 let test_pending_tool_calls_keyed_by_id_for_duplicate_names () =
   Eio_main.run @@ fun _env ->
   Eio.Switch.run @@ fun sw ->
@@ -360,7 +371,8 @@ let test_pending_tool_calls_keyed_by_id_for_duplicate_names () =
   (* Both ends must have fired *)
   Alcotest.(check int) "two end events" 2 !end_count;
   (* After all ends, pending must be empty *)
-  Alcotest.(check (list string)) "pending empty after all ends" []
+  Alcotest.(check (list string))
+    "pending empty after all ends" []
     (Agent_wrapper.pending_tool_call_names wrapper);
   (* After the FIRST end, the second tool must still be pending.
      This proves removal is by id (not by name — which would clear both). *)
@@ -379,7 +391,8 @@ let test_current_messages_updated_after_send () =
   let wrapper = Agent_wrapper.create ~config ~sw in
   Agent_wrapper.send wrapper ~messages:[ make_user_agent_message "hi" ];
   let msgs = Agent_wrapper.current_messages wrapper in
-  Alcotest.(check bool) "current_messages non-empty after send" true
+  Alcotest.(check bool)
+    "current_messages non-empty after send" true
     (List.length msgs >= 2)
 
 (** Test 11: current_messages empty before first send *)
@@ -389,7 +402,8 @@ let test_current_messages_empty_before_first_send () =
   let stream_fn = Faux_provider.stream_fn_of_scripts [] in
   let config = make_config stream_fn in
   let wrapper = Agent_wrapper.create ~config ~sw in
-  Alcotest.(check int) "current_messages empty before send" 0
+  Alcotest.(check int)
+    "current_messages empty before send" 0
     (List.length (Agent_wrapper.current_messages wrapper))
 
 (* ── Runner ──────────────────────────────────────────────────────────────── *)

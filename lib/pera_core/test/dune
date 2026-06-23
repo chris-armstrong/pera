@@ -24,4 +24,13 @@
   model_window_test
   cache_lint_test
   agent_loop_helpers)
- (libraries pera_core pera_core_test_util pera_types pera_provider alcotest containers eio_main logs re.perl))
+ (libraries
+  pera_core
+  pera_core_test_util
+  pera_types
+  pera_provider
+  alcotest
+  containers
+  eio_main
+  logs
+  re.perl))

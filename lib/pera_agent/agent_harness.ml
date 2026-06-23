@@ -6,6 +6,8 @@ type t = {
   mutable session_info_written : bool;
 }
 
+type compaction_config = { trigger_tokens : int; tail_size : int }
+
 type config = {
   cwd : string;
   model : Pera_types.Types.model;
@@ -13,6 +15,7 @@ type config = {
   stream_fn : Pera_core.Agent_types.stream_fn;
   max_tokens : int;
   exec_env : (module Pera_env.Execution_env.S);
+  compaction : compaction_config option;
 }
 
 let build_system_prompt tools =
@@ -74,9 +77,25 @@ let session_subscriber writer event =
     | Pera_core.Agent_types.AE_tool_execution_end _ ->
         Ok ()
     | Pera_core.Agent_types.AE_compaction_start -> Ok ()
-    | Pera_core.Agent_types.AE_compaction_error _ -> Ok ()
-    | Pera_core.Agent_types.AE_compaction_end _ -> Ok ()
-    (* Stage 4 will replace this AE_compaction_end stub with the real writer sequence. *)
+    | Pera_core.Agent_types.AE_compaction_error { message } ->
+        Printf.eprintf "compaction failed: %s\n%!" message;
+        Ok ()
+    | Pera_core.Agent_types.AE_compaction_end { summary } -> (
+        (* first_kept_entry_id is a documented approximation: the pre-compaction
+           tip (plan decision 7). *)
+        match Pera_harness.Session_writer.current_parent_id writer with
+        | None -> Ok ()
+        | Some first_kept_entry_id ->
+            let* () =
+              Pera_harness.Session_writer.write_compaction writer ~summary
+                ~first_kept_entry_id
+            in
+            let synth =
+              Pera_core.Agent_types.synthetic_to_message
+                (Pera_core.Agent_types.Compaction_summary { summary })
+            in
+            let* () = Pera_harness.Session_writer.write_message writer synth in
+            Pera_harness.Session_writer.write_leaf writer)
   in
   match result with
   | Ok () -> ()
@@ -90,19 +109,56 @@ let create ~config ~env ~sw =
       ~model:config.model ~cwd:config.cwd
   in
   let tools = Pera_tools.Tools.default config.exec_env in
+  let pending_compacted : Pera_core.Agent_types.agent_message list option ref =
+    ref None
+  in
+  let options =
+    Pera_provider.Provider.
+      {
+        max_tokens = config.max_tokens;
+        temperature = None;
+        cache_policy = Pera_types.Types.No_cache;
+        cache_ttl = Pera_types.Types.Five_minutes;
+      }
+  in
+  let should_stop_hook cc (ctx : _ Pera_core.Agent_loop.should_stop_ctx) =
+    let provider_msgs = convert_to_llm ctx.messages in
+    let est = Pera_core.Token_estimator.estimate_messages provider_msgs in
+    if est <= cc.trigger_tokens then false
+    else begin
+      ctx.emit Pera_core.Agent_types.AE_compaction_start;
+      let outcome =
+        Eio.Switch.run (fun sw ->
+            Pera_harness.Compaction.compact ~stream_fn:config.stream_fn
+              ~model:config.model ~options ~messages:ctx.messages
+              ~tail_size:cc.tail_size ~sw)
+      in
+      (match outcome with
+      | Ok (Some r) ->
+          pending_compacted := Some r.new_messages;
+          ctx.emit
+            (Pera_core.Agent_types.AE_compaction_end { summary = r.summary })
+      | Ok None -> ()
+      | Error msg ->
+          ctx.emit (Pera_core.Agent_types.AE_compaction_error { message = msg }));
+      false
+    end
+  in
+  let prepare_hook (_ctx : _ Pera_core.Agent_loop.prepare_ctx) =
+    match !pending_compacted with
+    | None -> None
+    | Some msgs ->
+        pending_compacted := None;
+        Some
+          Pera_core.Agent_types.
+            { messages = Some msgs; model = None; thinking = None }
+  in
   let loop_config =
     Pera_core.Agent_loop.
       {
         model = config.model;
         system = build_system_prompt tools;
-        options =
-          Pera_provider.Provider.
-            {
-              max_tokens = config.max_tokens;
-              temperature = None;
-              cache_policy = Pera_types.Types.No_cache;
-              cache_ttl = Pera_types.Types.Five_minutes;
-            };
+        options;
         stream_fn = config.stream_fn;
         convert_to_llm;
         tool_ctx = ();
@@ -112,8 +168,14 @@ let create ~config ~env ~sw =
         get_api_key = None;
         before_tool_call = None;
         after_tool_call = None;
-        should_stop_after_turn = None;
-        prepare_next_turn = None;
+        should_stop_after_turn =
+          (match config.compaction with
+          | None -> None
+          | Some cc -> Some (should_stop_hook cc));
+        prepare_next_turn =
+          (match config.compaction with
+          | None -> None
+          | Some _ -> Some prepare_hook);
         get_steering_messages = None;
         get_follow_up_messages = None;
       }

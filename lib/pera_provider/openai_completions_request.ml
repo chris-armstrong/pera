@@ -47,9 +47,9 @@ let default_compat =
 
 (** Select a compatibility preset by name. Valid values:
     - ["openai"] → default (api.openai.com)
-    - ["zen"]    → zen.opencode.ai
-    - ["go"]     → opencode.ai/zen/go/v1/chat/completions
-    Unknown values fall back to [default_compat]. *)
+    - ["zen"] → zen.opencode.ai
+    - ["go"] → opencode.ai/zen/go/v1/chat/completions Unknown values fall back
+      to [default_compat]. *)
 let compat_of_string = function
   | "zen" -> opencode_zen_compat
   | "go" -> opencode_go_compat

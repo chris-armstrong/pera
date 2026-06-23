@@ -83,8 +83,7 @@ let result_testable =
 
 (** A model value suitable for Faux_provider calls (the model is ignored). *)
 let faux_model =
-  Pera_types.Types.
-    { id = "faux-model"; api = "faux"; context_window = 200_000 }
+  Pera_types.Types.{ id = "faux-model"; api = "faux"; context_window = 200_000 }
 
 (** Simple stream options — Faux_provider ignores these. *)
 let faux_options =

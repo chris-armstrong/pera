@@ -73,8 +73,7 @@ let create ~path ~env ~model ~cwd =
     if String.equal parent "." then Ok ()
     else
       catch_write path (fun () ->
-          Eio.Path.mkdirs ~exists_ok:true ~perm:0o755
-            Eio.Path.(base / parent))
+          Eio.Path.mkdirs ~exists_ok:true ~perm:0o755 Eio.Path.(base / parent))
   in
   let session_id = Entry_id.to_string (Entry_id.generate ()) in
   Ok { path; base; session_id; model; cwd; current_parent_id = None }
@@ -136,6 +135,23 @@ let write_model_change t model =
         parent_id = t.current_parent_id;
         timestamp = Unix.gettimeofday ();
         model;
+      }
+  in
+  let* () = append_line t (Session_types.entry_to_json entry) in
+  t.current_parent_id <- Some id;
+  Ok ()
+
+let write_compaction t ~summary ~first_kept_entry_id =
+  let open Result.Syntax in
+  let id = Entry_id.generate () in
+  let entry =
+    Session_types.Compaction
+      {
+        id;
+        parent_id = t.current_parent_id;
+        timestamp = Unix.gettimeofday ();
+        summary;
+        first_kept_entry_id;
       }
   in
   let* () = append_line t (Session_types.entry_to_json entry) in
