@@ -318,7 +318,7 @@ let scenario_read_truncation ~(read : unit tool) ~(write : unit tool) ~sw
       v
   | Ok () -> (
       let args = `Assoc [ ("path", `String "big.txt") ] in
-      (match Tool.execute read ~ctx:() ~args ~sw ~cancel with
+      match Tool.execute read ~ctx:() ~args ~sw ~cancel with
       | Error e ->
           let v = Fail (Printf.sprintf "read failed: %s" e.message) in
           print_verdict ~tool:(Tool.name read) ~scenario v;

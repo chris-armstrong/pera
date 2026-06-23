@@ -148,7 +148,15 @@ let scenario_offline_faux ~env:_ =
   let stream_fn =
     Faux_provider.stream_fn_of_scripts [ make_summary_script () ]
   in
-  let options = Provider.{ max_tokens = 1024; temperature = None } in
+  let options =
+    Provider.
+      {
+        max_tokens = 1024;
+        temperature = None;
+        cache_policy = Pera_types.Types.No_cache;
+        cache_ttl = Pera_types.Types.Five_minutes;
+      }
+  in
   let result =
     Eio.Switch.run @@ fun sw ->
     Pera_harness.Compaction.compact ~stream_fn ~model:haiku_model ~options
@@ -165,7 +173,15 @@ let scenario_real_model ~env =
   let tail_size = 3 in
   let messages = build_conversation () in
   let model = haiku_model in
-  let options = Provider.{ max_tokens = 1024; temperature = None } in
+  let options =
+    Provider.
+      {
+        max_tokens = 1024;
+        temperature = None;
+        cache_policy = Pera_types.Types.No_cache;
+        cache_ttl = Pera_types.Types.Five_minutes;
+      }
+  in
   let registry =
     Provider_registry.register Provider_registry.empty ~name:"anthropic"
       (module Anthropic_provider)
