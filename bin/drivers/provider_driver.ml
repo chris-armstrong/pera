@@ -96,13 +96,15 @@ let run_default_scenario ~model_id ~prompt_text ~max_tokens =
         thinking = false;
       }
   in
-  let options = Provider.
+  let options =
+    Provider.
       {
         max_tokens;
         temperature = None;
         cache_policy = Types.No_cache;
         cache_ttl = Types.Five_minutes;
-      } in
+      }
+  in
   Printf.printf "model: %s\n" model_id;
   Printf.printf "prompt: %s\n" prompt_text;
   Printf.printf "---\n%!";
@@ -215,13 +217,15 @@ let run_openai_completions_scenario ~model_id ~prompt_text ~max_tokens ~thinking
             thinking;
           }
       in
-      let options = Provider.
-      {
-        max_tokens;
-        temperature = None;
-        cache_policy = Types.No_cache;
-        cache_ttl = Types.Five_minutes;
-      } in
+      let options =
+        Provider.
+          {
+            max_tokens;
+            temperature = None;
+            cache_policy = Types.No_cache;
+            cache_ttl = Types.Five_minutes;
+          }
+      in
       let base_url =
         match Sys.getenv_opt "OPENAI_BASE_URL" with
         | Some u -> u
@@ -266,78 +270,79 @@ let run_openai_completions_scenario ~model_id ~prompt_text ~max_tokens ~thinking
         let md = Markdown_renderer.create () in
         (* Dot-printer: fires every 5 s from the moment we start waiting.
             Killed by exit once streaming completes. *)
-         Eio.Fiber.fork ~sw (fun () ->
-             let rec loop () =
-               Eio.Time.sleep clock 5.0;
-               if !should_dot then Printf.printf ".%!";
-               loop ()
-             in
-             try loop () with _ -> ());
-         let end_dot () =
-           if !should_dot then begin
-             should_dot := false;
-             in_thinking := false;
-             Printf.printf "\n%!"
-           end
-         in
-         let result =
-           try
-             Eio.Time.with_timeout_exn clock 300.0 (fun () ->
-                 Event_stream.iter stream ~f:(fun event ->
-                     events := event :: !events;
-                     if !first_event then begin
-                       first_event := false;
-                       Printf.printf "\n[streaming]\n%!"
-                     end;
-                     (match event with
-                     | Types.AME_thinking_start _ ->
-                         Printf.printf "reasoning%!";
-                         in_thinking := true
-                     | Types.AME_thinking_delta _ ->
-                         () (* dots still printing; content suppressed *)
-                     | Types.AME_text_start _ -> end_dot ()
-                     | Types.AME_text_delta { text; _ } ->
-                         end_dot ();
-                         Markdown_renderer.push md text
-                     | Types.AME_done _ -> ()
-                     | _ ->
-                         end_dot ();
-                         Printf.printf "%s\n%!" (describe_event event))))
-           with Eio.Time.Timeout ->
-             Printf.printf
-               "openai-completions scenario: FAIL: no response after 300s\n\
-                (check OPENAI_BASE_URL — should not include /v1 suffix)\n";
-             exit 1
-         in
-         Markdown_renderer.finish md;
-         (match result with
-         | Error (msg, _stop_err) ->
-             Printf.printf "openai-completions scenario: FAIL: stream error: %s\n"
-               msg;
-             exit 1
-         | Ok final_msg ->
-             Printf.printf "---\n";
-             Printf.printf "done: stop_reason=%s content=[%s]\n"
-               (stop_reason_string final_msg.Types.stop_reason)
-               (summarise_content final_msg.Types.content);
-             Printf.printf "usage: %s\n" (Usage_status.format final_msg.Types.usage);
-             let has_output =
-               List.exists
-                 (function
-                   | Types.AME_text_delta _ | Types.AME_thinking_delta _ -> true
-                   | _ -> false)
-                 !events
-             in
-             if has_output then (
-               Printf.printf "openai-completions scenario: PASS\n";
-               exit 0)
-             else (
-               Printf.printf
-                 "openai-completions scenario: FAIL: no text or thinking events\n";
-               exit 1))
-       with Failure msg ->
-         Printf.printf "openai-completions scenario: FAIL: %s\n" msg;
-         exit 1)
+        Eio.Fiber.fork ~sw (fun () ->
+            let rec loop () =
+              Eio.Time.sleep clock 5.0;
+              if !should_dot then Printf.printf ".%!";
+              loop ()
+            in
+            try loop () with _ -> ());
+        let end_dot () =
+          if !should_dot then begin
+            should_dot := false;
+            in_thinking := false;
+            Printf.printf "\n%!"
+          end
+        in
+        let result =
+          try
+            Eio.Time.with_timeout_exn clock 300.0 (fun () ->
+                Event_stream.iter stream ~f:(fun event ->
+                    events := event :: !events;
+                    if !first_event then begin
+                      first_event := false;
+                      Printf.printf "\n[streaming]\n%!"
+                    end;
+                    match event with
+                    | Types.AME_thinking_start _ ->
+                        Printf.printf "reasoning%!";
+                        in_thinking := true
+                    | Types.AME_thinking_delta _ ->
+                        () (* dots still printing; content suppressed *)
+                    | Types.AME_text_start _ -> end_dot ()
+                    | Types.AME_text_delta { text; _ } ->
+                        end_dot ();
+                        Markdown_renderer.push md text
+                    | Types.AME_done _ -> ()
+                    | _ ->
+                        end_dot ();
+                        Printf.printf "%s\n%!" (describe_event event)))
+          with Eio.Time.Timeout ->
+            Printf.printf
+              "openai-completions scenario: FAIL: no response after 300s\n\
+               (check OPENAI_BASE_URL — should not include /v1 suffix)\n";
+            exit 1
+        in
+        Markdown_renderer.finish md;
+        match result with
+        | Error (msg, _stop_err) ->
+            Printf.printf
+              "openai-completions scenario: FAIL: stream error: %s\n" msg;
+            exit 1
+        | Ok final_msg ->
+            Printf.printf "---\n";
+            Printf.printf "done: stop_reason=%s content=[%s]\n"
+              (stop_reason_string final_msg.Types.stop_reason)
+              (summarise_content final_msg.Types.content);
+            Printf.printf "usage: %s\n"
+              (Usage_status.format final_msg.Types.usage);
+            let has_output =
+              List.exists
+                (function
+                  | Types.AME_text_delta _ | Types.AME_thinking_delta _ -> true
+                  | _ -> false)
+                !events
+            in
+            if has_output then (
+              Printf.printf "openai-completions scenario: PASS\n";
+              exit 0)
+            else (
+              Printf.printf
+                "openai-completions scenario: FAIL: no text or thinking events\n";
+              exit 1)
+      with Failure msg ->
+        Printf.printf "openai-completions scenario: FAIL: %s\n" msg;
+        exit 1)
 
 let () =
   Driver_log.setup ();
