@@ -15,28 +15,14 @@ type config = {
   stream_fn : Pera_core.Agent_types.stream_fn;
   max_tokens : int;
   exec_env : (module Pera_env.Execution_env.S);
+  system_prompt : string;
+  thinking_budget_tokens : int option;
   compaction : compaction_config option;
 }
 
-let build_system_prompt tools =
-  let base =
-    "You are a helpful coding assistant. Work methodically, verify your \
-     understanding before acting, and prefer small targeted changes."
-  in
-  let descs =
-    List.map
-      (fun (t : (module Pera_env.Execution_env.S) Pera_core.Agent_types.tool) ->
-        Printf.sprintf "- %s: %s"
-          (Pera_core.Agent_types.Tool.name t)
-          (Pera_core.Agent_types.Tool.description t))
-      tools
-  in
-  let prompt =
-    if List.is_empty descs then base
-    else base ^ "\n\nAvailable tools:\n" ^ String.concat "\n" descs
-  in
-  Pera_core.Cache_lint.warn_if_dynamic ~field:"system prompt" prompt;
-  prompt
+let default_system_prompt =
+  "You are a helpful coding assistant. Work methodically, verify your \
+   understanding before acting, and prefer small targeted changes."
 
 let convert_to_llm messages =
   List.map Pera_core.Agent_types.to_provider_message messages
@@ -119,7 +105,7 @@ let create ~config ~env ~sw =
         temperature = None;
         cache_policy = Pera_types.Types.No_cache;
         cache_ttl = Pera_types.Types.Five_minutes;
-        thinking_budget_tokens = None;
+        thinking_budget_tokens = config.thinking_budget_tokens;
       }
   in
   let should_stop_hook cc (ctx : _ Pera_core.Agent_loop.should_stop_ctx) =
@@ -158,7 +144,7 @@ let create ~config ~env ~sw =
     Pera_core.Agent_loop.
       {
         model = config.model;
-        system = build_system_prompt tools;
+        system = config.system_prompt;
         options;
         stream_fn = config.stream_fn;
         convert_to_llm;

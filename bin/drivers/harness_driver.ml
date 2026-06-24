@@ -120,6 +120,8 @@ let make_harness_config ~tmpdir ~session_path ~stream_fn ~exec_env :
     stream_fn;
     max_tokens = 1024;
     exec_env;
+    system_prompt = Pera_agent.Agent_harness.default_system_prompt;
+    thinking_budget_tokens = None;
     compaction = None;
   }
 
@@ -451,6 +453,8 @@ let scenario_autonomous_compaction ~tmpdir ~env =
       stream_fn;
       max_tokens = 1024;
       exec_env;
+      system_prompt = Pera_agent.Agent_harness.default_system_prompt;
+      thinking_budget_tokens = None;
       compaction = Some compaction_cfg;
     }
   in

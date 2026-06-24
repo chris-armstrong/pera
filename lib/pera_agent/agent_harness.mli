@@ -15,6 +15,10 @@ type compaction_config = {
 }
 (** Configuration for autonomous compaction. *)
 
+val default_system_prompt : string
+(** The built-in default system prompt. Callers that do not assemble a custom
+    prompt should pass this as [config.system_prompt]. *)
+
 type config = {
   cwd : string;
   model : Pera_types.Types.model;
@@ -22,6 +26,11 @@ type config = {
   stream_fn : Pera_core.Agent_types.stream_fn;
   max_tokens : int;
   exec_env : (module Pera_env.Execution_env.S);
+  system_prompt : string;
+      (** System prompt passed to the agent loop. *)
+  thinking_budget_tokens : int option;
+      (** [None] = thinking disabled. [Some n] = enable extended thinking
+          with budget n tokens. *)
   compaction : compaction_config option;
       (** [None] = no autonomous compaction (M5 behaviour). [Some cc] = compact
           automatically when the estimated token count exceeds

@@ -57,6 +57,8 @@ let make_config ~env ~cwd ~session_path scripts =
       stream_fn;
       max_tokens = 1024;
       exec_env;
+      system_prompt = Pera_agent.Agent_harness.default_system_prompt;
+      thinking_budget_tokens = None;
       compaction = None;
     }
 
@@ -430,6 +432,8 @@ let make_compaction_config ~env ~cwd ~session_path scripts =
       stream_fn;
       max_tokens = 1024;
       exec_env;
+      system_prompt = Pera_agent.Agent_harness.default_system_prompt;
+      thinking_budget_tokens = None;
       compaction = Some { trigger_tokens = 40; tail_size = 1 };
     }
 
