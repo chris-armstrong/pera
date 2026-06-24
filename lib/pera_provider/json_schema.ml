@@ -39,41 +39,68 @@ let add_description description fields =
   | None -> fields
   | Some d -> ("description", `String d) :: fields
 
-let rec to_json = function
-  | String { description } ->
-      `Assoc (add_description description [ ("type", `String "string") ])
-  | Number { description } ->
-      `Assoc (add_description description [ ("type", `String "number") ])
-  | Integer { description } ->
-      `Assoc (add_description description [ ("type", `String "integer") ])
-  | Boolean { description } ->
-      `Assoc (add_description description [ ("type", `String "boolean") ])
-  | Array { items; description } ->
-      let fields = [ ("type", `String "array"); ("items", to_json items) ] in
-      `Assoc (add_description description fields)
-  | Enum { values; description } ->
-      let fields =
-        [
-          ("type", `String "string");
-          ("enum", `List (List.map (fun v -> `String v) values));
-        ]
+let sort_assoc_pairs pairs =
+  List.sort (fun (a, _) (b, _) -> String.compare a b) pairs
+
+(** Recursively canonicalise a JSON value: every [`Assoc] has its key/value
+    pairs sorted alphabetically by key. This makes serialised request bytes
+    stable regardless of declaration order, which is required for Anthropic
+    byte-level prompt-cache hits.
+
+    Callers serialising canonical output should use [Yojson.Safe.to_string],
+    not [Yojson.Safe.pretty_to_string]. *)
+let rec canonicalise_json = function
+  | `Assoc pairs ->
+      let sorted =
+        List.map (fun (k, v) -> (k, canonicalise_json v)) pairs
+        |> sort_assoc_pairs
       in
-      `Assoc (add_description description fields)
-  | Const { value } -> `Assoc [ ("const", value) ]
-  | Any_of { schemas } -> `Assoc [ ("anyOf", `List (List.map to_json schemas)) ]
-  | Object { properties; required; description } ->
-      let props_json =
-        `Assoc
-          (List.map (fun (name, schema) -> (name, to_json schema)) properties)
-      in
-      let fields =
-        [
-          ("type", `String "object");
-          ("properties", props_json);
-          ("required", `List (List.map (fun s -> `String s) required));
-        ]
-      in
-      `Assoc (add_description description fields)
+      `Assoc sorted
+  | `List xs -> `List (List.map canonicalise_json xs)
+  | other -> other
+
+let rec to_json schema =
+  let result =
+    match schema with
+    | String { description } ->
+        `Assoc (add_description description [ ("type", `String "string") ])
+    | Number { description } ->
+        `Assoc (add_description description [ ("type", `String "number") ])
+    | Integer { description } ->
+        `Assoc (add_description description [ ("type", `String "integer") ])
+    | Boolean { description } ->
+        `Assoc (add_description description [ ("type", `String "boolean") ])
+    | Array { items; description } ->
+        let fields = [ ("type", `String "array"); ("items", to_json items) ] in
+        `Assoc (add_description description fields)
+    | Enum { values; description } ->
+        let fields =
+          [
+            ("type", `String "string");
+            ("enum", `List (List.map (fun v -> `String v) values));
+          ]
+        in
+        `Assoc (add_description description fields)
+    | Const { value } -> `Assoc [ ("const", value) ]
+    | Any_of { schemas } ->
+        `Assoc [ ("anyOf", `List (List.map to_json schemas)) ]
+    | Object { properties; required; description } ->
+        let props_json =
+          `Assoc
+            (List.map (fun (name, schema) -> (name, to_json schema)) properties
+            |> sort_assoc_pairs)
+        in
+        let required_sorted = List.sort String.compare required in
+        let fields =
+          [
+            ("type", `String "object");
+            ("properties", props_json);
+            ("required", `List (List.map (fun s -> `String s) required_sorted));
+          ]
+        in
+        `Assoc (add_description description fields)
+  in
+  canonicalise_json result
 
 (* ── coercion helpers ────────────────────────────────────────────────────── *)
 

@@ -92,7 +92,8 @@ let test_single_text_turn_emits_lifecycle_and_final_messages () =
     events;
   (* Assert final messages: user + assistant *)
   match result with
-  | Error msg -> Alcotest.failf "expected Ok result, got Error %s" msg
+  | Error (err_msg, _stop_err) ->
+      Alcotest.failf "expected Ok result, got Error %s" err_msg
   | Ok final_messages -> (
       Alcotest.(check int) "two final messages" 2 (List.length final_messages);
       let assistant_msg =
@@ -332,7 +333,7 @@ let test_error_stop_reason_terminates_run () =
   Eio.Switch.run @@ fun sw ->
   Faux_provider.reset_recorded ();
   let error_final =
-    make_assistant_message ~stop_reason:Pera_types.Types.Error
+    make_assistant_message ~stop_reason:(Pera_types.Types.Error Pera_types.Types.Transport)
       [ Pera_types.Types.AText "oops" ]
   in
   let error_script =
@@ -378,7 +379,7 @@ let test_error_stop_reason_terminates_run () =
   match turn_end_msg with
   | Agent_types.Real (Pera_provider.Provider.AssistantMessage am) -> (
       match am.stop_reason with
-      | Pera_types.Types.Error -> () (* expected *)
+      | Pera_types.Types.Error _ -> () (* expected *)
       | other ->
           Alcotest.failf "expected Error stop_reason, got %s"
             (match other with
@@ -386,7 +387,7 @@ let test_error_stop_reason_terminates_run () =
             | Pera_types.Types.ToolUse -> "ToolUse"
             | Pera_types.Types.MaxTokens -> "MaxTokens"
             | Pera_types.Types.StopSequence -> "StopSequence"
-            | Pera_types.Types.Error -> "Error"
+            | Pera_types.Types.Error _ -> "Error"
             | Pera_types.Types.Aborted -> "Aborted"))
   | _ -> Alcotest.fail "expected AssistantMessage in turn_end"
 

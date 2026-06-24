@@ -93,7 +93,7 @@ let partial_of_event (event : Pera_types.Types.assistant_message_event) =
     should terminate the whole run (Error or Aborted). *)
 let stop_reason_is_terminal (stop_reason : Pera_types.Types.stop_reason) =
   match stop_reason with
-  | Pera_types.Types.Error | Pera_types.Types.Aborted -> true
+  | Pera_types.Types.Error _ | Pera_types.Types.Aborted -> true
   | Pera_types.Types.EndTurn | Pera_types.Types.ToolUse
   | Pera_types.Types.MaxTokens | Pera_types.Types.StopSequence ->
       false
@@ -173,7 +173,13 @@ let consume_provider_stream ~provider_stream out_stream =
       let stream_result = Pera_provider.Event_stream.result provider_stream in
       match stream_result with
       | Ok final -> final
-      | Error _err -> { !partial_ref with stop_reason = Pera_types.Types.Error }
+      | Error (err_msg, stop_err) ->
+          {
+            !partial_ref with
+            stop_reason = Pera_types.Types.Error stop_err;
+            provenance =
+              { !partial_ref.provenance with error_message = Some err_msg };
+          }
     end
   in
   let final_agent_msg =
@@ -199,23 +205,23 @@ let tool_calls_of_message (msg : Pera_types.Types.assistant_message) =
     msg.content
 
 (** Determine whether the batch should run sequentially: config default is used
-    unless any called tool has mode [\`Sequential], in which case the whole
+    unless any called tool has [parallel_safe = false], in which case the whole
     batch is forced sequential. *)
 let effective_execution_mode config tool_calls =
-  let any_sequential =
+  let any_not_parallel_safe =
     List.exists
       (fun (tc : Pera_types.Types.tool_call) ->
         match
           List.find_opt
-            (fun (t : 'ctx Agent_types.tool) -> String.equal t.name tc.name)
+            (fun (t : 'ctx Agent_types.tool) ->
+              String.equal (Agent_types.Tool.name t) tc.name)
             config.tools
         with
-        | Some tool -> (
-            match tool.mode with `Sequential -> true | `Parallel -> false)
+        | Some tool -> not (Agent_types.Tool.parallel_safe tool)
         | None -> false)
       tool_calls
   in
-  if any_sequential then `Sequential else config.tool_execution
+  if any_not_parallel_safe then `Sequential else config.tool_execution
 
 (** Execute a single tool call, performing validation, hook invocation, and
     error handling. Emits [AE_tool_execution_start] and [AE_tool_execution_end]
@@ -247,7 +253,8 @@ let execute_one_tool ~config ~sw ~out_stream ~final_agent_msg
     let* tool =
       match
         List.find_opt
-          (fun (t : 'ctx Agent_types.tool) -> String.equal t.name tool_name)
+          (fun (t : 'ctx Agent_types.tool) ->
+            String.equal (Agent_types.Tool.name t) tool_name)
           config.tools
       with
       | Some t -> Ok t
@@ -255,7 +262,8 @@ let execute_one_tool ~config ~sw ~out_stream ~final_agent_msg
     in
     (* Step 2: validate args *)
     let* () =
-      Pera_provider.Json_schema.validate tool.schema tc.arguments
+      Pera_provider.Json_schema.validate (Agent_types.Tool.schema tool)
+        tc.arguments
       |> Result.map_err (fun err ->
           fail_tool (Printf.sprintf "Schema validation failed: %s" err))
     in
@@ -285,7 +293,8 @@ let execute_one_tool ~config ~sw ~out_stream ~final_agent_msg
     let execute_result =
       match
         Eio.Cancel.sub (fun cancel ->
-            tool.execute ~ctx:config.tool_ctx ~args:tc.arguments ~sw ~cancel)
+            Agent_types.Tool.execute tool ~ctx:config.tool_ctx
+              ~args:tc.arguments ~sw ~cancel)
       with
       | Ok output ->
           Agent_types.tool_output_to_result_content ~tool_call_id
@@ -424,9 +433,9 @@ let rec run_inner ~config ~model_ref ~options_ref ~messages_ref ~pending ~sw
       (fun (tool : 'ctx Agent_types.tool) ->
         Pera_provider.Provider.
           {
-            name = tool.name;
-            description = tool.description;
-            schema = tool.schema;
+            name = Agent_types.Tool.name tool;
+            description = Agent_types.Tool.description tool;
+            schema = Agent_types.Tool.schema tool;
           })
       config.tools
   in
@@ -485,7 +494,7 @@ let rec run_inner ~config ~model_ref ~options_ref ~messages_ref ~pending ~sw
                   terminal via Error so the caller takes the Terminate path. *)
               Error [])
       | Pera_types.Types.EndTurn | Pera_types.Types.MaxTokens
-      | Pera_types.Types.StopSequence | Pera_types.Types.Error
+      | Pera_types.Types.StopSequence | Pera_types.Types.Error _
       | Pera_types.Types.Aborted ->
           Ok []
     in
@@ -514,7 +523,7 @@ let rec run_inner ~config ~model_ref ~options_ref ~messages_ref ~pending ~sw
             match final_msg.stop_reason with
             | Pera_types.Types.ToolUse -> true
             | Pera_types.Types.EndTurn | Pera_types.Types.MaxTokens
-            | Pera_types.Types.StopSequence | Pera_types.Types.Error
+            | Pera_types.Types.StopSequence | Pera_types.Types.Error _
             | Pera_types.Types.Aborted ->
                 false
           in
@@ -581,10 +590,11 @@ let run config ~messages ~sw =
               would then block forever.  Emit AE_agent_end and close the stream
               under Eio.Cancel.protect so these operations succeed even when
               the switch has been cancelled. *)
+          let err_msg = Printexc.to_string exn in
           Eio.Cancel.protect (fun () ->
               let final_messages = !messages_ref in
               push_event out_stream
                 (Agent_types.AE_agent_end { messages = final_messages });
-              Pera_provider.Event_stream.close_error out_stream
-                (Printexc.to_string exn)));
+              Pera_provider.Event_stream.close_internal_error out_stream
+                err_msg));
   out_stream

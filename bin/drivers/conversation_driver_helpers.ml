@@ -13,41 +13,32 @@ module Log = (val Logs.src_log src : Logs.LOG)
 
 (** Echo: return the [text] argument as-is. Mode: Parallel. *)
 let echo_tool =
-  Agent_types.
-    {
-      name = "echo";
-      description = "Echo the text argument back.";
-      schema =
-        Json_schema.object_
-          ~properties:
-            [ ("text", Json_schema.string ~description:"Text to echo." ()) ]
-          ~required:[ "text" ] ();
-      mode = `Parallel;
-      execute =
-        (fun ~ctx:_ ~args ~sw:_ ~cancel:_ ->
-          let text =
-            match Yojson.Safe.Util.member "text" args with
-            | `String s -> s
-            | _ -> "(no text)"
-          in
-          Ok (Agent_types.Tool_text text));
-    }
+  Agent_types.Tool.create ~name:"echo" ~description:"Echo the text argument back."
+    ~schema:
+      (Json_schema.object_
+         ~properties:
+           [ ("text", Json_schema.string ~description:"Text to echo." ()) ]
+         ~required:[ "text" ] ())
+    ~parallel_safe:true
+    ~execute:(fun ~ctx:_ ~args ~sw:_ ~cancel:_ ->
+      let text =
+        match Yojson.Safe.Util.member "text" args with
+        | `String s -> s
+        | _ -> "(no text)"
+      in
+      Ok (Agent_types.Tool_text text))
 
 (** Counter: stateful incrementing integer. Mode: Sequential. *)
 let counter_state = ref 0
 
 let counter_tool =
-  Agent_types.
-    {
-      name = "counter";
-      description = "Return an incrementing integer as a string.";
-      schema = Json_schema.object_ ~properties:[] ~required:[] ();
-      mode = `Sequential;
-      execute =
-        (fun ~ctx:_ ~args:_ ~sw:_ ~cancel:_ ->
-          incr counter_state;
-          Ok (Agent_types.Tool_text (string_of_int !counter_state)));
-    }
+  Agent_types.Tool.create ~name:"counter"
+    ~description:"Return an incrementing integer as a string."
+    ~schema:(Json_schema.object_ ~properties:[] ~required:[] ())
+    ~parallel_safe:false
+    ~execute:(fun ~ctx:_ ~args:_ ~sw:_ ~cancel:_ ->
+      incr counter_state;
+      Ok (Agent_types.Tool_text (string_of_int !counter_state)))
 
 (** {1 Event description} *)
 
@@ -112,7 +103,14 @@ let make_config ?(tools = []) ?(get_follow_up_messages = None) ~model stream_fn
     {
       model;
       system = "You are a helpful test assistant.";
-      options = Provider.{ max_tokens = 1024; temperature = None };
+      options =
+        Provider.
+          {
+            max_tokens = 1024;
+            temperature = None;
+            cache_policy = Types.No_cache;
+            cache_ttl = Types.Five_minutes;
+          };
       stream_fn;
       convert_to_llm = default_convert_to_llm;
       tool_ctx = ();
@@ -175,8 +173,8 @@ let run_scenario ~name ~messages ~sw ~check_result config =
       let passed = check_result !events final_messages in
       if passed then Printf.printf "  PASS\n%!" else Printf.printf "  FAIL\n%!";
       passed
-  | Error err ->
-      Log.err (fun m -> m "stream error: %s" err);
+  | Error (err_msg, _stop_err) ->
+      Log.err (fun m -> m "stream error: %s" err_msg);
       let passed = check_result !events [] in
       if passed then Printf.printf "  PASS\n%!" else Printf.printf "  FAIL\n%!";
       passed

@@ -26,11 +26,17 @@ let build_system_prompt tools =
   let descs =
     List.map
       (fun (t : unit Pera_core.Agent_types.tool) ->
-        Printf.sprintf "- %s: %s" t.name t.description)
+        Printf.sprintf "- %s: %s"
+          (Pera_core.Agent_types.Tool.name t)
+          (Pera_core.Agent_types.Tool.description t))
       tools
   in
-  if List.is_empty descs then base
-  else base ^ "\n\nAvailable tools:\n" ^ String.concat "\n" descs
+  let prompt =
+    if List.is_empty descs then base
+    else base ^ "\n\nAvailable tools:\n" ^ String.concat "\n" descs
+  in
+  Pera_core.Cache_lint.warn_if_dynamic ~field:"system prompt" prompt;
+  prompt
 
 let convert_to_llm messages =
   List.map Pera_core.Agent_types.to_provider_message messages
@@ -41,6 +47,16 @@ let session_subscriber writer event =
     match event with
     | Pera_core.Agent_types.AE_message_end
         { message = Real (Pera_provider.Provider.AssistantMessage am) } ->
+        (match am.Pera_types.Types.stop_reason with
+        | Pera_types.Types.Error stop_err ->
+            let msg =
+              Option.value ~default:"unknown error"
+                am.Pera_types.Types.provenance.error_message
+            in
+            Printf.eprintf "[harness] provider error (%s): %s\n%!"
+              (Pera_types.Types.show_stop_error stop_err)
+              msg
+        | _ -> ());
         Pera_harness.Session_writer.write_message writer
           (Pera_provider.Provider.AssistantMessage am)
     | Pera_core.Agent_types.AE_message_end _ -> Ok ()
@@ -98,7 +114,12 @@ let create ~config ~env ~sw =
   in
   let options =
     Pera_provider.Provider.
-      { max_tokens = config.max_tokens; temperature = None }
+      {
+        max_tokens = config.max_tokens;
+        temperature = None;
+        cache_policy = Pera_types.Types.No_cache;
+        cache_ttl = Pera_types.Types.Five_minutes;
+      }
   in
   let should_stop_hook cc (ctx : _ Pera_core.Agent_loop.should_stop_ctx) =
     let provider_msgs = convert_to_llm ctx.messages in
@@ -185,3 +206,5 @@ let send t text =
   Pera_harness.Agent_wrapper.send t.wrapper ~messages
 
 let subscribe t f = Pera_harness.Agent_wrapper.subscribe t.wrapper f
+
+let last_error t = Pera_harness.Agent_wrapper.last_error t.wrapper

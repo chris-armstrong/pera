@@ -16,7 +16,11 @@ open Session_jsonl_helpers
 (* ── Shared fixtures ──────────────────────────────────────────────────────── *)
 
 let haiku_model : Types.model =
-  { id = "claude-haiku-4-5-20251001"; api = "anthropic"; context_window = 200_000 }
+  {
+    id = "claude-haiku-4-5-20251001";
+    api = "anthropic";
+    context_window = 200_000;
+  }
 
 let faux_provenance : Types.provenance =
   { api = "faux"; provider = "faux"; model = "faux"; error_message = None }
@@ -91,7 +95,8 @@ let make_summary_script () =
       }
   in
   Faux_provider.Turn
-    Faux_provider.{ events = [ Types.AME_text_start { partial = msg } ]; final = msg }
+    Faux_provider.
+      { events = [ Types.AME_text_start { partial = msg } ]; final = msg }
 
 (* ── Assertion helpers ────────────────────────────────────────────────────── *)
 
@@ -127,8 +132,7 @@ let verify_offline_result ~original_messages ~tail_size r =
             "element at index 1 is not a user message starting with \
              compaction_framing"
         else if
-          not
-            (List.equal Agent_types.agent_message_equal rest_tail orig_tail)
+          not (List.equal Agent_types.agent_message_equal rest_tail orig_tail)
         then
           Fail
             "tail messages in new_messages do not match original last \
@@ -148,7 +152,15 @@ let scenario_offline_faux ~env:_ =
   let stream_fn =
     Faux_provider.stream_fn_of_scripts [ make_summary_script () ]
   in
-  let options = Provider.{ max_tokens = 1024; temperature = None } in
+  let options =
+    Provider.
+      {
+        max_tokens = 1024;
+        temperature = None;
+        cache_policy = Pera_types.Types.No_cache;
+        cache_ttl = Pera_types.Types.Five_minutes;
+      }
+  in
   let result =
     Eio.Switch.run @@ fun sw ->
     Pera_harness.Compaction.compact ~stream_fn ~model:haiku_model ~options
@@ -157,15 +169,23 @@ let scenario_offline_faux ~env:_ =
   match result with
   | Error msg -> Fail (Printf.sprintf "compact returned error: %s" msg)
   | Ok None ->
-      Fail
-        "compact returned None (nothing to compact) — expected Ok (Some r)"
-  | Ok (Some r) -> verify_offline_result ~original_messages:messages ~tail_size r
+      Fail "compact returned None (nothing to compact) — expected Ok (Some r)"
+  | Ok (Some r) ->
+      verify_offline_result ~original_messages:messages ~tail_size r
 
 let scenario_real_model ~env =
   let tail_size = 3 in
   let messages = build_conversation () in
   let model = haiku_model in
-  let options = Provider.{ max_tokens = 1024; temperature = None } in
+  let options =
+    Provider.
+      {
+        max_tokens = 1024;
+        temperature = None;
+        cache_policy = Pera_types.Types.No_cache;
+        cache_ttl = Pera_types.Types.Five_minutes;
+      }
+  in
   let registry =
     Provider_registry.register Provider_registry.empty ~name:"anthropic"
       (module Anthropic_provider)
@@ -216,15 +236,21 @@ let () =
         in
         let passed =
           List.length
-            (List.filter (function Pass -> true | Fail _ -> false) all_verdicts)
+            (List.filter
+               (function Pass -> true | Fail _ -> false)
+               all_verdicts)
         in
         let total = List.length all_verdicts in
         Printf.printf "%d/%d scenarios passed.\n" passed total;
         if passed = total then 0 else 1
-      with e ->
-        Printf.eprintf "compaction_driver crashed: %s\n%!"
-          (Printexc.to_string e);
-        1
+      with
+      | Failure msg ->
+          Printf.eprintf "compaction_driver: %s\n%!" msg;
+          2
+      | exn ->
+          Printf.eprintf "compaction_driver crashed: %s\n%!"
+            (Printexc.to_string exn);
+          1
     in
     result
   in

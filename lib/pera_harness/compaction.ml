@@ -106,7 +106,9 @@ let compact ~stream_fn ~model ~options ~messages ~tail_size ~sw =
         }
     in
     let stream = stream_fn ~model ~context ~options ~sw in
-    let* final = Event_stream.iter stream ~f:(fun _ -> ()) in
+    let* final =
+      Event_stream.iter stream ~f:(fun _ -> ()) |> Result.map_err fst
+    in
     let summary = collect_summary_text final in
     if String.equal summary "" then Error "compaction produced empty summary"
     else

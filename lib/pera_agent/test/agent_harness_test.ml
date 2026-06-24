@@ -381,6 +381,36 @@ let test_subscriber_receives_events env () =
   Alcotest.(check bool) "received AE_turn_start" true has_turn_start;
   Alcotest.(check bool) "received AE_agent_end" true has_agent_end
 
+let make_error_script message =
+  Faux_provider.Error
+    Faux_provider.
+      { error_events = []; error_message = message }
+
+(** 10. [last_error] is reset between sends: an errored send followed by a
+    successful send leaves [last_error] as [None]. *)
+let test_last_error_reset_between_sends env () =
+  Faux_provider.reset_recorded ();
+  Eio.Switch.run @@ fun sw ->
+  let dir = make_temp_dir env in
+  let session_path = Filename.concat dir "session.jsonl" in
+  let config =
+    make_config ~env ~cwd:dir ~session_path
+      [ make_error_script "first send failed";
+        make_text_turn_script "recovered"
+      ]
+  in
+  let t =
+    Result.get_exn (Pera_agent.Agent_harness.create ~config ~env ~sw)
+  in
+  Pera_agent.Agent_harness.send t "trigger error";
+  Alcotest.(check bool)
+    "last_error set after failed send" true
+    (Option.is_some (Pera_agent.Agent_harness.last_error t));
+  Pera_agent.Agent_harness.send t "recover";
+  Alcotest.(check bool)
+    "last_error cleared after successful send" true
+    (Option.is_none (Pera_agent.Agent_harness.last_error t))
+
 (* ── Compaction helpers ──────────────────────────────────────────────────── *)
 
 (** Build a harness config with compaction enabled. trigger_tokens=40 ensures
@@ -769,6 +799,11 @@ let () =
             [
               Alcotest.test_case "subscriber receives events" `Quick
                 (test_subscriber_receives_events env);
+            ] );
+          ( "error",
+            [
+              Alcotest.test_case "last_error reset between sends" `Quick
+                (test_last_error_reset_between_sends env);
             ] );
           ( "compaction",
             [

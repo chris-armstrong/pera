@@ -43,6 +43,11 @@
   eio))
 
 (test
+ (name cache_fingerprint_test)
+ (modules cache_fingerprint_test)
+ (libraries pera_harness pera_core pera_provider pera_types alcotest containers))
+
+(test
  (name compaction_test)
  (modules compaction_test)
  (libraries

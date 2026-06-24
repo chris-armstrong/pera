@@ -73,7 +73,14 @@ let test_model =
   Types.{ id = "faux-model"; api = "faux"; context_window = 200_000 }
 
 (** Default options for loop calls. *)
-let test_options = Provider.{ max_tokens = 1024; temperature = None }
+let test_options =
+  Provider.
+    {
+      max_tokens = 1024;
+      temperature = None;
+      cache_policy = Types.No_cache;
+      cache_ttl = Types.Five_minutes;
+    }
 
 (** Empty JSON schema for tools that take no args. *)
 let empty_schema = Json_schema.object_ ~properties:[] ~required:[] ()
@@ -127,8 +134,8 @@ let run_scenario ~name ~messages ~sw config ~check_result =
       let passed = check_result !events final_messages in
       if passed then Printf.printf "  PASS\n%!" else Printf.printf "  FAIL\n%!";
       passed
-  | Error err ->
-      Printf.printf "  => stream error: %s\n%!" err;
+  | Error (err_msg, _stop_err) ->
+      Printf.printf "  => stream error: %s\n%!" err_msg;
       let passed = check_result !events [] in
       if passed then Printf.printf "  PASS\n%!" else Printf.printf "  FAIL\n%!";
       passed
@@ -320,26 +327,22 @@ let scenario_sequential_tool_calls sw =
   in
   let call_order = ref [] in
   let counter_tool =
-    Agent_types.
-      {
-        name = "counter";
-        description = "Record invocation order.";
-        schema =
-          Json_schema.object_
-            ~properties:
-              [ ("step", Json_schema.object_ ~properties:[] ~required:[] ()) ]
-            ~required:[] ();
-        mode = `Sequential;
-        execute =
-          (fun ~ctx:_ ~args ~sw:_ ~cancel:_ ->
-            let step =
-              match Yojson.Safe.Util.member "step" args with
-              | `Int n -> string_of_int n
-              | _ -> "?"
-            in
-            call_order := !call_order @ [ step ];
-            Ok (Agent_types.Tool_text ("step=" ^ step)));
-      }
+    Agent_types.Tool.create ~name:"counter"
+      ~description:"Record invocation order."
+      ~schema:
+        (Json_schema.object_
+           ~properties:
+             [ ("step", Json_schema.object_ ~properties:[] ~required:[] ()) ]
+           ~required:[] ())
+      ~parallel_safe:false
+      ~execute:(fun ~ctx:_ ~args ~sw:_ ~cancel:_ ->
+        let step =
+          match Yojson.Safe.Util.member "step" args with
+          | `Int n -> string_of_int n
+          | _ -> "?"
+        in
+        call_order := !call_order @ [ step ];
+        Ok (Agent_types.Tool_text ("step=" ^ step)))
   in
   let stream_fn = Faux_provider.stream_fn_of_scripts [ script1; script2 ] in
   let config =
@@ -393,17 +396,11 @@ let scenario_tool_error sw =
         }
   in
   let failing_tool =
-    Agent_types.
-      {
-        name = "failing_tool";
-        description = "Always returns an error.";
-        schema = empty_schema;
-        mode = `Parallel;
-        execute =
-          (fun ~ctx:_ ~args:_ ~sw:_ ~cancel:_ ->
-            Error
-              Types.{ message = "intentional failure"; is_user_error = false });
-      }
+    Agent_types.Tool.create ~name:"failing_tool"
+      ~description:"Always returns an error."
+      ~schema:empty_schema ~parallel_safe:true
+      ~execute:(fun ~ctx:_ ~args:_ ~sw:_ ~cancel:_ ->
+        Error Types.{ message = "intentional failure"; is_user_error = false })
   in
   let stream_fn = Faux_provider.stream_fn_of_scripts [ script1; script2 ] in
   let config = make_config ~tools:[ failing_tool ] stream_fn in

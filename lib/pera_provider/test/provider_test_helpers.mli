@@ -29,7 +29,11 @@ val make_context :
 (** [make_context messages] builds a minimal [Provider.context] wrapping
     [messages] with an empty system prompt and no tools. *)
 
-val make_options : unit -> Pera_provider.Provider.simple_stream_options
+val make_options :
+  ?cache_policy:Pera_types.Types.cache_policy ->
+  ?cache_ttl:Pera_types.Types.cache_ttl ->
+  unit ->
+  Pera_provider.Provider.simple_stream_options
 (** [make_options ()] builds a minimal [Provider.simple_stream_options] with
     [max_tokens = 1024] and no temperature override. *)
 

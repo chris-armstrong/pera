@@ -171,7 +171,7 @@ let test_assistant_message_stop_reason_strings () =
   check_stop_reason Pera_types.Types.ToolUse "tool_use";
   check_stop_reason Pera_types.Types.MaxTokens "max_tokens";
   check_stop_reason Pera_types.Types.StopSequence "stop_sequence";
-  check_stop_reason Pera_types.Types.Error "error";
+  check_stop_reason (Pera_types.Types.Error Pera_types.Types.Transport) "error";
   check_stop_reason Pera_types.Types.Aborted "aborted"
 
 let test_assistant_thinking_block_serialised () =

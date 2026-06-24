@@ -38,9 +38,38 @@ type stop_reason =
   | ToolUse
   | MaxTokens
   | StopSequence
-  | Error
+  | Error of stop_error
   | Aborted
+
+and stop_error =
+  | Transport
+      (** DNS failure, connection timeout, TLS error, connection reset —
+          the request never reached the server. Always retryable. *)
+  | Http of { status : http_status }
+      (** The server responded with a non-2xx status code. *)
+  | Provider of { message : string }
+      (** Provider-specific error: malformed response, unknown stop reason,
+          content filter, or missing terminal event. Not retryable. *)
+  | Internal of { message : string }
+      (** Internal programming or configuration error. Not retryable. *)
+
+(** HTTP status code. An open [int] rather than a closed variant so new codes
+    (e.g. 529) don't require type changes. Use {!is_retryable} to classify. *)
+and http_status = int
+
 [@@deriving eq, show]
+
+(** Classify a [stop_error] as retryable.
+    - [Transport]: always retryable (never reached the server).
+    - [Http 5xx]: server-side error, retryable.
+    - [Http 429]: rate-limited, retryable with backoff.
+    - [Http 4xx] (except 429): client-side error, not retryable.
+    - [Provider], [Internal]: not retryable. *)
+let is_retryable (e : stop_error) =
+  match e with
+  | Transport -> true
+  | Http { status } -> status >= 500 || status = 429
+  | Provider _ | Internal _ -> false
 
 type usage = {
   input_tokens : int;
@@ -112,4 +141,15 @@ type tool_error = { message : string; is_user_error : bool }
 [@@deriving eq, show]
 
 type model = { id : string; api : string; context_window : int }
+[@@deriving eq, show]
+
+type cache_ttl =
+  | Five_minutes
+  | One_hour
+[@@deriving eq, show]
+
+type cache_policy =
+  | No_cache
+  | Conversation
+  | SystemAndToolsOnly
 [@@deriving eq, show]

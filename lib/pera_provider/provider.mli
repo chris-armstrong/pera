@@ -59,6 +59,12 @@ type simple_stream_options = {
       *)
   temperature : float option;
       (** Sampling temperature; [None] uses the provider default. *)
+  cache_policy : Types.cache_policy;
+      (** Where to place [cache_control] markers in Anthropic requests.
+          Ignored by non-Anthropic providers. Default [No_cache]. *)
+  cache_ttl : Types.cache_ttl;
+      (** TTL applied to every cache breakpoint in the request.
+          Default [Five_minutes]. *)
 }
 (** Options for a simple (non-agentic) streaming completion. *)
 

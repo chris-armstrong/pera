@@ -36,7 +36,9 @@ let make_context messages =
   { Provider.system = ""; messages; tools = []; thinking = false }
 
 (** Build a minimal [Provider.simple_stream_options]. *)
-let make_options () = { Provider.max_tokens = 1024; temperature = None }
+let make_options ?(cache_policy = Types.No_cache)
+    ?(cache_ttl = Types.Five_minutes) () =
+  { Provider.max_tokens = 1024; temperature = None; cache_policy; cache_ttl }
 
 (** A minimal model value. *)
 let test_model =

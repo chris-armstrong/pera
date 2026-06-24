@@ -43,7 +43,7 @@ let rec collect_events stream acc =
   match Pera_provider.Event_stream.take stream with
   | `Event e -> collect_events stream (e :: acc)
   | `Done _ -> (List.rev acc, Ok ())
-  | `Error msg -> (List.rev acc, Error msg)
+  | `Error (msg, _stop_err) -> (List.rev acc, Error msg)
 
 (** {2 Provider stream helpers} *)
 
@@ -63,7 +63,14 @@ let run_provider_and_get_events provider_mod =
   let context =
     Provider.{ system = ""; messages = []; tools = []; thinking = false }
   in
-  let options = { Provider.max_tokens = 100; temperature = None } in
+  let options =
+    {
+      Provider.max_tokens = 100;
+      temperature = None;
+      cache_policy = Pera_types.Types.No_cache;
+      cache_ttl = Pera_types.Types.Five_minutes;
+    }
+  in
   let stream =
     P.stream_simple inst
       ~model:

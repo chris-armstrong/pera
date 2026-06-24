@@ -47,13 +47,11 @@ let read_schema =
 
 let read (env : (module Pera_env.Execution_env.S)) =
   let module E = (val env : Pera_env.Execution_env.S) in
-  {
-    Pera_core.Agent_types.name = "read";
-    description =
-      "Read a file. Output is automatically truncated to 2000 lines or 256 KB.";
-    schema = read_schema;
-    mode = `Parallel;
-    execute =
+  Pera_core.Agent_types.Tool.create ~name:"read"
+    ~description:
+      "Read a file. Output is automatically truncated to 2000 lines or 256 KB."
+    ~schema:read_schema ~parallel_safe:true
+    ~execute:
       (fun ~ctx:() ~args ~sw ~cancel:_ ->
         let open Result.Syntax in
         let* path = Tool_util.get_string "path" args in
@@ -97,5 +95,4 @@ let read (env : (module Pera_env.Execution_env.S)) =
               ~output_lines:info.output_lines ~total_lines:info.total_lines
               ~next_offset ~remaining_after_trunc ~shown_count ~total_remaining
           in
-          Ok (Pera_core.Agent_types.Tool_text (truncated_str ^ footer)));
-  }
+          Ok (Pera_core.Agent_types.Tool_text (truncated_str ^ footer)))

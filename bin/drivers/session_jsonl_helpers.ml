@@ -87,6 +87,49 @@ let count_passed scenarios =
        (fun (_, v) -> match v with Pass -> true | Fail _ -> false)
        scenarios)
 
+let int_field key json =
+  match Yojson.Safe.Util.member key json with
+  | `Int n -> n
+  | _ -> 0
+
+(** Extract the [usage] object from an assistant-message JSONL entry, or [None]
+    if the entry is not an assistant message or has no usage object. *)
+let usage_of_entry entry =
+  if not (String.equal (get_string "type" entry) "message") then None
+  else
+    let msg = Yojson.Safe.Util.member "message" entry in
+    match get_string_opt "role" msg with
+    | Some "assistant" ->
+        (match Yojson.Safe.Util.member "usage" msg with
+        | `Assoc _ as usage -> Some usage
+        | _ -> None)
+    | _ -> None
+
+let collect_cumulative_usage entries =
+  List.filter_map usage_of_entry entries
+  |> List.fold_left
+       (fun acc usage ->
+         Pera_types.Types.
+           {
+             input_tokens =
+               acc.input_tokens + int_field "input_tokens" usage;
+             output_tokens =
+               acc.output_tokens + int_field "output_tokens" usage;
+             cache_read_tokens =
+               acc.cache_read_tokens + int_field "cache_read_tokens" usage;
+             cache_write_tokens =
+               acc.cache_write_tokens + int_field "cache_write_tokens" usage;
+             cost_usd = None;
+           })
+       Pera_types.Types.
+         {
+           input_tokens = 0;
+           output_tokens = 0;
+           cache_read_tokens = 0;
+           cache_write_tokens = 0;
+           cost_usd = None;
+         }
+
 let parse_session_file_lenient path =
   let contents = Stdlib.In_channel.(with_open_text path input_all) in
   let lines = String.split_on_char '\n' contents in

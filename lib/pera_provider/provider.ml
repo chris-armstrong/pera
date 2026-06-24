@@ -30,7 +30,12 @@ type context = {
 }
 [@@deriving eq, show]
 
-type simple_stream_options = { max_tokens : int; temperature : float option }
+type simple_stream_options = {
+  max_tokens : int;
+  temperature : float option;
+  cache_policy : Types.cache_policy;
+  cache_ttl : Types.cache_ttl;
+}
 [@@deriving eq, show]
 
 module type S = sig

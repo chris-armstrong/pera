@@ -8,6 +8,7 @@
   driver_log
   markdown_renderer)
  (libraries
+  usage_status
   pera_core
   pera_core_test_util
   pera_provider
@@ -97,6 +98,7 @@
  (name live_driver)
  (modules live_driver session_jsonl_helpers)
  (libraries
+  usage_status
   pera_agent
   pera_core
   pera_provider

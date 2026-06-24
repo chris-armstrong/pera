@@ -351,8 +351,11 @@ let parse_finish_reason = function
   | "stop" -> Types.EndTurn
   | "tool_calls" -> Types.ToolUse
   | "length" -> Types.MaxTokens
-  | "content_filter" -> Types.Error
-  | _ -> Types.Error
+  | "content_filter" ->
+      Types.Error
+        (Types.Provider { message = "finish_reason content_filter" })
+  | other ->
+      Types.Error (Types.Provider { message = "unknown finish_reason: " ^ other })
 
 (** Finalise a single active tool call, parsing its accumulated JSON arguments.
 

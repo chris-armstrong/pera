@@ -6,7 +6,8 @@
   agent_loop
   provider_adapter
   token_estimator
-  model_window)
+  model_window
+  cache_lint)
  (libraries
   pera_types
   pera_provider
@@ -14,6 +15,8 @@
   yojson
   eio
   eio_main
-  eio_linux)
+  eio_linux
+  logs
+  re.perl)
  (preprocess
   (pps ppx_deriving.eq ppx_deriving.show)))

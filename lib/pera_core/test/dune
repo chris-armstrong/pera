@@ -10,7 +10,8 @@
   provider_adapter_test
   synthetic_test
   token_estimator_test
-  model_window_test)
+  model_window_test
+  cache_lint_test)
  (modules
   agent_types_test
   faux_provider_test
@@ -21,6 +22,7 @@
   synthetic_test
   token_estimator_test
   model_window_test
+  cache_lint_test
   agent_loop_helpers)
  (libraries
   pera_core
@@ -29,4 +31,6 @@
   pera_provider
   alcotest
   containers
-  eio_main))
+  eio_main
+  logs
+  re.perl))

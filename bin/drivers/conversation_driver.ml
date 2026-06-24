@@ -85,24 +85,35 @@ let () =
   let scenario_name = if Array.length argv > 2 then Some argv.(2) else None in
   Printf.printf "provider: %s\n%!" model.Types.api;
   Printf.printf "model:    %s\n%!" model.Types.id;
-  Eio_main.run @@ fun env ->
-  Eio.Switch.run @@ fun sw ->
-  let adapter = Provider_adapter.create ~registry ~env ~sw in
-  let stream_fn = Provider_adapter.stream_fn adapter in
-  let results =
-    match scenario_name with
-    | Some name ->
-        Conversation_driver_helpers.run_named_scenario name ~model stream_fn sw
-    | None -> Conversation_driver_helpers.run_all_scenarios ~model stream_fn sw
-  in
-  Printf.printf "\n=== Summary ===\n%!";
-  List.iter
-    (fun Conversation_driver_helpers.{ name; passed } ->
-      Printf.printf "  %-30s %s\n%!" name (if passed then "PASS" else "FAIL"))
-    results;
-  let all_passed =
-    List.for_all
-      (fun Conversation_driver_helpers.{ passed; _ } -> passed)
-      results
-  in
-  if all_passed then exit 0 else exit 1
+  try
+    Eio_main.run @@ fun env ->
+    Eio.Switch.run @@ fun sw ->
+    let adapter = Provider_adapter.create ~registry ~env ~sw in
+    let stream_fn = Provider_adapter.stream_fn adapter in
+    let results =
+      match scenario_name with
+      | Some name ->
+          Conversation_driver_helpers.run_named_scenario name ~model stream_fn
+            sw
+      | None ->
+          Conversation_driver_helpers.run_all_scenarios ~model stream_fn sw
+    in
+    Printf.printf "\n=== Summary ===\n%!";
+    List.iter
+      (fun Conversation_driver_helpers.{ name; passed } ->
+        Printf.printf "  %-30s %s\n%!" name (if passed then "PASS" else "FAIL"))
+      results;
+    let all_passed =
+      List.for_all
+        (fun Conversation_driver_helpers.{ passed; _ } -> passed)
+        results
+    in
+    if all_passed then exit 0 else exit 1
+  with
+  | Failure msg ->
+      Printf.eprintf "conversation_driver: %s\n%!" msg;
+      exit 2
+  | exn ->
+      Printf.eprintf "conversation_driver crashed: %s\n%!"
+        (Printexc.to_string exn);
+      exit 1

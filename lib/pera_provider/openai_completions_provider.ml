@@ -30,7 +30,7 @@ let handle_ame stream done_message ame =
       Event_stream.close stream message
   | Types.AME_error { message; _ } ->
       done_message := Some (Error message);
-      Event_stream.close_error stream message
+      Event_stream.close_provider_error stream message
   | event -> Event_stream.push stream event
 
 (** Feed a single framed SSE event through the OpenAI interpreter and dispatch
@@ -67,11 +67,10 @@ let process_chunks stream ~(compat : Openai_completions_request.compat) =
     process_chunk sse_state interp_state stream done_message chunk
   in
   let finalise () =
+    let msg = "stream ended without a finish_reason or [DONE] sentinel" in
     match !done_message with
     | Some _ -> () (* stream already closed in handle_ame *)
-    | None ->
-        Event_stream.close_error stream
-          "stream ended without a finish_reason or [DONE] sentinel"
+    | None -> Event_stream.close_provider_error stream msg
   in
   (on_chunk, finalise)
 
@@ -101,8 +100,12 @@ let do_request ~provider ~model ~context ~options ~sw:_ stream =
       ~body:request_body_str ~on_chunk "/v1/chat/completions"
   in
   match http_result with
-  | Error http_err ->
-      Event_stream.close_error stream (Http_client.error_to_string http_err)
+  | Error (Http_client.Transport_error te) ->
+      Event_stream.close_error stream te.message
+        Pera_types.Types.Transport
+  | Error (Http_client.Http_error he) ->
+      Event_stream.close_error stream he.message
+        (Pera_types.Types.Http { status = he.status })
   | Ok () -> finalise ()
 
 let create ~env ~sw =
@@ -132,7 +135,7 @@ let create ~env ~sw =
     | Error e ->
         failwith
           (Printf.sprintf "Openai_completions_provider.create: %s"
-             (Http_client.error_to_string e))
+             (Http_client.request_error_to_string e))
   in
   { client; api_key; compat }
 
