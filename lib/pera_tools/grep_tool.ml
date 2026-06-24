@@ -77,11 +77,7 @@ let handle_grep_output ~exit_code ~stdout_str ~stderr_str =
       let msg = if String.is_empty stderr_str then stdout_str else stderr_str in
       Error { Pera_types.Types.message = msg; is_user_error = false }
 
-let grep (env : (module Pera_env.Execution_env.S)) =
-  let module E = (val env : Pera_env.Execution_env.S) in
-  (* Memoised rg path: None = unchecked, Some None = not found,
-     Some (Some p) = found at p *)
-  let rg_path : string option option ref = ref None in
+let grep =
   Pera_core.Agent_types.Tool.create ~name:"grep"
     ~description:
       "Search for a regular expression pattern in files. Uses ripgrep (rg). \
@@ -89,33 +85,22 @@ let grep (env : (module Pera_env.Execution_env.S)) =
        grep fallback; ripgrep must be installed."
     ~schema:grep_schema ~parallel_safe:true
     ~execute:
-      (fun ~ctx:() ~args ~sw ~cancel ->
+      (fun ~ctx ~args ~sw ~cancel ->
+        let module E = (val ctx : Pera_env.Execution_env.S) in
         let open Result.Syntax in
         let* pattern = Tool_util.get_string "pattern" args in
         let path_opt = Tool_util.get_string_opt "path" args in
         let glob_opt = Tool_util.get_string_opt "glob" args in
-        (* Resolve rg path with memoisation *)
+        (* Resolve rg path *)
         let* rg =
-          match !rg_path with
-          | Some (Some p) -> Ok p
-          | Some None ->
+          match E.Sh.find_executable ~name:"rg" with
+          | Some p -> Ok p
+          | None ->
               Error
                 {
                   Pera_types.Types.message = rg_install_msg;
                   is_user_error = false;
                 }
-          | None -> (
-              match E.Sh.find_executable ~name:"rg" with
-              | Some p ->
-                  rg_path := Some (Some p);
-                  Ok p
-              | None ->
-                  rg_path := Some None;
-                  Error
-                    {
-                      Pera_types.Types.message = rg_install_msg;
-                      is_user_error = false;
-                    })
         in
         let cmd = build_rg_command ~rg ~pattern ~path_opt ~glob_opt in
         (* Resolve the env's current working directory so Sh.exec runs ripgrep

@@ -4,34 +4,32 @@
     write, bash, grep) from one execution environment. This is the canonical
     entry point for constructing all standard tools. *)
 
-type local_tool = unit Pera_core.Agent_types.tool
-(** Convenience alias: a tool whose constructor closes over its env and whose
-    execute receives [~ctx:()]. The loop config for these tools uses
-    [tool_ctx = ()]. *)
+type local_tool = (module Pera_env.Execution_env.S) Pera_core.Agent_types.tool
+(** Convenience alias: a tool whose execute receives [~ctx] as a first-class
+    module satisfying [Execution_env.S]. The loop config for these tools uses
+    [tool_ctx = exec_env]. *)
 
-val read : (module Pera_env.Execution_env.S) -> local_tool
-(** [read env] constructs a read tool. See {!Read_tool.read}. *)
+val read : local_tool
+(** [read] is a read tool. See {!Read_tool.read}. *)
 
-val write : (module Pera_env.Execution_env.S) -> local_tool
-(** [write env] constructs a write tool. See {!Write_tool.write}. *)
+val write : local_tool
+(** [write] is a write tool. See {!Write_tool.write}. *)
 
-val bash : (module Pera_env.Execution_env.S) -> local_tool
-(** [bash env] constructs a bash tool. See {!Bash_tool.bash}. *)
+val bash : local_tool
+(** [bash] is a bash tool. See {!Bash_tool.bash}. *)
 
-val grep : (module Pera_env.Execution_env.S) -> local_tool
-(** [grep env] constructs a grep tool. See {!Grep_tool.grep}. *)
+val grep : local_tool
+(** [grep] is a grep tool. See {!Grep_tool.grep}. *)
 
-val default : (module Pera_env.Execution_env.S) -> local_tool list
-(** [default env] returns [[read env; write env; bash env; grep env]]. This is
-    the standard assembly function for building all four tools from a single
-    execution environment.
+val default : local_tool list
+(** [default] returns [[read; write; bash; grep]]. This is the standard
+    assembly function for building all four tools.
 
-    Loop config wiring (for M5 harness):
+    Loop config wiring:
     {[
-      let env = Local_env.create ~env:eio_env ~cwd in
-      let tools = Tools.default env in
+      let tools = Tools.default in
       let config = {
-        tool_ctx = ();
+        tool_ctx = exec_env;
         tools;
         ... }
     ]} *)

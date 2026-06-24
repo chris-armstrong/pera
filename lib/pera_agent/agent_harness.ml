@@ -1,7 +1,7 @@
 open Containers
 
 type t = {
-  wrapper : unit Pera_harness.Agent_wrapper.t;
+  wrapper : (module Pera_env.Execution_env.S) Pera_harness.Agent_wrapper.t;
   writer : Pera_harness.Session_writer.t;
   mutable session_info_written : bool;
 }
@@ -25,7 +25,7 @@ let build_system_prompt tools =
   in
   let descs =
     List.map
-      (fun (t : unit Pera_core.Agent_types.tool) ->
+      (fun (t : (module Pera_env.Execution_env.S) Pera_core.Agent_types.tool) ->
         Printf.sprintf "- %s: %s"
           (Pera_core.Agent_types.Tool.name t)
           (Pera_core.Agent_types.Tool.description t))
@@ -108,7 +108,7 @@ let create ~config ~env ~sw =
     Pera_harness.Session_writer.create ~path:config.session_path ~env
       ~model:config.model ~cwd:config.cwd
   in
-  let tools = Pera_tools.Tools.default config.exec_env in
+  let tools = Pera_tools.Tools.default in
   let pending_compacted : Pera_core.Agent_types.agent_message list option ref =
     ref None
   in
@@ -162,7 +162,7 @@ let create ~config ~env ~sw =
         options;
         stream_fn = config.stream_fn;
         convert_to_llm;
-        tool_ctx = ();
+        tool_ctx = config.exec_env;
         tools;
         tool_execution = `Parallel;
         transform_context = None;

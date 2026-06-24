@@ -16,8 +16,7 @@ let bash_schema =
       ]
     ()
 
-let bash (env : (module Pera_env.Execution_env.S)) =
-  let module E = (val env : Pera_env.Execution_env.S) in
+let bash =
   let process_error ~error_msg buf =
     let partial = Buffer.contents buf in
     let msg =
@@ -47,7 +46,8 @@ let bash (env : (module Pera_env.Execution_env.S)) =
        surfaced as errors."
     ~schema:bash_schema ~parallel_safe:false
     ~execute:
-      (fun ~ctx:() ~args ~sw ~cancel ->
+      (fun ~ctx ~args ~sw ~cancel ->
+        let module E = (val ctx : Pera_env.Execution_env.S) in
         let open Result.Syntax in
         let* command = Tool_util.get_string "command" args in
         let timeout_opt = Tool_util.get_float_opt "timeout" args in

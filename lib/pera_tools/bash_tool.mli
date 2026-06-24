@@ -5,8 +5,9 @@
     lines or 256 KB. Non-zero exit codes and shell-level errors return
     [Error tool_error]. *)
 
-val bash : (module Pera_env.Execution_env.S) -> unit Pera_core.Agent_types.tool
-(** [bash env] constructs a bash tool that executes commands through [env].
+val bash : (module Pera_env.Execution_env.S) Pera_core.Agent_types.tool
+(** [bash] is a bash tool that executes commands through the execution
+    environment passed as [~ctx] at execute time.
 
     Schema arguments:
     - ["command"] (string, required): Bash command to execute.

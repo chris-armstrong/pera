@@ -3,8 +3,9 @@
     Reads a file from the execution environment and returns its content as
     [Tool_text], with truncation and offset/limit support. *)
 
-val read : (module Pera_env.Execution_env.S) -> unit Pera_core.Agent_types.tool
-(** [read env] constructs a read tool that reads files through [env].
+val read : (module Pera_env.Execution_env.S) Pera_core.Agent_types.tool
+(** [read] is a read tool that reads files through the execution environment
+    passed as [~ctx] at execute time.
 
     Schema arguments:
     - ["path"] (string, required): Path to the file to read.

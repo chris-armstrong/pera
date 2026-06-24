@@ -45,14 +45,14 @@ let read_schema =
       ]
     ()
 
-let read (env : (module Pera_env.Execution_env.S)) =
-  let module E = (val env : Pera_env.Execution_env.S) in
+let read =
   Pera_core.Agent_types.Tool.create ~name:"read"
     ~description:
       "Read a file. Output is automatically truncated to 2000 lines or 256 KB."
     ~schema:read_schema ~parallel_safe:true
     ~execute:
-      (fun ~ctx:() ~args ~sw ~cancel:_ ->
+      (fun ~ctx ~args ~sw ~cancel:_ ->
+        let module E = (val ctx : Pera_env.Execution_env.S) in
         let open Result.Syntax in
         let* path = Tool_util.get_string "path" args in
         let user_offset =

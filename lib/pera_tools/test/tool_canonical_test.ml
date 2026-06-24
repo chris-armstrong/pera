@@ -19,7 +19,7 @@ let run_tool_test
 
 let test_read_tool_schema_is_canonical () =
   run_tool_test (fun (module E) _sw ->
-      let tool = Read_tool.read (module E) in
+      let tool = Read_tool.read in
       let schema_json = Tool.schema tool |> Pera_connector.Json_schema.to_json in
       let actual = Yojson.Safe.to_string schema_json in
       let expected =
@@ -29,7 +29,7 @@ let test_read_tool_schema_is_canonical () =
 
 let test_write_tool_schema_is_canonical () =
   run_tool_test (fun (module E) _sw ->
-      let tool = Write_tool.write (module E) in
+      let tool = Write_tool.write in
       let schema_json = Tool.schema tool |> Pera_connector.Json_schema.to_json in
       let actual = Yojson.Safe.to_string schema_json in
       let expected =
@@ -39,7 +39,7 @@ let test_write_tool_schema_is_canonical () =
 
 let test_bash_tool_schema_is_canonical () =
   run_tool_test (fun (module E) _sw ->
-      let tool = Bash_tool.bash (module E) in
+      let tool = Bash_tool.bash in
       let schema_json = Tool.schema tool |> Pera_connector.Json_schema.to_json in
       let actual = Yojson.Safe.to_string schema_json in
       let expected =
@@ -49,7 +49,7 @@ let test_bash_tool_schema_is_canonical () =
 
 let test_grep_tool_schema_is_canonical () =
   run_tool_test (fun (module E) _sw ->
-      let tool = Grep_tool.grep (module E) in
+      let tool = Grep_tool.grep in
       let schema_json = Tool.schema tool |> Pera_connector.Json_schema.to_json in
       let actual = Yojson.Safe.to_string schema_json in
       let expected =
