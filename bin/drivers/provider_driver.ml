@@ -348,64 +348,72 @@ let () =
   Driver_log.setup ();
   let argv = Sys.argv in
   let argv1 = if Array.length argv > 1 then Some argv.(1) else None in
-  match argv1 with
-  | Some "thinking" -> (
-      match Sys.getenv_opt "ANTHROPIC_API_KEY" with
-      | None ->
-          print_endline "skipped: no API key";
-          exit 0
-      | Some _ -> run_thinking_scenario ())
-  | Some "openai-completions" ->
-      let default_oc_model = "gpt-4o-mini" in
-      let default_oc_prompt = "Say hello in one word." in
-      let default_oc_max_tokens = 16000 in
-      let remaining =
-        Array.to_list (Array.sub argv 2 (max 0 (Array.length argv - 2)))
-      in
-      let thinking = List.mem ~eq:String.equal "--thinking" remaining in
-      let positional =
-        List.filter (fun s -> not (String.equal s "--thinking")) remaining
-      in
-      let model_id =
-        match positional with x :: _ -> x | [] -> default_oc_model
-      in
-      let prompt_text =
-        match positional with _ :: x :: _ -> x | _ -> default_oc_prompt
-      in
-      let max_tokens =
-        match positional with
-        | _ :: _ :: x :: _ -> (
-            match int_of_string_opt x with
-            | Some n -> n
-            | None -> default_oc_max_tokens)
-        | _ -> default_oc_max_tokens
-      in
-      run_openai_completions_scenario ~model_id ~prompt_text ~max_tokens
-        ~thinking ()
-  | _ -> (
-      match Sys.getenv_opt "ANTHROPIC_API_KEY" with
-      | None ->
-          print_endline "skipped: no API key";
-          exit 0
-      | Some _ ->
-          let default_model = "claude-3-5-haiku-latest" in
-          let default_prompt =
-            "What is the weather like in Sydney right now?"
-          in
-          let default_max_tokens = 4096 in
-          let model_id = Option.value argv1 ~default:default_model in
-          let prompt_text =
-            if Array.length argv > 2 then argv.(2) else default_prompt
-          in
-          let max_tokens =
-            if Array.length argv > 3 then (
-              match int_of_string_opt argv.(3) with
+  try
+    match argv1 with
+    | Some "thinking" -> (
+        match Sys.getenv_opt "ANTHROPIC_API_KEY" with
+        | None ->
+            print_endline "skipped: no API key";
+            exit 0
+        | Some _ -> run_thinking_scenario ())
+    | Some "openai-completions" ->
+        let default_oc_model = "gpt-4o-mini" in
+        let default_oc_prompt = "Say hello in one word." in
+        let default_oc_max_tokens = 16000 in
+        let remaining =
+          Array.to_list (Array.sub argv 2 (max 0 (Array.length argv - 2)))
+        in
+        let thinking = List.mem ~eq:String.equal "--thinking" remaining in
+        let positional =
+          List.filter (fun s -> not (String.equal s "--thinking")) remaining
+        in
+        let model_id =
+          match positional with x :: _ -> x | [] -> default_oc_model
+        in
+        let prompt_text =
+          match positional with _ :: x :: _ -> x | _ -> default_oc_prompt
+        in
+        let max_tokens =
+          match positional with
+          | _ :: _ :: x :: _ -> (
+              match int_of_string_opt x with
               | Some n -> n
-              | None ->
-                  Log.warn (fun m ->
-                      m "invalid max_tokens %S, using %d" argv.(3)
-                        default_max_tokens);
-                  default_max_tokens)
-            else default_max_tokens
-          in
-          run_default_scenario ~model_id ~prompt_text ~max_tokens)
+              | None -> default_oc_max_tokens)
+          | _ -> default_oc_max_tokens
+        in
+        run_openai_completions_scenario ~model_id ~prompt_text ~max_tokens
+          ~thinking ()
+    | _ -> (
+        match Sys.getenv_opt "ANTHROPIC_API_KEY" with
+        | None ->
+            print_endline "skipped: no API key";
+            exit 0
+        | Some _ ->
+            let default_model = "claude-3-5-haiku-latest" in
+            let default_prompt =
+              "What is the weather like in Sydney right now?"
+            in
+            let default_max_tokens = 4096 in
+            let model_id = Option.value argv1 ~default:default_model in
+            let prompt_text =
+              if Array.length argv > 2 then argv.(2) else default_prompt
+            in
+            let max_tokens =
+              if Array.length argv > 3 then (
+                match int_of_string_opt argv.(3) with
+                | Some n -> n
+                | None ->
+                    Log.warn (fun m ->
+                        m "invalid max_tokens %S, using %d" argv.(3)
+                          default_max_tokens);
+                    default_max_tokens)
+              else default_max_tokens
+            in
+            run_default_scenario ~model_id ~prompt_text ~max_tokens)
+  with
+  | Failure msg ->
+      Printf.eprintf "provider_driver: %s\n%!" msg;
+      exit 2
+  | exn ->
+      Printf.eprintf "provider_driver crashed: %s\n%!" (Printexc.to_string exn);
+      exit 1

@@ -311,9 +311,14 @@ let () =
             let total = List.length scenarios in
             Printf.printf "%d/%d scenarios passed.\n" passed total;
             if passed = total then 0 else 1
-          with e ->
-            Printf.eprintf "live_driver crashed: %s\n%!" (Printexc.to_string e);
-            1
+          with
+          | Failure msg ->
+              Printf.eprintf "live_driver: %s\n%!" msg;
+              2
+          | exn ->
+              Printf.eprintf "live_driver crashed: %s\n%!"
+                (Printexc.to_string exn);
+              1
         in
         cleanup tmpdir;
         result
