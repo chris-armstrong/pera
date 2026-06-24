@@ -128,20 +128,21 @@ type session_config = {
 } [@@deriving sexp]
 
 type skills_config = {
-  dirs      : string list; (** Extra directories to search beyond XDG data dirs *)
-  available : string list; (** Filter by front-matter name; empty list = all *)
-  enabled   : bool;        (** false disables all skill loading from directories *)
+  dirs      : string list; [@sexp.default []]
+    (** Extra directories to search beyond XDG data dirs *)
+  available : string list; [@sexp.default []]
+    (** Filter by front-matter name; empty list = all *)
+  enabled   : bool option; [@sexp.option]
+    (** false disables all skill loading; absent = true *)
 } [@@deriving sexp]
-(** Skills are markdown files discovered from XDG data dirs and any [dirs]
-    listed here. Their front-matter descriptions are injected into the system
-    prompt as a stable suffix (cache-stable as long as the available set does
-    not change). Changing [available] or [dirs] invalidates the cache prefix;
-    this is noted in the flag and field documentation. *)
+(** Parsed in v1 but unused — skills loading is deferred to v2.
+    Kept in the config type so project .pera files can include skills
+    fields without breaking the parser when v2 ships. *)
 
 type compaction_config = {
   threshold : int  option; [@sexp.option]  (** % of context window; default 70 *)
   tail      : int  option; [@sexp.option]  (** turns kept verbatim; default 4 *)
-  enabled   : bool;                        (** false = --no-compact *)
+  enabled   : bool option; [@sexp.option]  (** false = --no-compact; absent = true *)
 } [@@deriving sexp]
 
 type output_config = {
@@ -161,6 +162,38 @@ type command_def = {
         Example: "Please review {args} for correctness and style." *)
 } [@@deriving sexp]
 
+(** Shell-backed tool argument type. See §Tool extension points §1. *)
+type shell_arg_type =
+  | String of { description : string }
+  | Int    of { description : string; min : int option; max : int option }
+[@@deriving sexp]
+
+type shell_arg = {
+  name     : string;
+  arg_type : shell_arg_type;
+} [@@deriving sexp]
+
+(** A config-defined shell-backed tool. See §Tool extension points §1. *)
+type shell_tool_def = {
+  name          : string;
+  description   : string;
+  command       : string;
+    (** Template string; {arg_name} is shell-quoted and substituted. *)
+  parallel_safe : bool;
+  args          : shell_arg list;  (** empty = no-arg tool *)
+} [@@deriving sexp]
+
+(** MCP server transport. See §Tool extension points §2. Deferred to v2. *)
+type mcp_transport =
+  | Stdio of { command : string list }
+  | Http  of { url : string }
+[@@deriving sexp]
+
+type mcp_server_def = {
+  name      : string;
+  transport : mcp_transport;
+} [@@deriving sexp]
+
 type config = {
   auth        : auth_config        option; [@sexp.option]
   model       : model_config       option; [@sexp.option]
@@ -169,10 +202,14 @@ type config = {
   skills      : skills_config      option; [@sexp.option]
   compaction  : compaction_config  option; [@sexp.option]
   output      : output_config      option; [@sexp.option]
-  commands    : command_def list;
+  commands    : command_def list;   [@sexp.default []]
     (** User-defined slash commands, separate from skill-file invocations.
         Both skills and commands are reachable as /<name> in interactive mode;
         name collision: command_def wins (explicit beats discovered). *)
+  tools       : shell_tool_def list; [@sexp.default []]
+    (** Config-defined shell-backed tools. See §Tool extension points §1. *)
+  mcp_servers : mcp_server_def list; [@sexp.default []]
+    (** MCP server definitions. See §Tool extension points §2. Deferred to v2. *)
 } [@@deriving sexp]
 ```
 
@@ -254,6 +291,29 @@ type config = {
     (description "Explain a file or symbol")
     (template "Explain what {args} does, in plain language."))))
 ```
+
+---
+
+## Session file naming
+
+When neither `--session` nor a pre-existing session path is supplied, `pera-cli`
+generates a filename inside the session directory:
+
+```
+<YYYYMMDD>_<HHMMSS>_<uuid>.jsonl
+```
+
+Example: `20260624_143022_550e8400-e29b-41d4-a716-446655440000.jsonl`
+
+- Timestamp is local wall-clock time at session start, formatted as
+  `YYYYMMDD_HHMMSS`. This makes sessions sort chronologically in `ls` output.
+- UUID is generated with `Uuidm.v4_gen` (already in the project). It doubles as
+  the **session ID** — the identifier written into JSONL session entries and
+  surfaced in `/info` output.
+- The `.jsonl` extension is always appended.
+
+`PERA_SESSION` overrides the entire path; `PERA_SESSION_DIR` / `--session-dir`
+override the directory only (the timestamp+UUID filename is still generated).
 
 ---
 
@@ -359,6 +419,55 @@ directories are shadowed by those from later directories.
 
 ---
 
+## System prompt construction
+
+`pera-cli` assembles the system prompt before creating the harness and passes
+it via a new `system_prompt : string` field added to `agent_harness.config`
+(this is part of the prerequisite refactor — see §Tool refactor required by Q7).
+The existing `build_system_prompt` function in `agent_harness.ml` is removed;
+`agent_harness` no longer owns a default.
+
+**v1 assembly (skills deferred to v2):**
+
+The system prompt is just `base_text`:
+
+- `base_text` — from `--system` / `--system-file` if either is supplied;
+  otherwise the built-in default (below). `--system` and `--system-file` are
+  mutually exclusive; supplying both is a startup error.
+
+**v2 note:** when skills land, a `<available_skills>` block will be appended as
+a stable suffix after `base_text`. The assembly function in `pera-cli` is the
+right place to add it; no v1 API changes are required.
+
+**Built-in default text** (moved from `agent_harness.ml`; tool listing dropped
+— tools are already in `Provider.context.tools` and visible to the model natively):
+
+```
+You are a helpful coding assistant. Work methodically, verify your understanding before acting, and prefer small targeted changes.
+```
+
+**`agent_harness.config` change required:**
+
+```ocaml
+type config = {
+  cwd           : string;
+  model         : Pera_types.Types.model;
+  session_path  : string;
+  stream_fn     : Pera_core.Agent_types.stream_fn;
+  max_tokens    : int;
+  exec_env      : (module Pera_env.Execution_env.S);
+  system_prompt : string;                  (* NEW — assembled by pera-cli *)
+  effort        : Pera_types.Types.effort option;  (* NEW — harness maps to thinking+budget *)
+  compaction    : compaction_config option;
+}
+```
+
+**Cache-stability note:** changing `--system` or `--system-file` changes
+`Provider.context.system` and invalidates the Anthropic cache entirely. This
+is expected and unavoidable.
+
+---
+
 ## Built-in slash commands
 
 Available in interactive (tty) mode only:
@@ -398,8 +507,8 @@ No component below `bin/pera/` reads environment variables.
 | `PERA_SESSION` | Explicit session file path |
 | `PERA_SESSION_DIR` | `session.dir` |
 | `PERA_CWD` | Working directory for tools |
-| `PERA_SKILLS_DIR` | Prepended to `skills.dirs` |
-| `PERA_SKILLS` | `skills.available` (comma-separated) |
+| `PERA_SKILLS_DIR` | Prepended to `skills.dirs` — **deferred to v2** |
+| `PERA_SKILLS` | `skills.available` (comma-separated) — **deferred to v2** |
 | `PERA_NO_COMPACT` | `compaction.enabled = false` |
 | `PERA_COMPACT_THRESHOLD` | `compaction.threshold` |
 | `PERA_COMPACT_TAIL` | `compaction.tail` |
@@ -429,10 +538,10 @@ mutually exclusive; if more than one is set, the binary fails loudly.
 | `--cwd` | — | Process cwd | |
 | `--system` | — | Built-in | Literal system prompt override |
 | `--system-file` | — | — | Load system prompt from file |
-| `--skills-dir` | Prepends `skills.dirs` | — | Repeatable |
-| `--skills` | `skills.available` | all | Comma-separated; cache note in docs |
-| `--skill` | — | — | Inject body at startup; repeatable |
-| `--no-skills` | `skills.enabled = false` | — | Disable XDG skill loading |
+| `--skills-dir` | Prepends `skills.dirs` | — | **Deferred to v2** |
+| `--skills` | `skills.available` | all | **Deferred to v2** |
+| `--skill` | — | — | **Deferred to v2** |
+| `--no-skills` | `skills.enabled = false` | — | **Deferred to v2** |
 | `--no-compact` | `compaction.enabled = false` | — | |
 | `--compact-threshold` | `compaction.threshold` | 70 | |
 | `--compact-tail` | `compaction.tail` | 4 | |
@@ -442,6 +551,7 @@ mutually exclusive; if more than one is set, the binary fails loudly.
 | `--json` | — | — | Newline-delimited JSON events |
 | `--verbose` | — | — | Tool args, cache warnings, compaction |
 
+**Deferred to v2 (skills):** `--skills-dir`, `--skills`, `--skill`, `--no-skills`.
 **Deferred to M7:** `--compact-model` / `compaction.model`.
 **Deferred (batch mode):** `--max-turns`.
 
@@ -456,32 +566,9 @@ the agent loop starts.
 
 ### 1 — Shell-backed tool definitions (config, v1)
 
-Defined in the `tools` config section. Each entry becomes a real tool the
-LLM can call; execution goes through the existing bash execution path with
-a fixed command template.
-
-```ocaml
-type shell_arg_type =
-  | String of { description : string }
-  | Int    of { description : string; min : int option; max : int option }
-[@@deriving sexp]
-
-type shell_arg = {
-  name    : string;
-  arg_type : shell_arg_type;
-} [@@deriving sexp]
-
-type shell_tool_def = {
-  name          : string;
-  description   : string;
-  command       : string;
-    (** Template string. Arg substitution: {arg_name} → value provided by LLM.
-        No args = the command is called as-is; the tool schema has no parameters.
-        Args are shell-quoted before substitution. *)
-  parallel_safe : bool;
-  args          : shell_arg list;  (* empty = no-arg tool *)
-} [@@deriving sexp]
-```
+Defined in the `tools` config section (see `shell_tool_def` in §OCaml types).
+Each entry becomes a real tool the LLM can call; execution goes through the
+existing bash execution path with a fixed command template.
 
 **Command template substitution:**
 - `{arg_name}` is replaced by the LLM-provided value, quoted with
@@ -502,21 +589,8 @@ a `tool_error`; the LLM sees an error result and can adapt.
 ### 2 — MCP servers (config, v2 target)
 
 Defined in the `mcp_servers` config section. Each entry specifies a server
-process; pera acts as an MCP client.
-
-```ocaml
-type mcp_transport =
-  | Stdio of { command : string list }
-    (** Spawn subprocess; communicate over stdin/stdout *)
-  | Http  of { url : string }
-    (** Connect to running server over HTTP/SSE *)
-[@@deriving sexp]
-
-type mcp_server_def = {
-  name      : string;
-  transport : mcp_transport;
-} [@@deriving sexp]
-```
+process; pera acts as an MCP client. Types `mcp_transport` and
+`mcp_server_def` are defined in §OCaml types.
 
 **Protocol:** JSON-RPC 2.0, MCP spec v2024-11 (current stable at time of
 writing). Startup sequence: `initialize` → `tools/list`. Each tool call:
@@ -588,32 +662,22 @@ end
 ```ocaml
 (* bin/pera/main.ml *)
 module Cli = Pera_cli.Make (struct
-  type ctx = unit
-  (* Local_env tools capture the env in their closures; ctx is unused. *)
+  type ctx = (module Pera_env.Execution_env.S)
+  (* ctx IS the env module; it is passed as ~ctx to every tool execute call. *)
 
   let create ~env ~sw:_ ~cwd =
-    ignore (Pera_env.Local_env.create ~env ~cwd)
+    Pera_env.Local_env.create ~env ~cwd
 
-  let tools () =
-    (* env is captured inside each tool's execute closure at construction time *)
-    let env_module = (* passed down from create; see wiring note below *) in
-    Pera_tools.Tools.default env_module
+  let tools _ctx =
+    (* Post-refactor: tools are (module Execution_env.S) tool constants.
+       The env module arrives via ~ctx at execute time, not at construction. *)
+    Pera_tools.Tools.default
 
   let has_shell = true
 end)
 
 let () = Cli.run ()
 ```
-
-`[?-7]` **Wiring `create` output to `tools`:** the `ctx` value from `create`
-must reach `tools`. The simplest design: `create` returns `ctx` and `tools`
-receives it. But for `Local_env` where `ctx = unit` and the env is a
-side-effecting value, this means the `Local_env.t` handle must either be
-stored in a ref by `create` or the `ctx` type carries it. Proposal: `ctx`
-carries the env handle; for `Local_env` that means `type ctx =
-(module Execution_env.S)` rather than `unit`, and tools receive the module
-directly (matching the current tool signatures). This is a minor refactor of
-`agent_harness` but makes `Env.create → Env.tools` composable.
 
 **A custom binary with SSH env:**
 
@@ -642,8 +706,11 @@ skills, MCP tools from config, and the interactive loop for free — only the
 env and tool set differ.
 
 **Config-defined shell tools and MCP** interact with the `Env` as follows:
-- Shell tools from `tools` config section: constructed and added if
-  `E.has_shell = true`; skipped with a warning if false.
+- Shell tools from `tools` config section: for the standard `pera` binary,
+  `has_shell = true` is unconditional — all config-defined shell tools are
+  always constructed. Custom library binaries that set `has_shell = false`
+  will see shell tools skipped with a warning; this is a library concern,
+  not a user-facing CLI concern.
 - MCP tools: always added regardless of `E.has_shell`. MCP servers are
   external processes; they do not go through `Execution_env.S`.
 - `exec_env` is NOT a config field — it is a compile-time choice encoded in
@@ -663,11 +730,39 @@ variants pera currently tests against, plus kimi-k2.6. The table is a static
 
 ---
 
-## `--effort` thresholds
+## `--effort` thresholds and wiring
 
-`[?-4]` **Thinking budget values for `medium` and `high`.** `low` = 0 (no
-thinking). Proposal: `medium` = 8 000, `high` = 32 000. These are guesses;
-defer to whatever pi uses or what empirical testing shows is useful.
+`effort` flows from config/CLI into `agent_harness.config.effort`, which the
+harness maps to `thinking : bool` and `thinking_budget_tokens : int option`
+before building the loop config.
+
+**Mapping:**
+
+| Effort | `thinking` | `thinking_budget_tokens` |
+|---|---|---|
+| `Low` (default) | `false` | `None` |
+| `Medium` | `true` | `Some 8_000` |
+| `High` | `true` | `Some 32_000` |
+
+`[?-4]` The `medium` = 8 000 and `high` = 32 000 values are provisional; adjust
+from empirical testing.
+
+**Stack changes required:**
+
+1. `Provider.simple_stream_options` gets a new field:
+   ```ocaml
+   thinking_budget_tokens : int option;
+   (* None = thinking disabled or provider default. Passed as
+      thinking.budget_tokens in Anthropic requests when thinking=true. *)
+   ```
+2. `agent_harness` maps `effort` to `(thinking, budget)` and passes both to
+   the loop config. The loop no longer hardcodes `~thinking:false`.
+3. `Anthropic_request` reads `thinking_budget_tokens` from `simple_stream_options`
+   and emits the `thinking` block and `betas` header when non-None.
+
+`Low` effort (thinking disabled) is the default; no `betas` header is emitted
+and no budget is set, preserving existing behaviour for callers that do not
+set effort.
 
 ---
 
@@ -680,7 +775,7 @@ defer to whatever pi uses or what empirical testing shows is useful.
 | 3 | Which models in the built-in context-window table? | claude-* tested variants + kimi-k2.6 |
 | 4 | `--effort` thresholds for medium and high? | 8 000 / 32 000 tokens |
 | 5 | MCP tool naming collisions? | Built-ins win; colliding MCP tools prefixed `<server>__<tool>` |
-| 7 | `Env.create` → `Env.tools` wiring: does `ctx` carry the env handle? | **Settled: yes.** `type ctx = (module Execution_env.S)` for default binary. See tool refactor note below. |
+| 7 | `Env.create` → `Env.tools` wiring: does `ctx` carry the env handle? | **Settled: yes.** `type ctx = (module Execution_env.S)` for default binary. `Env.tools _ctx = Pera_tools.Tools.default`. |
 
 ---
 
@@ -733,15 +828,17 @@ pera-types      (unchanged)
 pera-provider   (unchanged)
 pera-core       (unchanged)
 pera-env        (unchanged)
-pera-tools      (unchanged)
+pera-tools      (modified — tool refactor: unit tool → (module Execution_env.S) tool)
 pera-harness    (unchanged)
-pera-agent      (unchanged)
+pera-agent      (modified — tool refactor: add system_prompt to config; remove build_system_prompt)
 pera-cli        (new library — reusable CLI wiring, generic over Env)
 pera            (executable — Pera_cli.Make(Local_env + default tools))
 ```
 
-`pera-cli` depends on all libraries above it. A third-party custom binary
-depends on `pera-cli` plus their own env library.
+`pera-cli` depends on all libraries above it, including `pera-agent`.
+The standard `pera` binary therefore only needs to depend on `pera-cli` —
+it gets `pera-agent` (and everything below it) transitively.
+A third-party custom binary depends on `pera-cli` plus their own env library.
 
 ---
 
@@ -751,10 +848,15 @@ depends on `pera-cli` plus their own env library.
 |---|---|---|
 | `sexplib` | S-expression parsing and printing | v1 (config) |
 | `ppx_sexp_conv` | Derive `sexp_of` / `of_sexp` for config types | v1 (config) |
-| `xdge` | Eio-native XDG base directory resolution + Cmdliner terms | v1 (CLI) |
-| `cmdliner` | CLI argument parsing (transitive via `xdge`; declare explicitly) | v1 (CLI) |
+| `cmdliner` | CLI argument parsing | v1 (CLI) |
 | `jsonrpc` | JSON-RPC framing for MCP client implementation | v2 (MCP) |
 | `cohttp-eio` | HTTP transport for MCP HTTP/SSE servers (already in project) | v2 (MCP) |
+
+**Note on XDG:** No opam library is needed. XDG base directory resolution is
+~25 lines of env-var lookups with standard fallbacks
+(`$XDG_CONFIG_HOME` → `~/.config`, `$XDG_STATE_HOME` → `~/.local/state`,
+`$XDG_DATA_HOME` → `~/.local/share`, `$XDG_DATA_DIRS` → `/usr/local/share:/usr/share`).
+This is implemented inline in `pera-cli` as a small `Xdg` submodule.
 
 ---
 
