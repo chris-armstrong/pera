@@ -63,7 +63,7 @@ let as_provider scripts =
     type t = unit
 
     let name = "Faux"
-    let create ~env:_ ~sw:_ = ()
+    let create ~api_key:_ ~env:_ ~sw:_ = ()
 
     let stream_simple () ~model ~context ~options ~sw =
       fn ~model ~context ~options ~sw

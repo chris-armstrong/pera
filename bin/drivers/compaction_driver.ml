@@ -190,7 +190,7 @@ let scenario_real_model ~env =
   in
   let result =
     Eio.Switch.run @@ fun sw ->
-    let adapter = Connector_adapter.create ~registry ~env ~sw in
+    let adapter = Connector_adapter.create ~registry ~api_key:(Option.get_exn_or "ANTHROPIC_API_KEY" (Sys.getenv_opt "ANTHROPIC_API_KEY")) ~env ~sw in
     let stream_fn = Connector_adapter.stream_fn adapter in
     Pera_harness.Compaction.compact ~stream_fn ~model ~options ~messages
       ~tail_size ~sw

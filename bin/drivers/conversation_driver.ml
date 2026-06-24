@@ -87,7 +87,7 @@ let () =
   Printf.printf "model:    %s\n%!" model.Types.id;
   Eio_main.run @@ fun env ->
   Eio.Switch.run @@ fun sw ->
-  let adapter = Connector_adapter.create ~registry ~env ~sw in
+  let adapter = Connector_adapter.create ~registry ~api_key:(Option.get_exn_or "ANTHROPIC_API_KEY" (Sys.getenv_opt "ANTHROPIC_API_KEY")) ~env ~sw in
   let stream_fn = Connector_adapter.stream_fn adapter in
   let results =
     match scenario_name with

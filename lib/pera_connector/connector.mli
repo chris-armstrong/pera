@@ -85,10 +85,11 @@ module type S = sig
   val name : string
   (** Human-readable provider name used in provenance records. *)
 
-  val create : env:Eio_unix.Stdenv.base -> sw:Eio.Switch.t -> t
-  (** [create ~env ~sw] initialises a provider instance bound to [sw].
-      Establishes any persistent connections needed for {!stream_simple} calls.
-      The instance is valid for the lifetime of [sw]. *)
+  val create : api_key:string -> env:Eio_unix.Stdenv.base -> sw:Eio.Switch.t -> t
+  (** [create ~api_key ~env ~sw] initialises a connector instance bound to [sw]
+      with the given [api_key]. Establishes any persistent connections needed
+      for {!stream_simple} calls. The instance is valid for the lifetime of
+      [sw]. *)
 
   val stream_simple :
     t ->

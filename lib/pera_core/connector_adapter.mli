@@ -12,12 +12,13 @@ type t
 
 val create :
   registry:Pera_connector.Connector_registry.t ->
+  api_key:string ->
   env:Eio_unix.Stdenv.base ->
   sw:Eio.Switch.t ->
   t
-(** [create ~registry ~env ~sw] iterates the registry. For each
+(** [create ~registry ~api_key ~env ~sw] iterates the registry. For each
     [(api_name, (module P : Connector.S))]:
-    - [let inst = P.create ~env ~sw]
+    - [let inst = P.create ~api_key ~env ~sw]
     - [let fn ~model ~context ~options ~sw = P.stream_simple inst ~model
        ~context ~options ~sw]
     - [(api_name, fn)] is added to the list.

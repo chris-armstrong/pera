@@ -7,8 +7,8 @@ type t = entry list
 (** The adapter is an immutable list of entries, built eagerly at create. *)
 
 (** Build one adapter entry from a registry pair. *)
-let build_entry ~env ~sw (api_name, (module P : Pera_connector.Connector.S)) =
-  let inst = P.create ~env ~sw in
+let build_entry ~api_key ~env ~sw (api_name, (module P : Pera_connector.Connector.S)) =
+  let inst = P.create ~api_key ~env ~sw in
   let fn ~model ~context ~options ~sw =
     P.stream_simple inst ~model ~context ~options ~sw
   in
@@ -22,9 +22,9 @@ let error_stream ~sw api_name =
       Pera_connector.Event_stream.close_internal_error stream msg);
   stream
 
-let create ~registry ~env ~sw =
+let create ~registry ~api_key ~env ~sw =
   let providers = Pera_connector.Connector_registry.to_list registry in
-  List.map (build_entry ~env ~sw) providers
+  List.map (build_entry ~api_key ~env ~sw) providers
 
 let stream_fn adapter =
  fun ~model ~context ~options ~sw ->

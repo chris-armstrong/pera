@@ -89,12 +89,7 @@ let do_request ~provider ~model ~context ~options ~sw:_ stream =
         (Http_client.error_to_string http_err) stop_err
   | Ok () -> finalise ()
 
-let create ~env ~sw =
-  let api_key =
-    match Sys.getenv_opt "ANTHROPIC_API_KEY" with
-    | Some k -> k
-    | None -> failwith "ANTHROPIC_API_KEY environment variable is not set"
-  in
+let create ~api_key ~env ~sw =
   let client =
     match Http_client.create ~env ~sw anthropic_base_url with
     | Ok c -> c
@@ -104,6 +99,11 @@ let create ~env ~sw =
              (Http_client.error_to_string e))
   in
   { client; api_key }
+
+let create_from_env ~env ~sw =
+  match Sys.getenv_opt "ANTHROPIC_API_KEY" with
+  | Some k -> Ok (create ~api_key:k ~env ~sw)
+  | None -> Error "ANTHROPIC_API_KEY environment variable is not set"
 
 let stream_simple provider ~model ~context ~options ~sw =
   let stream :

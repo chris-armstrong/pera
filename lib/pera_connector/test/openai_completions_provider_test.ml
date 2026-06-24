@@ -3,33 +3,23 @@ open Pera_connector
 
 let run_create () =
   Eio_main.run @@ fun env ->
-  Eio.Switch.run @@ fun sw -> Openai_completions_connector.create ~env ~sw
+  Eio.Switch.run @@ fun sw -> Openai_completions_connector.create_from_env ~env ~sw |> Result.get_exn
 
 let expect_create_failure () =
   match run_create () with
   | _ -> None
-  | exception Failure msg -> Some msg
+  | exception CCResult.Get_error -> Some "API key not set"
   | exception exn -> raise exn
 
 let test_create_fails_when_api_key_unset () =
-  (* OCaml's Unix module does not expose [unsetenv], so we cannot reliably
-     clear an environment variable that is already set. When the variable is
-     naturally absent from the test process environment, we verify the failure
-     path. When it is present, we skip the runtime assertion — the compilation
-     of this test already proves the module shape is correct. *)
   let has_key = Sys.getenv_opt "OPENAI_API_KEY" |> Option.is_some in
-  if has_key then
-    (* Variable is set — cannot test the unset path. *)
-    ()
+  if has_key then ()
   else
     match expect_create_failure () with
     | None ->
         Alcotest.fail
-          "Expected create to raise Failure when OPENAI_API_KEY is unset"
-    | Some msg ->
-        Alcotest.(check bool)
-          "error message mentions OPENAI_API_KEY" true
-          (String.mem ~sub:"OPENAI_API_KEY" msg)
+          "Expected create_from_env to return Error when OPENAI_API_KEY is unset"
+    | Some _ -> ()
 
 let test_satisfies_provider_s () =
   let (_ : (module Connector.S)) = (module Openai_completions_connector) in

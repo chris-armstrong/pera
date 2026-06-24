@@ -110,12 +110,7 @@ let do_request ~provider ~model ~context ~options ~sw:_ stream =
         (Http_client.error_to_string http_err) stop_err
   | Ok () -> finalise ()
 
-let create ~env ~sw =
-  let api_key =
-    match Sys.getenv_opt "OPENAI_API_KEY" with
-    | Some k -> k
-    | None -> failwith "OPENAI_API_KEY environment variable is not set"
-  in
+let create ~api_key ~env ~sw =
   let base_compat =
     match Sys.getenv_opt "OPENAI_COMPAT" with
     | Some preset -> Openai_completions_request.compat_of_string preset
@@ -140,6 +135,11 @@ let create ~env ~sw =
              (Http_client.error_to_string e))
   in
   { client; api_key; compat }
+
+let create_from_env ~env ~sw =
+  match Sys.getenv_opt "OPENAI_API_KEY" with
+  | Some k -> Ok (create ~api_key:k ~env ~sw)
+  | None -> Error "OPENAI_API_KEY environment variable is not set"
 
 let stream_simple provider ~model ~context ~options ~sw =
   let stream :

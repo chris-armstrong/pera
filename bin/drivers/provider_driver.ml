@@ -108,7 +108,7 @@ let run_default_scenario ~model_id ~prompt_text ~max_tokens =
   Printf.printf "---\n%!";
   Eio_main.run @@ fun env ->
   Eio.Switch.run @@ fun sw ->
-  let provider = Anthropic_connector.create ~env ~sw in
+  let provider = Anthropic_connector.create_from_env ~env ~sw |> Result.get_exn in
   let stream =
     Anthropic_connector.stream_simple provider ~model ~context ~options ~sw
   in
@@ -163,7 +163,7 @@ let run_thinking_scenario () =
   Printf.printf "---\n%!";
   Eio_main.run @@ fun env ->
   Eio.Switch.run @@ fun sw ->
-  let provider = Anthropic_connector.create ~env ~sw in
+  let provider = Anthropic_connector.create_from_env ~env ~sw |> Result.get_exn in
   let stream =
     Anthropic_connector.stream_simple provider ~model ~context ~options ~sw
   in
@@ -251,7 +251,7 @@ let run_openai_completions_scenario ~model_id ~prompt_text ~max_tokens
               context_window = 128_000;
             }
         in
-        let provider = Openai_completions_connector.create ~env ~sw in
+        let provider = Openai_completions_connector.create_from_env ~env ~sw |> Result.get_exn in
         Printf.printf "(request sent, waiting for first token...)\n%!";
         let stream =
           Openai_completions_connector.stream_simple provider ~model ~context

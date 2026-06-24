@@ -196,7 +196,7 @@ let scenario_bash_echo ~model ~tmpdir ~env ~registry =
   Eio.Switch.run @@ fun sw ->
   let session_path = Filename.concat tmpdir "bash_echo.jsonl" in
   let sentinel = "pera_echo_42" in
-  let adapter = Connector_adapter.create ~registry ~env ~sw in
+  let adapter = Connector_adapter.create ~registry ~api_key:(Option.get_exn_or "ANTHROPIC_API_KEY" (Sys.getenv_opt "ANTHROPIC_API_KEY")) ~env ~sw in
   let stream_fn = Connector_adapter.stream_fn adapter in
   let exec_env = Pera_env.Local_env.create ~env ~cwd:tmpdir in
   let config =
@@ -224,7 +224,7 @@ let scenario_read_preseeded ~model ~tmpdir ~env ~registry =
     with_open_text seed_file (fun oc -> output_string oc sentinel));
   Eio.Switch.run @@ fun sw ->
   let session_path = Filename.concat tmpdir "read_preseeded.jsonl" in
-  let adapter = Connector_adapter.create ~registry ~env ~sw in
+  let adapter = Connector_adapter.create ~registry ~api_key:(Option.get_exn_or "ANTHROPIC_API_KEY" (Sys.getenv_opt "ANTHROPIC_API_KEY")) ~env ~sw in
   let stream_fn = Connector_adapter.stream_fn adapter in
   let exec_env = Pera_env.Local_env.create ~env ~cwd:tmpdir in
   let config =
@@ -249,7 +249,7 @@ let scenario_multi_turn ~model ~tmpdir ~env ~registry =
   let session_path = Filename.concat tmpdir "multi_turn.jsonl" in
   let data_file = Filename.concat tmpdir "mt_data.txt" in
   let sentinel = "pera_token_789" in
-  let adapter = Connector_adapter.create ~registry ~env ~sw in
+  let adapter = Connector_adapter.create ~registry ~api_key:(Option.get_exn_or "ANTHROPIC_API_KEY" (Sys.getenv_opt "ANTHROPIC_API_KEY")) ~env ~sw in
   let stream_fn = Connector_adapter.stream_fn adapter in
   let exec_env = Pera_env.Local_env.create ~env ~cwd:tmpdir in
   let config =
