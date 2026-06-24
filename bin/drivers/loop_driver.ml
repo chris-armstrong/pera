@@ -1,7 +1,7 @@
 open Containers
 open Pera_core
 open Pera_core_test_util
-open Pera_provider
+open Pera_connector
 open Pera_types
 
 let src = Logs.Src.create "pera.driver.loop" ~doc:"Loop driver"
@@ -36,7 +36,7 @@ let make_assistant_message ?(stop_reason = Types.EndTurn) text =
 (** Build an [agent_message] wrapping a user message. *)
 let make_user_agent_message text =
   let um = Types.{ role = "user"; content = [ UText text ] } in
-  Agent_types.Real (Provider.UserMessage um)
+  Agent_types.Real (Connector.UserMessage um)
 
 (** Build an assistant message with tool calls and ToolUse stop_reason. *)
 let make_tool_use_message tool_calls =
@@ -74,7 +74,7 @@ let test_model =
 
 (** Default options for loop calls. *)
 let test_options =
-  Provider.
+  Connector.
     {
       max_tokens = 1024;
       temperature = None;
@@ -848,7 +848,7 @@ let scenario_transform_context_applied sw =
   in
   let injected =
     Agent_types.Real
-      (Provider.UserMessage
+      (Connector.UserMessage
          Types.{ role = "user"; content = [ Types.UText "INJECTED" ] })
   in
   let transform_context = Some (fun msgs -> msgs @ [ injected ]) in
@@ -866,14 +866,14 @@ let scenario_transform_context_applied sw =
           let found =
             List.exists
               (function
-                | Provider.UserMessage um ->
+                | Connector.UserMessage um ->
                     List.exists
                       (function
                         | Types.UText s -> String.equal s "INJECTED"
                         | _ -> false)
                       um.Types.content
                 | _ -> false)
-              ctx.Provider.messages
+              ctx.Connector.messages
           in
           Printf.printf "    injected_found=%b\n%!" found;
           found)
@@ -1016,7 +1016,7 @@ let scenario_thinking_blocks sw =
         List.exists
           (function
             | Agent_types.AE_message_end
-                { message = Real (Provider.AssistantMessage am) } ->
+                { message = Real (Connector.AssistantMessage am) } ->
                 List.exists
                   (function Types.AThinking _ -> true | _ -> false)
                   am.content

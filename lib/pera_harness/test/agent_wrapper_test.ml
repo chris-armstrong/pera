@@ -8,7 +8,7 @@ let test_model =
   Pera_types.Types.{ id = "test-model"; api = "faux"; context_window = 200_000 }
 
 let test_options =
-  Pera_provider.Provider.
+  Pera_connector.Connector.
     {
       max_tokens = 1024;
       temperature = None;
@@ -52,7 +52,7 @@ let make_tool_call id name arguments = Pera_types.Types.{ id; name; arguments }
 
 let make_user_agent_message text =
   let um = Pera_types.Types.{ role = "user"; content = [ UText text ] } in
-  Pera_core.Agent_types.Real (Pera_provider.Provider.UserMessage um)
+  Pera_core.Agent_types.Real (Pera_connector.Connector.UserMessage um)
 
 let make_text_turn_script text =
   let partial_msg = make_text_assistant_message "" in
@@ -92,7 +92,7 @@ let make_tool_use_turn_script tool_calls =
       }
 
 let empty_schema =
-  Pera_provider.Json_schema.object_ ~properties:[] ~required:[] ()
+  Pera_connector.Json_schema.object_ ~properties:[] ~required:[] ()
 
 (* ── Config helper ───────────────────────────────────────────────────────── *)
 

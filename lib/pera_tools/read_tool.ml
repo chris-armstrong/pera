@@ -23,22 +23,22 @@ let format_footer ~truncated ~output_lines ~total_lines ~next_offset
   else ""
 
 let read_schema =
-  Pera_provider.Json_schema.object_ ~required:[ "path" ]
+  Pera_connector.Json_schema.object_ ~required:[ "path" ]
     ~properties:
       [
         ( "path",
-          Pera_provider.Json_schema.string
+          Pera_connector.Json_schema.string
             ~description:"Path to read (use absolute path when possible)." () );
         ( "offset",
-          Pera_provider.Json_schema.optional
-            (Pera_provider.Json_schema.integer
+          Pera_connector.Json_schema.optional
+            (Pera_connector.Json_schema.integer
                ~description:
                  "Start reading from this line number (1-indexed). Default is \
                   0 (beginning)."
                ()) );
         ( "limit",
-          Pera_provider.Json_schema.optional
-            (Pera_provider.Json_schema.integer
+          Pera_connector.Json_schema.optional
+            (Pera_connector.Json_schema.integer
                ~description:
                  "Maximum number of lines to return. Default is 2000."
                ()) );

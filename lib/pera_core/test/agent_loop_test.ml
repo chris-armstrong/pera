@@ -101,7 +101,7 @@ let test_single_text_turn_emits_lifecycle_and_final_messages () =
         |> Option.get_exn_or "expected second message"
       in
       match assistant_msg with
-      | Agent_types.Real (Pera_provider.Provider.AssistantMessage am) -> (
+      | Agent_types.Real (Pera_connector.Connector.AssistantMessage am) -> (
           match am.content with
           | [ Pera_types.Types.AText t ] ->
               Alcotest.(check string) "assistant text" "hello" t
@@ -138,9 +138,9 @@ let test_transform_context_applied_before_convert_to_llm () =
   in
   Alcotest.(check int)
     "recorded context has one message (transform dropped the first)" 1
-    (List.length ctx.Pera_provider.Provider.messages);
-  match List.nth_opt ctx.Pera_provider.Provider.messages 0 with
-  | Some (Pera_provider.Provider.UserMessage { content = [ UText t ]; _ }) ->
+    (List.length ctx.Pera_connector.Connector.messages);
+  match List.nth_opt ctx.Pera_connector.Connector.messages 0 with
+  | Some (Pera_connector.Connector.UserMessage { content = [ UText t ]; _ }) ->
       Alcotest.(check string)
         "remaining message is the second one" "second message (kept)" t
   | _ -> Alcotest.fail "expected UserMessage with UText content"
@@ -291,10 +291,10 @@ let test_steering_message_injected_on_next_iteration () =
     List.exists
       (fun msg ->
         match msg with
-        | Pera_provider.Provider.UserMessage { content = [ UText t ]; _ } ->
+        | Pera_connector.Connector.UserMessage { content = [ UText t ]; _ } ->
             String.equal t "steering content"
         | _ -> false)
-      second_ctx.Pera_provider.Provider.messages
+      second_ctx.Pera_connector.Connector.messages
   in
   Alcotest.(check bool) "steering message in second context" true has_steering
 
@@ -377,7 +377,7 @@ let test_error_stop_reason_terminates_run () =
     |> Option.get_exn_or "expected turn_end message"
   in
   match turn_end_msg with
-  | Agent_types.Real (Pera_provider.Provider.AssistantMessage am) -> (
+  | Agent_types.Real (Pera_connector.Connector.AssistantMessage am) -> (
       match am.stop_reason with
       | Pera_types.Types.Error _ -> () (* expected *)
       | other ->

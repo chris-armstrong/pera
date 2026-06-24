@@ -7,7 +7,7 @@ open Pera_core
 (** {1 Helper values} *)
 
 let make_user_provider_message text =
-  Pera_provider.Provider.UserMessage
+  Pera_connector.Connector.UserMessage
     Pera_types.Types.{ role = "user"; content = [ UText text ] }
 
 let make_real_message text = Agent_types.Real (make_user_provider_message text)
@@ -18,7 +18,7 @@ let test_synthetic_to_message_uses_framing () =
   let s = Agent_types.Compaction_summary { summary = "S" } in
   let msg = Agent_types.synthetic_to_message s in
   match msg with
-  | Pera_provider.Provider.UserMessage um -> (
+  | Pera_connector.Connector.UserMessage um -> (
       match um.Pera_types.Types.content with
       | [ Pera_types.Types.UText text ] ->
           let expected = Agent_types.compaction_framing ^ "S" in
@@ -34,7 +34,7 @@ let test_to_provider_message_real_passthrough () =
   let result = Agent_types.to_provider_message am in
   Alcotest.(check bool)
     "Real passthrough is equal" true
-    (Pera_provider.Provider.equal_message pm result)
+    (Pera_connector.Connector.equal_message pm result)
 
 (** {1 Test: to_provider_message Synthetic renders via synthetic_to_message} *)
 
@@ -45,7 +45,7 @@ let test_to_provider_message_synthetic_renders () =
   let expected = Agent_types.synthetic_to_message s in
   Alcotest.(check bool)
     "Synthetic renders same as synthetic_to_message" true
-    (Pera_provider.Provider.equal_message expected result)
+    (Pera_connector.Connector.equal_message expected result)
 
 (** {1 Test: agent_message_equal for Synthetic messages} *)
 

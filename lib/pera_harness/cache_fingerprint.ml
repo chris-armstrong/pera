@@ -9,13 +9,13 @@ type t = { combined : string; tools : string; system : string }
 
 (** Render a tool to the same canonical JSON shape the Anthropic provider emits
     on the wire. Keys are alphabetical so the bytes are stable regardless of how
-    the {!Pera_provider.Json_schema.t} was constructed. *)
+    the {!Pera_connector.Json_schema.t} was constructed. *)
 let tool_to_canonical_json tool =
   `Assoc
     [
       ("description", `String (Pera_core.Agent_types.Tool.description tool));
       ( "input_schema",
-        Pera_provider.Json_schema.to_json
+        Pera_connector.Json_schema.to_json
           (Pera_core.Agent_types.Tool.schema tool) );
       ("name", `String (Pera_core.Agent_types.Tool.name tool));
     ]

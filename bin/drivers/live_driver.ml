@@ -14,7 +14,7 @@
 
 open Containers
 open Pera_types
-open Pera_provider
+open Pera_connector
 open Pera_core
 open Session_jsonl_helpers
 
@@ -156,8 +156,8 @@ let verify_multi_turn ~sentinel entries =
 (* ── Provider setup ───────────────────────────────────────────────────────── *)
 
 let build_anthropic_registry () =
-  Provider_registry.register Provider_registry.empty ~name:"anthropic"
-    (module Anthropic_provider)
+  Connector_registry.register Connector_registry.empty ~name:"anthropic"
+    (module Anthropic_connector)
 
 (* ── Scenarios ────────────────────────────────────────────────────────────── *)
 
@@ -194,8 +194,8 @@ let scenario_bash_echo ~model ~tmpdir ~env ~registry =
   Eio.Switch.run @@ fun sw ->
   let session_path = Filename.concat tmpdir "bash_echo.jsonl" in
   let sentinel = "pera_echo_42" in
-  let adapter = Provider_adapter.create ~registry ~env ~sw in
-  let stream_fn = Provider_adapter.stream_fn adapter in
+  let adapter = Connector_adapter.create ~registry ~env ~sw in
+  let stream_fn = Connector_adapter.stream_fn adapter in
   let exec_env = Pera_env.Local_env.create ~env ~cwd:tmpdir in
   let config =
     make_harness_config ~model ~tmpdir ~session_path ~stream_fn ~exec_env
@@ -222,8 +222,8 @@ let scenario_read_preseeded ~model ~tmpdir ~env ~registry =
     with_open_text seed_file (fun oc -> output_string oc sentinel));
   Eio.Switch.run @@ fun sw ->
   let session_path = Filename.concat tmpdir "read_preseeded.jsonl" in
-  let adapter = Provider_adapter.create ~registry ~env ~sw in
-  let stream_fn = Provider_adapter.stream_fn adapter in
+  let adapter = Connector_adapter.create ~registry ~env ~sw in
+  let stream_fn = Connector_adapter.stream_fn adapter in
   let exec_env = Pera_env.Local_env.create ~env ~cwd:tmpdir in
   let config =
     make_harness_config ~model ~tmpdir ~session_path ~stream_fn ~exec_env
@@ -247,8 +247,8 @@ let scenario_multi_turn ~model ~tmpdir ~env ~registry =
   let session_path = Filename.concat tmpdir "multi_turn.jsonl" in
   let data_file = Filename.concat tmpdir "mt_data.txt" in
   let sentinel = "pera_token_789" in
-  let adapter = Provider_adapter.create ~registry ~env ~sw in
-  let stream_fn = Provider_adapter.stream_fn adapter in
+  let adapter = Connector_adapter.create ~registry ~env ~sw in
+  let stream_fn = Connector_adapter.stream_fn adapter in
   let exec_env = Pera_env.Local_env.create ~env ~cwd:tmpdir in
   let config =
     make_harness_config ~model ~tmpdir ~session_path ~stream_fn ~exec_env

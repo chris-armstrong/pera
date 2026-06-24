@@ -1,6 +1,6 @@
 open Containers
 open Pera_core
-open Pera_provider
+open Pera_connector
 open Pera_types
 
 let src = Logs.Src.create "pera.driver.conversation" ~doc:"Conversation driver"
@@ -9,18 +9,18 @@ module Log = (val Logs.src_log src : Logs.LOG)
 
 (** Build the provider registry from available API keys. *)
 let build_registry () =
-  let registry = ref Provider_registry.empty in
+  let registry = ref Connector_registry.empty in
   (match Sys.getenv_opt "ANTHROPIC_API_KEY" with
   | Some _ ->
       registry :=
-        Provider_registry.register !registry ~name:"anthropic"
-          (module Anthropic_provider)
+        Connector_registry.register !registry ~name:"anthropic"
+          (module Anthropic_connector)
   | None -> ());
   (match Sys.getenv_opt "OPENAI_API_KEY" with
   | Some _ ->
       registry :=
-        Provider_registry.register !registry ~name:"openai-completions"
-          (module Openai_completions_provider)
+        Connector_registry.register !registry ~name:"openai-completions"
+          (module Openai_completions_connector)
   | None -> ());
   !registry
 
@@ -50,7 +50,7 @@ let select_model registry argv =
         exit 1)
   else
     (* Default to the first registered provider. *)
-    match Provider_registry.to_list registry with
+    match Connector_registry.to_list registry with
     | ("anthropic", _) :: _ ->
         Types.
           {
@@ -77,7 +77,7 @@ let select_model registry argv =
 let () =
   Driver_log.setup ();
   let registry = build_registry () in
-  if List.is_empty (Provider_registry.to_list registry) then (
+  if List.is_empty (Connector_registry.to_list registry) then (
     print_endline "skipped: no API keys";
     exit 0);
   let argv = Sys.argv in
@@ -87,8 +87,8 @@ let () =
   Printf.printf "model:    %s\n%!" model.Types.id;
   Eio_main.run @@ fun env ->
   Eio.Switch.run @@ fun sw ->
-  let adapter = Provider_adapter.create ~registry ~env ~sw in
-  let stream_fn = Provider_adapter.stream_fn adapter in
+  let adapter = Connector_adapter.create ~registry ~env ~sw in
+  let stream_fn = Connector_adapter.stream_fn adapter in
   let results =
     match scenario_name with
     | Some name ->

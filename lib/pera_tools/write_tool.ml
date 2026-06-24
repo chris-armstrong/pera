@@ -1,14 +1,14 @@
 open Containers
 
 let write_schema =
-  Pera_provider.Json_schema.object_ ~required:[ "path"; "content" ]
+  Pera_connector.Json_schema.object_ ~required:[ "path"; "content" ]
     ~properties:
       [
         ( "path",
-          Pera_provider.Json_schema.string
+          Pera_connector.Json_schema.string
             ~description:"Path to write to (relative or absolute)." () );
         ( "content",
-          Pera_provider.Json_schema.string
+          Pera_connector.Json_schema.string
             ~description:"Content to write to the file." () );
       ]
     ()

@@ -1,17 +1,17 @@
 open Containers
 
 let bash_schema =
-  Pera_provider.Json_schema.object_ ~required:[ "command" ]
+  Pera_connector.Json_schema.object_ ~required:[ "command" ]
     ~properties:
       [
         ( "command",
-          Pera_provider.Json_schema.string
+          Pera_connector.Json_schema.string
             ~description:
               "Bash command to execute in the current working directory."
             () );
         ( "timeout",
-          Pera_provider.Json_schema.optional
-            (Pera_provider.Json_schema.number ~description:"Timeout in seconds."
+          Pera_connector.Json_schema.optional
+            (Pera_connector.Json_schema.number ~description:"Timeout in seconds."
                ()) );
       ]
     ()

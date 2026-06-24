@@ -16,7 +16,7 @@ let fake_model =
     { id = "test-model"; api = "anthropic"; context_window = 200_000 }
 
 let fake_user_message =
-  Pera_provider.Provider.UserMessage
+  Pera_connector.Connector.UserMessage
     Pera_types.Types.{ role = "user"; content = [ UText "hello" ] }
 
 (* Read all JSONL lines from a file and parse each as JSON *)
@@ -258,7 +258,7 @@ let test_compaction_then_synthetic_then_leaf_chain env () =
   Result.get_exn (Session_writer.write_session_info t);
   Result.get_exn (Session_writer.write_message t fake_user_message);
   let second_user_message =
-    Pera_provider.Provider.UserMessage
+    Pera_connector.Connector.UserMessage
       Pera_types.Types.{ role = "user"; content = [ UText "ack" ] }
   in
   Result.get_exn (Session_writer.write_message t second_user_message);

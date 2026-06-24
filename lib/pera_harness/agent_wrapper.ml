@@ -42,7 +42,7 @@ let update_state t event =
           t.in_flight_tools
   | Pera_core.Agent_types.AE_agent_end { messages } -> t.messages <- messages
   | Pera_core.Agent_types.AE_message_end
-      { message = Real (Pera_provider.Provider.AssistantMessage am) } -> (
+      { message = Real (Pera_connector.Connector.AssistantMessage am) } -> (
       match am.Pera_types.Types.stop_reason with
       | Pera_types.Types.Error stop_err ->
           t.last_error <-
@@ -95,7 +95,7 @@ let create ~config ~sw =
           (fun () ->
             let stream = Pera_core.Agent_loop.run t.config ~messages ~sw in
             let iter_result =
-              Pera_provider.Event_stream.iter stream ~f:(fun event ->
+              Pera_connector.Event_stream.iter stream ~f:(fun event ->
                   update_state t event;
                   let subs =
                     Eio.Mutex.use_ro t.sub_mutex (fun () -> t.subscribers)

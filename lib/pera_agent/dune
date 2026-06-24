@@ -7,7 +7,7 @@
   pera_tools
   pera_env
   pera_core
-  pera_provider
+  pera_connector
   pera_types
   eio
   eio_main

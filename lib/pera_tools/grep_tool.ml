@@ -11,21 +11,21 @@ let rg_install_msg =
   \  - Nix/NixOS: nix-env -iA nixpkgs.ripgrep"
 
 let grep_schema =
-  Pera_provider.Json_schema.object_ ~required:[ "pattern" ]
+  Pera_connector.Json_schema.object_ ~required:[ "pattern" ]
     ~properties:
       [
         ( "pattern",
-          Pera_provider.Json_schema.string
+          Pera_connector.Json_schema.string
             ~description:"Search pattern (regular expression)." () );
         ( "path",
-          Pera_provider.Json_schema.optional
-            (Pera_provider.Json_schema.string
+          Pera_connector.Json_schema.optional
+            (Pera_connector.Json_schema.string
                ~description:
                  "File or directory to search (default: current directory)."
                ()) );
         ( "glob",
-          Pera_provider.Json_schema.optional
-            (Pera_provider.Json_schema.string
+          Pera_connector.Json_schema.optional
+            (Pera_connector.Json_schema.string
                ~description:"Filter files by glob pattern (e.g. '*.ml')." ()) );
       ]
     ()

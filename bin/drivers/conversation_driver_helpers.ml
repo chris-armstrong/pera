@@ -1,6 +1,6 @@
 open Containers
 open Pera_core
-open Pera_provider
+open Pera_connector
 open Pera_types
 
 let src =
@@ -93,7 +93,7 @@ let default_convert_to_llm msgs = List.map Agent_types.to_provider_message msgs
 (** Build a user [agent_message]. *)
 let make_user_message text =
   let um = Types.{ role = "user"; content = [ UText text ] } in
-  Agent_types.Real (Provider.UserMessage um)
+  Agent_types.Real (Connector.UserMessage um)
 
 (** {1 Loop configuration} *)
 
@@ -104,7 +104,7 @@ let make_config ?(tools = []) ?(get_follow_up_messages = None) ~model stream_fn
       model;
       system = "You are a helpful test assistant.";
       options =
-        Provider.
+        Connector.
           {
             max_tokens = 1024;
             temperature = None;
@@ -143,14 +143,14 @@ let run_scenario ~name ~messages ~sw ~check_result config =
       List.find_opt
         (fun msg ->
           match msg with
-          | Agent_types.Real (Provider.AssistantMessage _) -> true
-          | Agent_types.Real (Provider.UserMessage _) -> false
-          | Agent_types.Real (Provider.ToolResultMessage _) -> false
+          | Agent_types.Real (Connector.AssistantMessage _) -> true
+          | Agent_types.Real (Connector.UserMessage _) -> false
+          | Agent_types.Real (Connector.ToolResultMessage _) -> false
           | Agent_types.Synthetic _ -> false)
         (List.rev msgs)
     in
     match last_assistant with
-    | Some (Agent_types.Real (Provider.AssistantMessage am)) ->
+    | Some (Agent_types.Real (Connector.AssistantMessage am)) ->
         let text =
           List.filter_map
             (fun block ->
@@ -161,8 +161,8 @@ let run_scenario ~name ~messages ~sw ~check_result config =
         in
         if not (List.is_empty text) then
           Printf.printf "  => text: %s\n%!" (String.concat "" text)
-    | Some (Agent_types.Real (Provider.UserMessage _)) -> ()
-    | Some (Agent_types.Real (Provider.ToolResultMessage _)) -> ()
+    | Some (Agent_types.Real (Connector.UserMessage _)) -> ()
+    | Some (Agent_types.Real (Connector.ToolResultMessage _)) -> ()
     | Some (Agent_types.Synthetic _) -> ()
     | None -> ()
   in

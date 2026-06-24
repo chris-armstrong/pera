@@ -4,13 +4,13 @@
  (modules
   agent_types
   agent_loop
-  provider_adapter
+  connector_adapter
   token_estimator
   model_window
   cache_lint)
  (libraries
   pera_types
-  pera_provider
+  pera_connector
   containers
   yojson
   eio

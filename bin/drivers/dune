@@ -11,7 +11,7 @@
   usage_status
   pera_core
   pera_core_test_util
-  pera_provider
+  pera_connector
   pera_types
   eio_main
   containers
@@ -25,7 +25,7 @@
   pera_tools
   pera_env
   pera_core
-  pera_provider
+  pera_connector
   pera_types
   eio
   eio_main
@@ -52,7 +52,7 @@
  (modules session_driver session_jsonl_helpers)
  (libraries
   pera_harness
-  pera_provider
+  pera_connector
   pera_types
   eio
   eio_main
@@ -84,7 +84,7 @@
   pera_harness
   pera_core
   pera_core_test_util
-  pera_provider
+  pera_connector
   pera_env
   pera_types
   eio
@@ -101,7 +101,7 @@
   usage_status
   pera_agent
   pera_core
-  pera_provider
+  pera_connector
   pera_env
   pera_types
   eio

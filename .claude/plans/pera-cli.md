@@ -52,8 +52,10 @@ structurally typed — the OCaml type is the schema; no separate parser is writt
 
 | File | Purpose |
 |---|---|
-| `$XDG_CONFIG_HOME/pera/config.sexp` | User defaults — API keys, personal model preference, output style |
-| `.pera` in project root (walk up from cwd) | Project settings — model, cache policy, tools, compaction |
+| `$PREFIX/share/pera/models.sexp` | Packaged provider and model catalog — shipped with pera |
+| `$XDG_CONFIG_HOME/pera/models.sexp` | User model catalog — merged into packaged catalog by provider name, then by model name within each provider |
+| `$XDG_CONFIG_HOME/pera/config.sexp` | User defaults — provider API keys, default model, output style |
+| `.pera` in project root (walk up from cwd) | Project settings — default model, cache policy, tools, compaction; no `api_key` allowed |
 
 Project config discovery walks up from the process cwd until `.pera` is found
 or the filesystem root is reached (git-style). If none is found, only the user
@@ -61,14 +63,103 @@ config applies.
 
 ### Security: API keys in config
 
-- `api_key` is **only accepted in the user config**. The parser rejects it in
-  a project config and emits a loud error (`[pera] api_key may not appear in
-  project config (.pera); use user config or PERA_API_KEY`).
-- `api_key_file` and `api_key_command` are accepted in both.
+- `api_key` (inside a `provider_auth` entry) is **only accepted in the user config**.
+  The parser rejects it in a project config and emits a loud error:
+  `[pera] api_key may not appear in project config (.pera); use user config or the provider's api_key_env variable`.
+- `base_url` overrides inside `provider_auth` are accepted in both user and project config.
+
+---
+
+## Models file
+
+`models.sexp` is the provider and model catalog. Two files are loaded and
+merged at startup:
+
+1. **Packaged** — `$PREFIX/share/pera/models.sexp`. Ships with pera. Defines
+   all providers and models pera knows about out of the box.
+2. **User** — `$XDG_CONFIG_HOME/pera/models.sexp`. Optional. Merged into the
+   packaged file by provider name; within each provider, models are merged by
+   model name. A user entry for an existing provider/model overrides only the
+   fields it specifies; absent fields inherit from the packaged definition.
+   A user entry for a new provider name is appended.
+
+The models file is **not a config file** — it carries no secrets and no
+personal preferences. It defines *capabilities*: what endpoints exist, what
+models they expose, and what those models can do. Auth lives exclusively in
+`config.sexp`.
+
+**Model addressing:** all model references are fully qualified as
+`<provider>/<model>` (e.g. `anthropic/claude-sonnet-4-6`,
+`moonshot/kimi-k2.6`). Short names are not resolved; using an unqualified name
+is a startup error with a suggestion of matching qualified names.
 
 ---
 
 ## OCaml types (ppx_sexp_conv)
+
+### models.sexp types
+
+```ocaml
+(** Extended thinking capabilities for a model. *)
+type thinking_spec = {
+  budget_medium : int; [@sexp.default 8_000]
+    (** thinking_budget_tokens used when effort = Medium. *)
+  budget_high   : int; [@sexp.default 32_000]
+    (** thinking_budget_tokens used when effort = High. *)
+} [@@deriving sexp]
+
+(** openai-completions endpoint quirks. Absent fields use connector defaults. *)
+type compat_config = {
+  reasoning_field          : string option; [@sexp.option]
+    (** JSON field carrying reasoning/thinking content. Default: "reasoning_content". *)
+  max_tokens_field         : string option; [@sexp.option]
+    (** JSON field for max output tokens. Default: "max_completion_tokens". *)
+  require_tool_result_name : bool   option; [@sexp.option]
+    (** Whether tool-result messages require a "name" field. Default: false. *)
+  enable_thinking_field    : string option; [@sexp.option]
+    (** Field to set to true to enable thinking. None = provider enables thinking
+        via model selection (e.g. OpenAI o-series), no explicit field needed. *)
+} [@@deriving sexp]
+
+(** A model entry nested under a provider in models.sexp. *)
+type model_spec = {
+  name           : string;
+    (** Unqualified model name. Full address: <provider_spec.name>/<name>. *)
+  context_window : int;
+  max_tokens     : int;
+    (** Default maximum output tokens. Overridable via config or --max-tokens. *)
+  thinking       : thinking_spec option; [@sexp.option]
+    (** None = model does not support extended thinking.
+        Startup error if effort > Low is requested for such a model. *)
+} [@@deriving sexp]
+
+(** A provider entry in models.sexp. *)
+type provider_spec = {
+  name         : string;
+    (** Provider identifier. Models addressed as <name>/<model_name>. *)
+  api          : string;
+    (** "anthropic" | "openai-completions". Selects the Connector implementation. *)
+  api_key_env  : string option; [@sexp.option]
+    (** Name of the env var to read the API key from when user config
+        provides no explicit api_key for this provider.
+        E.g. "ANTHROPIC_API_KEY", "MOONSHOT_API_KEY". *)
+  base_url     : string option; [@sexp.option]
+    (** Static endpoint. Absent = connector's built-in default for this api. *)
+  base_url_env : string option; [@sexp.option]
+    (** Env var whose value, if set, overrides base_url at runtime.
+        Useful for providers like local Ollama where the URL varies per install.
+        E.g. "OLLAMA_BASE_URL". *)
+  compat       : compat_config option; [@sexp.option]
+    (** openai-completions quirks. Ignored for api = "anthropic". *)
+  models       : model_spec list; [@sexp.default []]
+} [@@deriving sexp]
+
+type models_file = {
+  providers : provider_spec list; [@sexp.default []]
+} [@@deriving sexp]
+```
+
+### config.sexp types
 
 ```ocaml
 (** How the API key is sourced. *)
@@ -96,18 +187,25 @@ type cache_policy = No_cache | Conversation | System_and_tools
 type cache_ttl = Five_minutes | One_hour
 [@@deriving sexp]
 
-type auth_config = {
-  api_key : api_key_source option; [@sexp.option]
-    (** Project config: only File and Command accepted; Key rejected. *)
+(** Per-model effort override within a provider_auth entry. *)
+type model_auth = {
+  name   : string;
+    (** Unqualified model name within this provider. *)
+  effort : effort option; [@sexp.option]
+    (** Override the global or system-default effort for this specific model. *)
 } [@@deriving sexp]
 
-type model_config = {
-  api            : string option; [@sexp.option]  (** "anthropic" | "openai-completions" *)
-  model          : string option; [@sexp.option]  (** Model ID *)
-  base_url       : string option; [@sexp.option]  (** openai-completions endpoint override *)
-  context_window : int    option; [@sexp.option]  (** Required when model not in built-in table *)
-  effort         : effort option; [@sexp.option]
-  max_tokens     : int    option; [@sexp.option]
+(** Auth and personal overrides for a named provider.
+    User config: api_key accepted.
+    Project config: api_key rejected (loud error); base_url allowed. *)
+type provider_auth = {
+  name     : string;
+    (** Must match a provider_spec.name from models.sexp. *)
+  api_key  : api_key_source option; [@sexp.option]
+  base_url : string option; [@sexp.option]
+    (** Override the provider's base_url for this user/project. *)
+  models   : model_auth list; [@sexp.default []]
+    (** Per-model effort overrides for this provider. *)
 } [@@deriving sexp]
 
 type cache_config = {
@@ -178,8 +276,16 @@ type mcp_server_def = {
 } [@@deriving sexp]
 
 type config = {
-  auth        : auth_config        option; [@sexp.option]
-  model       : model_config       option; [@sexp.option]
+  providers     : provider_auth list; [@sexp.default []]
+    (** Auth and overrides for named providers. Keys only in user config.
+        Project config may contain base_url overrides but not api_key. *)
+  default_model : string option; [@sexp.option]
+    (** Fully-qualified model to use when --model is not given.
+        Format: "<provider>/<model>", e.g. "anthropic/claude-sonnet-4-6". *)
+  effort        : effort option; [@sexp.option]
+    (** Global default effort. Per-model setting in providers takes precedence. *)
+  max_tokens    : int option; [@sexp.option]
+    (** Override model_spec.max_tokens for this config tier. *)
   cache       : cache_config       option; [@sexp.option]
   session     : session_config     option; [@sexp.option]
   compaction  : compaction_config  option; [@sexp.option]
@@ -198,17 +304,75 @@ type config = {
 
 ## Example config files
 
+### Packaged models catalog — `$PREFIX/share/pera/models.sexp`
+
+```sexp
+; Packaged provider and model catalog — shipped with pera.
+; Users may extend or override entries in $XDG_CONFIG_HOME/pera/models.sexp.
+((providers
+  (((name anthropic)
+    (api anthropic)
+    (api_key_env ANTHROPIC_API_KEY)
+    (models
+      (((name claude-sonnet-4-6)
+        (context_window 200000)
+        (max_tokens 16000)
+        (thinking ((budget_medium 8000) (budget_high 32000))))
+       ((name claude-haiku-4-5-20251001)
+        (context_window 200000)
+        (max_tokens 8192)))))
+   ((name openai)
+    (api openai-completions)
+    (api_key_env OPENAI_API_KEY)
+    (base_url "https://api.openai.com")
+    (compat
+      ((max_tokens_field max_completion_tokens)
+       (require_tool_result_name false)))
+    (models
+      (((name gpt-4o)
+        (context_window 128000)
+        (max_tokens 16384))
+       ((name o3-mini)
+        (context_window 200000)
+        (max_tokens 65536)))))
+   ((name moonshot)
+    (api openai-completions)
+    (api_key_env MOONSHOT_API_KEY)
+    (base_url "https://api.moonshot.ai")
+    (compat
+      ((reasoning_field reasoning_content)
+       (max_tokens_field max_tokens)
+       (require_tool_result_name false)
+       (enable_thinking_field enable_thinking)))
+    (models
+      (((name kimi-k2.6)
+        (context_window 128000)
+        (max_tokens 32768)
+        (thinking ((budget_medium 8000) (budget_high 32000)))))))
+   ((name local)
+    (api openai-completions)
+    (base_url "http://localhost:11434")
+    (base_url_env OLLAMA_BASE_URL)
+    (models
+      (((name qwen2.5-coder:14b)
+        (context_window 32768)
+        (max_tokens 8192))))))))
+```
+
 ### User config — `~/.config/pera/config.sexp`
 
 ```sexp
 ; Pera user configuration
-((auth
-   ((api_key (File "/home/alice/.config/pera/anthropic_key"))))
- (model
-   ((api anthropic)
-    (model "claude-sonnet-4-6")
-    (effort Low)
-    (max_tokens 8192)))
+((providers
+   (((name anthropic)
+     (api_key (File "/home/alice/.config/pera/anthropic_key"))
+     (models
+       (((name claude-sonnet-4-6)
+         (effort Medium)))))
+    ((name moonshot)
+     (api_key (Command (pass show moonshot/api-key))))))
+ (default_model "anthropic/claude-sonnet-4-6")
+ (effort Low)
  (cache
    ((policy Conversation)
     (ttl Five_minutes)))
@@ -224,26 +388,25 @@ type config = {
 ### User config — macOS Keychain example
 
 ```sexp
-((auth
-   ((api_key (Command (security find-generic-password -s pera-anthropic -w))))))
+((providers
+   (((name anthropic)
+     (api_key (Command (security find-generic-password -s pera-anthropic -w)))))))
 ```
 
 ### User config — Linux secret-tool example
 
 ```sexp
-((auth
-   ((api_key (Command (secret-tool lookup service pera account anthropic))))))
+((providers
+   (((name anthropic)
+     (api_key (Command (secret-tool lookup service pera account anthropic)))))))
 ```
 
 ### Project config — `.pera` in project root
 
 ```sexp
 ; Project config — committed to the repo.
-; No api_key field allowed here.
-((model
-   ((api anthropic)
-    (model "claude-sonnet-4-6")
-    (context_window 200000)))
+; api_key is not allowed here; base_url overrides are permitted.
+((default_model "anthropic/claude-sonnet-4-6")
  (cache
    ((policy Conversation)))
  (tools
@@ -312,7 +475,7 @@ The system prompt is just `base_text`:
   mutually exclusive; supplying both is a startup error.
 
 **Built-in default text** (moved from `agent_harness.ml`; tool listing dropped
-— tools are already in `Provider.context.tools` and visible to the model natively):
+— tools are already in `Connector.context.tools` and visible to the model natively):
 
 ```
 You are a helpful coding assistant. Work methodically, verify your understanding before acting, and prefer small targeted changes.
@@ -322,15 +485,21 @@ You are a helpful coding assistant. Work methodically, verify your understanding
 
 ```ocaml
 type config = {
-  cwd           : string;
-  model         : Pera_types.Types.model;
-  session_path  : string;
-  stream_fn     : Pera_core.Agent_types.stream_fn;
-  max_tokens    : int;
-  exec_env      : (module Pera_env.Execution_env.S);
-  system_prompt : string;                  (* NEW — assembled by pera-cli *)
-  effort        : Pera_types.Types.effort option;  (* NEW — harness maps to thinking+budget *)
-  compaction    : compaction_config option;
+  cwd                    : string;
+  model                  : Pera_types.Types.model;
+  session_path           : string;
+  stream_fn              : Pera_core.Agent_types.stream_fn;
+  max_tokens             : int;
+  exec_env               : (module Pera_env.Execution_env.S);
+  system_prompt          : string;         (* NEW — assembled by pera-cli *)
+  thinking_budget_tokens : int option;
+    (* NEW — None = no thinking; Some n = enable thinking with budget n tokens.
+       pera-cli resolves this from (effort, model_spec.thinking) in models.sexp:
+         Low  → None
+         Medium → thinking_spec.budget_medium
+         High   → thinking_spec.budget_high
+       Startup error if effort > Low for a model with thinking = None. *)
+  compaction             : compaction_config option;
 }
 ```
 
@@ -364,15 +533,12 @@ No component below `bin/pera/` reads environment variables.
 
 | Env var | Mirrors |
 |---|---|
-| `PERA_API_KEY` | `auth.api_key` (as `Key`) |
-| `PERA_API_KEY_FILE` | `auth.api_key` (as `File`) |
-| `PERA_API_KEY_COMMAND` | `auth.api_key` (as `Command`, space-split) |
-| `PERA_MODEL` | `model.model` |
-| `PERA_API` | `model.api` |
-| `PERA_BASE_URL` | `model.base_url` |
-| `PERA_CONTEXT_WINDOW` | `model.context_window` |
-| `PERA_EFFORT` | `model.effort` |
-| `PERA_MAX_TOKENS` | `model.max_tokens` |
+| `PERA_API_KEY` | `providers[resolved].api_key` (as `Key`) — overrides the resolved provider's key |
+| `PERA_API_KEY_FILE` | `providers[resolved].api_key` (as `File`) |
+| `PERA_API_KEY_COMMAND` | `providers[resolved].api_key` (as `Command`, space-split) |
+| `PERA_MODEL` | `default_model` — must be fully qualified: `provider/model-name` |
+| `PERA_EFFORT` | `effort` |
+| `PERA_MAX_TOKENS` | `max_tokens` |
 | `PERA_CACHE_POLICY` | `cache.policy` |
 | `PERA_CACHE_TTL` | `cache.ttl` |
 | `PERA_SESSION` | Explicit session file path |
@@ -385,21 +551,23 @@ No component below `bin/pera/` reads environment variables.
 Note: `PERA_API_KEY`, `PERA_API_KEY_FILE`, and `PERA_API_KEY_COMMAND` are
 mutually exclusive; if more than one is set, the binary fails loudly.
 
+Provider-specific API keys (e.g. `ANTHROPIC_API_KEY`, `MOONSHOT_API_KEY`) are
+declared in models.sexp via `api_key_env` and read directly from the environment
+by pera at startup. `PERA_API_KEY` overrides whichever provider is resolved by
+the active model — useful for quick testing without editing config.
+
 ---
 
 ## CLI flags — complete table
 
 | Flag | Config field | Default | Notes |
 |---|---|---|---|
-| `--api-key` | `auth.api_key (Key ...)` | — | Loud fail if multiple key sources |
-| `--api-key-file` | `auth.api_key (File ...)` | — | |
-| `--api-key-command` | `auth.api_key (Command ...)` | — | Space-split argv |
-| `--model` | `model.model` | — | Required in merged config; loud fail if absent after all sources merged |
-| `--api` | `model.api` | — | Required in merged config; loud fail; no inference |
-| `--base-url` | `model.base_url` | Provider default | openai-completions only |
-| `--context-window` | `model.context_window` | Lookup table | Loud fail when model unknown |
-| `--effort` | `model.effort` | `low` | `low\|medium\|high` |
-| `--max-tokens` | `model.max_tokens` | 4096 | |
+| `--api-key` | `providers[resolved].api_key (Key ...)` | — | Overrides resolved provider's key; loud fail if multiple key sources |
+| `--api-key-file` | `providers[resolved].api_key (File ...)` | — | |
+| `--api-key-command` | `providers[resolved].api_key (Command ...)` | — | Space-split argv |
+| `--model` | `default_model` | — | Fully-qualified `provider/model`; required if not set in config; loud fail if absent |
+| `--effort` | `effort` | `low` | `low\|medium\|high`; startup error if model has no thinking and effort > low |
+| `--max-tokens` | `max_tokens` | model_spec default | Overrides model_spec.max_tokens |
 | `--cache-policy` | `cache.policy` | `no_cache` | `no_cache\|conversation\|system_and_tools` |
 | `--cache-ttl` | `cache.ttl` | `five_minutes` | `five_minutes\|one_hour` |
 | `--session` | — | — | Explicit path; overrides `--session-dir` |
@@ -582,49 +750,60 @@ tool set differ.
 
 ---
 
-## Context window lookup table
+## Context window and model capabilities
 
-Built into `bin/pera/`. `--context-window` overrides it; if the model is not
-in the table and `--context-window` is absent, the binary fails with a clear
-error naming the missing model.
+Context windows, max token limits, and thinking capabilities are now stored in
+`models.sexp` as `model_spec` fields rather than a static lookup table in the
+binary. When `pera` starts:
 
-`[?-3]` **Which models belong in the initial table?** Proposal: all claude-*
-variants pera currently tests against, plus kimi-k2.6. The table is a static
-`String.Map` in source; adding a model is a one-line change.
+1. Load and merge packaged + user `models.sexp`.
+2. Resolve the fully-qualified model name (e.g. `anthropic/claude-sonnet-4-6`)
+   to a `provider_spec` + `model_spec` pair.
+3. Startup error if the model is not found in the merged catalog. Message:
+   `[pera] unknown model "provider/model" — add it to $XDG_CONFIG_HOME/pera/models.sexp`
+
+The `--context-window`, `--api`, and `--base-url` CLI flags are removed; all
+such information is sourced from models.sexp. To add a model not in the
+packaged catalog, users extend their personal `models.sexp`.
 
 ---
 
 ## `--effort` thresholds and wiring
 
-`effort` flows from config/CLI into `agent_harness.config.effort`, which the
-harness maps to `thinking : bool` and `thinking_budget_tokens : int option`
-before building the loop config.
+`effort` flows from config/CLI into `pera-cli`, which resolves it against the
+model's `thinking_spec` from models.sexp and passes the computed
+`thinking_budget_tokens : int option` to `agent_harness.config`.
 
-**Mapping:**
+**Resolution in pera-cli:**
 
-| Effort | `thinking` | `thinking_budget_tokens` |
-|---|---|---|
-| `Low` (default) | `false` | `None` |
-| `Medium` | `true` | `Some 8_000` |
-| `High` | `true` | `Some 32_000` |
+| Effort | `thinking_budget_tokens` |
+|---|---|
+| `Low` (default) | `None` — thinking disabled |
+| `Medium` | `Some model_spec.thinking.budget_medium` |
+| `High` | `Some model_spec.thinking.budget_high` |
 
-`[?-4]` The `medium` = 8 000 and `high` = 32 000 values are provisional; adjust
-from empirical testing.
+Startup error if effort > Low is requested for a model whose `model_spec.thinking`
+is `None` (model does not support extended thinking).
+
+Per-model defaults in `provider_auth.models` override the global effort before
+this resolution step.
 
 **Stack changes required:**
 
-1. `Provider.simple_stream_options` gets a new required field:
+1. `Connector.simple_stream_options` gets a new required field:
    ```ocaml
    thinking_budget_tokens : int option;
-   (* None = thinking disabled or provider default. Passed as
-      thinking.budget_tokens in Anthropic requests when thinking=true. *)
+   (* None = thinking disabled. Passed as thinking.budget_tokens in
+      Anthropic requests; ignored by openai-completions connector unless
+      compat.enable_thinking_field is set. *)
    ```
    This is a breaking record change. All `simple_stream_options` construction
    sites (drivers, harness, tests) must add `thinking_budget_tokens = None`.
-   The drivers are expected to be removed as part of the CLI work; remaining
-   sites are `agent_harness.ml` and any test helpers.
-2. `agent_harness` maps `effort` to `(thinking, budget)` and passes both to
-   the loop config. The loop no longer hardcodes `~thinking:false`.
+   Offline-test drivers scheduled for migration to `lib/*/test/` can be
+   updated as part of that migration.
+2. `agent_harness` receives pre-computed `thinking_budget_tokens` in its config
+   and passes it directly to the loop config. The loop no longer hardcodes
+   `~thinking:false`.
 3. `Anthropic_request` reads `thinking_budget_tokens` from `simple_stream_options`
    and emits the `thinking` block and `betas` header when non-None.
 
@@ -640,8 +819,8 @@ set effort.
 |---|---|---|
 | 1 | Env vars above or below project config? | **Settled:** above (standard Unix order — matches env vars section). |
 | 2 | Project config filename: `.pera`, `pera.sexp`, `.pera.sexp`? | **Settled:** `.pera` (used throughout this spec). |
-| 3 | Which models in the built-in context-window table? | claude-* tested variants + kimi-k2.6 |
-| 4 | `--effort` thresholds for medium and high? | 8 000 / 32 000 tokens (provisional) |
+| 3 | Which models in the built-in context-window table? | **Settled:** no static table — models.sexp is the catalog; initial packaged file covers anthropic + openai + moonshot. |
+| 4 | `--effort` thresholds for medium and high? | **Settled:** per-model `thinking_spec` in models.sexp (`budget_medium` / `budget_high`); defaults 8 000 / 32 000. |
 | 5 | MCP tool naming collisions? | Built-ins win; colliding MCP tools prefixed `<server>__<tool>` |
 | 7 | `Env.create` → `Env.tools` wiring: does `ctx` carry the env handle? | **Settled: yes.** `type ctx = (module Execution_env.S)` for default binary. `Env.tools _ctx = Pera_tools.Tools.default`. |
 
@@ -679,6 +858,37 @@ longer invisible state hidden in a closure, and two calls to the same tool
 value can use different envs if needed (not a current use case but a free
 correctness property).
 
+---
+
+## Connector rename (was Provider)
+
+The OCaml module type currently named `Provider.S` conflicts with the
+user-facing concept of a "provider" (an entry in models.sexp with a name,
+api_key_env, and list of models). To eliminate ambiguity, the OCaml API
+barrier for LLM HTTP calls is renamed to `Connector`.
+
+**Rename map:**
+
+| Old name | New name |
+|---|---|
+| `Provider.S` | `Connector.S` |
+| `Anthropic_provider` | `Anthropic_connector` |
+| `Openai_completions_provider` | `Openai_completions_connector` |
+| `Provider_registry` | `Connector_registry` |
+| `Provider_adapter` | `Connector_adapter` |
+| `lib/pera_provider/` | `lib/pera_connector/` |
+| Package `pera-provider` | Package `pera-connector` |
+
+`provider_driver` and `conversation_driver` (which directly reference
+`Anthropic_provider` / `Openai_completions_provider`) are scheduled for removal
+— see §Driver cleanup. The rename can proceed independently; remaining live
+usages are in `live_driver` and `compaction_driver`, which keep the old names
+until the rename lands.
+
+The word "provider" in user-facing contexts (config, CLI help text, error
+messages) always refers to the models.sexp provider concept. The word
+"connector" is an internal implementation detail not exposed to users.
+
 `agent_harness` changes accordingly: it holds a `(module Execution_env.S)`
 value and passes it as `ctx` to the loop config. `agent_loop` is unchanged —
 it already threads `ctx` through every tool call.
@@ -693,13 +903,13 @@ separate concern.
 
 ```
 pera-types      (unchanged)
-pera-provider   (unchanged)
+pera-connector  (renamed from pera-provider — Connector.S, Anthropic_connector, Openai_completions_connector)
 pera-core       (unchanged)
 pera-env        (unchanged)
 pera-tools      (modified — tool refactor: unit tool → (module Execution_env.S) tool)
 pera-harness    (unchanged)
-pera-agent      (modified — tool refactor: add system_prompt and effort to config; remove build_system_prompt)
-pera-cli        (new library — reusable CLI wiring, generic over Env)
+pera-agent      (modified — add system_prompt and thinking_budget_tokens to config; remove build_system_prompt; remove effort field)
+pera-cli        (new library — reusable CLI wiring, generic over Env; owns models.sexp loading and config merging)
 pera            (executable — Pera_cli.Make(Local_env + default tools))
 ```
 
@@ -725,6 +935,40 @@ A third-party custom binary depends on `pera-cli` plus their own env library.
 pure OCaml — it only reads env vars and computes paths. It works with any
 runtime including Eio. Provides `Xdg.config_home`, `Xdg.state_home`,
 `Xdg.data_home`, and `Xdg.data_dirs` with correct platform fallbacks.
+
+---
+
+## Driver cleanup
+
+Building `pera` makes several `bin/drivers/` binaries obsolete. Each falls into one of three categories.
+
+### Delete outright — pure CLI prototypes superseded by `pera`
+
+| Driver | Reason |
+|---|---|
+| `conversation_driver.ml` | Interactive conversation loop; `pera` replaces it entirely. |
+| `conversation_driver_helpers.ml` | Real-model scenarios (simple_text, echo_tool, multi_turn, parallel_echo) overlap with `live_driver.ml`; absorb any unique coverage there before deleting. The `echo_tool` and `counter_tool` helpers referenced by `loop_driver.ml` move to `pera_core_test_util` when that driver is migrated. |
+
+### Migrate then delete — self-contained test suites that belong under `dune runtest`
+
+For each driver below: audit its scenarios against the existing Alcotest test files in the target directory; add any missing scenarios as proper Alcotest tests; then delete the driver.
+
+| Driver | Target | Scenarios to verify |
+|---|---|---|
+| `loop_driver.ml` | `lib/pera_core/test/` | 14 Faux_provider scenarios — cross-check thinking_blocks, prepare_next_turn_update, before_tool_call_deny/allow, and after_tool_call_fires against `agent_loop_test.ml`, `agent_loop_tools_test.ml`, and `agent_loop_cancel_test.ml`. |
+| `env_driver.ml` | `lib/pera_env/test/` | 9 scenarios — likely covered by `local_env_sh_test.ml` + `local_env_fs_test.ml`; verify. |
+| `tool_driver.ml` | `lib/pera_tools/test/` | 9 scenarios — likely covered by existing tool tests; verify read_truncation and read_missing_path_arg in particular. |
+| `harness_driver.ml` | `lib/pera_agent/test/` | 4 scenarios — likely covered by `agent_harness_test.ml`; verify the autonomous_compaction scenario is present before deleting. |
+| `session_driver.ml` | `lib/pera_harness/test/` | 7 scenarios — likely covered by `session_writer_test.ml`; verify crash_resilience and model_change. |
+| `compaction_driver.ml` (`offline_faux` only) | `lib/pera_harness/test/` | 1 scenario — verify covered by `compaction_test.ml`; then remove `offline_faux` from the driver (the `real_model` scenario stays). |
+
+### Keep — live tests or lower-level tests not superseded by the CLI
+
+| Driver | Reason |
+|---|---|
+| `live_driver.ml` | Full-stack end-to-end tests against the real Anthropic API; not superseded by `pera`. |
+| `provider_driver.ml` | Raw provider streaming tests (Anthropic thinking, openai-completions); not superseded by `pera`. |
+| `compaction_driver.ml` (`real_model` scenario) | Live Anthropic API compaction test; keep. |
 
 ---
 

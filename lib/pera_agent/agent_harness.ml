@@ -46,7 +46,7 @@ let session_subscriber writer event =
   let result =
     match event with
     | Pera_core.Agent_types.AE_message_end
-        { message = Real (Pera_provider.Provider.AssistantMessage am) } ->
+        { message = Real (Pera_connector.Connector.AssistantMessage am) } ->
         (match am.Pera_types.Types.stop_reason with
         | Pera_types.Types.Error stop_err ->
             let msg =
@@ -58,14 +58,14 @@ let session_subscriber writer event =
               msg
         | _ -> ());
         Pera_harness.Session_writer.write_message writer
-          (Pera_provider.Provider.AssistantMessage am)
+          (Pera_connector.Connector.AssistantMessage am)
     | Pera_core.Agent_types.AE_message_end _ -> Ok ()
     | Pera_core.Agent_types.AE_turn_end { tool_results; _ } ->
         List.fold_left
           (fun acc tr ->
             let* () = acc in
             Pera_harness.Session_writer.write_message writer
-              (Pera_provider.Provider.ToolResultMessage tr))
+              (Pera_connector.Connector.ToolResultMessage tr))
           (Ok ()) tool_results
     | Pera_core.Agent_types.AE_agent_end _ ->
         Pera_harness.Session_writer.write_leaf writer
@@ -113,7 +113,7 @@ let create ~config ~env ~sw =
     ref None
   in
   let options =
-    Pera_provider.Provider.
+    Pera_connector.Connector.
       {
         max_tokens = config.max_tokens;
         temperature = None;
@@ -193,7 +193,7 @@ let send t text =
      | Error e ->
          Printf.eprintf "session_info write: %s\n%!" e.Pera_types.Types.message);
   let um =
-    Pera_provider.Provider.UserMessage
+    Pera_connector.Connector.UserMessage
       Pera_types.Types.{ role = "user"; content = [ UText text ] }
   in
   (match Pera_harness.Session_writer.write_message t.writer um with
