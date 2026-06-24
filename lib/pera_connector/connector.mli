@@ -58,11 +58,11 @@ type simple_stream_options = {
   temperature : float option;
       (** Sampling temperature; [None] uses the connector default. *)
   cache_policy : Types.cache_policy;
-      (** Where to place [cache_control] markers in Anthropic requests.
-          Ignored by non-Anthropic connectors. Default [No_cache]. *)
+      (** Where to place [cache_control] markers in Anthropic requests. Ignored
+          by non-Anthropic connectors. Default [No_cache]. *)
   cache_ttl : Types.cache_ttl;
-      (** TTL applied to every cache breakpoint in the request.
-          Default [Five_minutes]. *)
+      (** TTL applied to every cache breakpoint in the request. Default
+          [Five_minutes]. *)
   thinking_budget_tokens : int option;
       (** [None] = thinking disabled (no betas header, no thinking block).
           [Some n] = enable extended thinking with budget n tokens. *)
@@ -85,7 +85,8 @@ module type S = sig
   val name : string
   (** Human-readable provider name used in provenance records. *)
 
-  val create : api_key:string -> env:Eio_unix.Stdenv.base -> sw:Eio.Switch.t -> t
+  val create :
+    api_key:string -> env:Eio_unix.Stdenv.base -> sw:Eio.Switch.t -> t
   (** [create ~api_key ~env ~sw] initialises a connector instance bound to [sw]
       with the given [api_key]. Establishes any persistent connections needed
       for {!stream_simple} calls. The instance is valid for the lifetime of

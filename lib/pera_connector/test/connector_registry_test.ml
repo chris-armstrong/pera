@@ -60,9 +60,7 @@ let run_provider_and_get_events provider_mod =
   Eio_main.run @@ fun env ->
   Eio.Switch.run @@ fun sw ->
   let inst = P.create ~api_key:"test-key" ~env ~sw in
-  let context =
-    Connector.{ system = ""; messages = []; tools = [] }
-  in
+  let context = Connector.{ system = ""; messages = []; tools = [] } in
   let options =
     {
       Connector.max_tokens = 100;
@@ -98,7 +96,8 @@ let test_register_then_lookup_returns_registered_provider () =
   let scripts = [ make_script "hello" ] in
   let provider_mod = Pera_core_test_util.Faux_provider.as_provider scripts in
   let registry =
-    Connector_registry.register Connector_registry.empty ~name:"faux" provider_mod
+    Connector_registry.register Connector_registry.empty ~name:"faux"
+      provider_mod
   in
   match Connector_registry.lookup registry ~api:"faux" with
   | None -> Alcotest.fail "Expected to find registered provider"
@@ -113,7 +112,8 @@ let test_lookup_unregistered_name_returns_none () =
   let scripts = [ make_script "hello" ] in
   let provider_mod = Pera_core_test_util.Faux_provider.as_provider scripts in
   let registry =
-    Connector_registry.register Connector_registry.empty ~name:"faux" provider_mod
+    Connector_registry.register Connector_registry.empty ~name:"faux"
+      provider_mod
   in
   match Connector_registry.lookup registry ~api:"other" with
   | None -> ()

@@ -196,14 +196,21 @@ let scenario_bash_echo ~model ~tmpdir ~env ~registry =
   Eio.Switch.run @@ fun sw ->
   let session_path = Filename.concat tmpdir "bash_echo.jsonl" in
   let sentinel = "pera_echo_42" in
-  let adapter = Connector_adapter.create ~registry ~api_key:(Option.get_exn_or "ANTHROPIC_API_KEY" (Sys.getenv_opt "ANTHROPIC_API_KEY")) ~env ~sw in
+  let adapter =
+    Connector_adapter.create ~registry
+      ~api_key:
+        (Option.get_exn_or "ANTHROPIC_API_KEY"
+           (Sys.getenv_opt "ANTHROPIC_API_KEY"))
+      ~env ~sw
+  in
   let stream_fn = Connector_adapter.stream_fn adapter in
   let exec_env = Pera_env.Local_env.create ~env ~cwd:tmpdir in
   let config =
     make_harness_config ~model ~tmpdir ~session_path ~stream_fn ~exec_env
   in
   match Pera_agent.Agent_harness.create ~config ~env ~sw with
-  | Error e -> (Fail (Printf.sprintf "create failed: %s" e.Types.message), zero_usage)
+  | Error e ->
+      (Fail (Printf.sprintf "create failed: %s" e.Types.message), zero_usage)
   | Ok h ->
       Pera_agent.Agent_harness.send h
         (Printf.sprintf
@@ -212,8 +219,7 @@ let scenario_bash_echo ~model ~tmpdir ~env ~registry =
            sentinel);
       if_no_error h (fun () ->
           let entries = parse_session_file session_path in
-          ( verify_bash_echo sentinel entries,
-            collect_cumulative_usage entries ))
+          (verify_bash_echo sentinel entries, collect_cumulative_usage entries))
 
 let scenario_read_preseeded ~model ~tmpdir ~env ~registry =
   (* Write the sentinel ourselves before the harness runs — the model's only
@@ -224,17 +230,25 @@ let scenario_read_preseeded ~model ~tmpdir ~env ~registry =
     with_open_text seed_file (fun oc -> output_string oc sentinel));
   Eio.Switch.run @@ fun sw ->
   let session_path = Filename.concat tmpdir "read_preseeded.jsonl" in
-  let adapter = Connector_adapter.create ~registry ~api_key:(Option.get_exn_or "ANTHROPIC_API_KEY" (Sys.getenv_opt "ANTHROPIC_API_KEY")) ~env ~sw in
+  let adapter =
+    Connector_adapter.create ~registry
+      ~api_key:
+        (Option.get_exn_or "ANTHROPIC_API_KEY"
+           (Sys.getenv_opt "ANTHROPIC_API_KEY"))
+      ~env ~sw
+  in
   let stream_fn = Connector_adapter.stream_fn adapter in
   let exec_env = Pera_env.Local_env.create ~env ~cwd:tmpdir in
   let config =
     make_harness_config ~model ~tmpdir ~session_path ~stream_fn ~exec_env
   in
   match Pera_agent.Agent_harness.create ~config ~env ~sw with
-  | Error e -> (Fail (Printf.sprintf "create failed: %s" e.Types.message), zero_usage)
+  | Error e ->
+      (Fail (Printf.sprintf "create failed: %s" e.Types.message), zero_usage)
   | Ok h ->
       Pera_agent.Agent_harness.send h
-        (Printf.sprintf "Use the read tool to read %s and tell me its contents." seed_file);
+        (Printf.sprintf "Use the read tool to read %s and tell me its contents."
+           seed_file);
       if_no_error h (fun () ->
           let entries = parse_session_file session_path in
           ( verify_read_preseeded ~sentinel entries,
@@ -249,23 +263,31 @@ let scenario_multi_turn ~model ~tmpdir ~env ~registry =
   let session_path = Filename.concat tmpdir "multi_turn.jsonl" in
   let data_file = Filename.concat tmpdir "mt_data.txt" in
   let sentinel = "pera_token_789" in
-  let adapter = Connector_adapter.create ~registry ~api_key:(Option.get_exn_or "ANTHROPIC_API_KEY" (Sys.getenv_opt "ANTHROPIC_API_KEY")) ~env ~sw in
+  let adapter =
+    Connector_adapter.create ~registry
+      ~api_key:
+        (Option.get_exn_or "ANTHROPIC_API_KEY"
+           (Sys.getenv_opt "ANTHROPIC_API_KEY"))
+      ~env ~sw
+  in
   let stream_fn = Connector_adapter.stream_fn adapter in
   let exec_env = Pera_env.Local_env.create ~env ~cwd:tmpdir in
   let config =
     make_harness_config ~model ~tmpdir ~session_path ~stream_fn ~exec_env
   in
   match Pera_agent.Agent_harness.create ~config ~env ~sw with
-  | Error e -> (Fail (Printf.sprintf "create failed: %s" e.Types.message), zero_usage)
+  | Error e ->
+      (Fail (Printf.sprintf "create failed: %s" e.Types.message), zero_usage)
   | Ok h ->
       Pera_agent.Agent_harness.send h
         (Printf.sprintf
-           "Use the write tool to write exactly `%s` to the file %s."
-           sentinel data_file);
+           "Use the write tool to write exactly `%s` to the file %s." sentinel
+           data_file);
       if_no_error h (fun () ->
           Pera_agent.Agent_harness.send h
             (Printf.sprintf
-               "Use the read tool to read the file %s and tell me exactly what it contains."
+               "Use the read tool to read the file %s and tell me exactly what \
+                it contains."
                data_file);
           if_no_error h (fun () ->
               let entries = parse_session_file session_path in
@@ -303,8 +325,9 @@ let () =
               scenarios;
             Printf.printf "\n";
             let passed =
-              count_passed (List.map (fun (name, (v, _)) -> (name, v)) scenarios)
-              in
+              count_passed
+                (List.map (fun (name, (v, _)) -> (name, v)) scenarios)
+            in
             let total = List.length scenarios in
             Printf.printf "%d/%d scenarios passed.\n" passed total;
             if passed = total then 0 else 1

@@ -193,5 +193,4 @@ let send t text =
   Pera_harness.Agent_wrapper.send t.wrapper ~messages
 
 let subscribe t f = Pera_harness.Agent_wrapper.subscribe t.wrapper f
-
 let last_error t = Pera_harness.Agent_wrapper.last_error t.wrapper

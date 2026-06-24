@@ -13,7 +13,8 @@ module Log = (val Logs.src_log src : Logs.LOG)
 
 (** Echo: return the [text] argument as-is. Mode: Parallel. *)
 let echo_tool =
-  Agent_types.Tool.create ~name:"echo" ~description:"Echo the text argument back."
+  Agent_types.Tool.create ~name:"echo"
+    ~description:"Echo the text argument back."
     ~schema:
       (Json_schema.object_
          ~properties:
@@ -35,8 +36,7 @@ let counter_tool =
   Agent_types.Tool.create ~name:"counter"
     ~description:"Return an incrementing integer as a string."
     ~schema:(Json_schema.object_ ~properties:[] ~required:[] ())
-    ~parallel_safe:false
-    ~execute:(fun ~ctx:_ ~args:_ ~sw:_ ~cancel:_ ->
+    ~parallel_safe:false ~execute:(fun ~ctx:_ ~args:_ ~sw:_ ~cancel:_ ->
       incr counter_state;
       Ok (Agent_types.Tool_text (string_of_int !counter_state)))
 
@@ -110,7 +110,7 @@ let make_config ?(tools = []) ?(get_follow_up_messages = None) ~model stream_fn
             temperature = None;
             cache_policy = Types.No_cache;
             cache_ttl = Types.Five_minutes;
-        thinking_budget_tokens = None;
+            thinking_budget_tokens = None;
           };
       stream_fn;
       convert_to_llm = default_convert_to_llm;

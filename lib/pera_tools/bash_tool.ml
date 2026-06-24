@@ -11,8 +11,8 @@ let bash_schema =
             () );
         ( "timeout",
           Pera_connector.Json_schema.optional
-            (Pera_connector.Json_schema.number ~description:"Timeout in seconds."
-               ()) );
+            (Pera_connector.Json_schema.number
+               ~description:"Timeout in seconds." ()) );
       ]
     ()
 
@@ -43,26 +43,24 @@ let bash =
     ~description:
       "Execute a bash command. Returns stdout and stderr combined. Output \
        truncated to last 2000 lines or 256 KB. Non-zero exit codes are \
-       surfaced as errors."
-    ~schema:bash_schema ~parallel_safe:false
-    ~execute:
-      (fun ~ctx ~args ~sw ~cancel ->
-        let module E = (val ctx : Pera_env.Execution_env.S) in
-        let open Result.Syntax in
-        let* command = Tool_util.get_string "command" args in
-        let timeout_opt = Tool_util.get_float_opt "timeout" args in
-        let buf = Buffer.create 1024 in
-        let on_stdout chunk = Buffer.add_string buf chunk in
-        let on_stderr chunk = Buffer.add_string buf chunk in
-        let exec_result =
-          E.Sh.exec ~command
-            ?cwd:(None : string option)
-            ?env:(None : (string * string) list option)
-            ?timeout:(timeout_opt : float option)
-            ?on_stdout:(Some on_stdout : (string -> unit) option)
-            ?on_stderr:(Some on_stderr : (string -> unit) option)
-            ~sw ~cancel
-        in
-        match exec_result with
-        | Error e -> process_error ~error_msg:e.Pera_types.Types.message buf
-        | Ok result -> process_ok_result (Buffer.contents buf) result)
+       surfaced as errors." ~schema:bash_schema ~parallel_safe:false
+    ~execute:(fun ~ctx ~args ~sw ~cancel ->
+      let module E = (val ctx : Pera_env.Execution_env.S) in
+      let open Result.Syntax in
+      let* command = Tool_util.get_string "command" args in
+      let timeout_opt = Tool_util.get_float_opt "timeout" args in
+      let buf = Buffer.create 1024 in
+      let on_stdout chunk = Buffer.add_string buf chunk in
+      let on_stderr chunk = Buffer.add_string buf chunk in
+      let exec_result =
+        E.Sh.exec ~command
+          ?cwd:(None : string option)
+          ?env:(None : (string * string) list option)
+          ?timeout:(timeout_opt : float option)
+          ?on_stdout:(Some on_stdout : (string -> unit) option)
+          ?on_stderr:(Some on_stderr : (string -> unit) option)
+          ~sw ~cancel
+      in
+      match exec_result with
+      | Error e -> process_error ~error_msg:e.Pera_types.Types.message buf
+      | Ok result -> process_ok_result (Buffer.contents buf) result)

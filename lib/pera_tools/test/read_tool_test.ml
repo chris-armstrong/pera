@@ -58,7 +58,11 @@ let test_read_returns_file_content () =
       write_file (module E) ~path:"hello.txt" ~content:"hello world" ~sw;
       let args = `Assoc [ ("path", `String "hello.txt") ] in
       Eio.Cancel.sub (fun cancel ->
-          match Tool.execute tool ~ctx:(module E : Pera_env.Execution_env.S) ~args ~sw ~cancel with
+          match
+            Tool.execute tool
+              ~ctx:(module E : Pera_env.Execution_env.S)
+              ~args ~sw ~cancel
+          with
           | Ok (Tool_text s) ->
               Alcotest.(check bool)
                 "contains hello world" true
@@ -74,7 +78,11 @@ let test_read_with_offset_skips_lines () =
       write_file (module E) ~path:"test.txt" ~content ~sw;
       let args = `Assoc [ ("path", `String "test.txt"); ("offset", `Int 3) ] in
       Eio.Cancel.sub (fun cancel ->
-          match Tool.execute tool ~ctx:(module E : Pera_env.Execution_env.S) ~args ~sw ~cancel with
+          match
+            Tool.execute tool
+              ~ctx:(module E : Pera_env.Execution_env.S)
+              ~args ~sw ~cancel
+          with
           | Ok (Tool_text s) ->
               let trimmed = String.trim s in
               Alcotest.(check bool)
@@ -93,7 +101,11 @@ let test_read_with_limit_caps_output () =
         `Assoc [ ("path", `String "limit_test.txt"); ("limit", `Int 5) ]
       in
       Eio.Cancel.sub (fun cancel ->
-          match Tool.execute tool ~ctx:(module E : Pera_env.Execution_env.S) ~args ~sw ~cancel with
+          match
+            Tool.execute tool
+              ~ctx:(module E : Pera_env.Execution_env.S)
+              ~args ~sw ~cancel
+          with
           | Ok (Tool_text s) ->
               let output_lines =
                 String.trim s |> String.split_on_char '\n'
@@ -114,7 +126,11 @@ let test_read_missing_file_returns_error () =
       let tool = Read_tool.read in
       let args = `Assoc [ ("path", `String "does_not_exist.txt") ] in
       Eio.Cancel.sub (fun cancel ->
-          match Tool.execute tool ~ctx:(module E : Pera_env.Execution_env.S) ~args ~sw ~cancel with
+          match
+            Tool.execute tool
+              ~ctx:(module E : Pera_env.Execution_env.S)
+              ~args ~sw ~cancel
+          with
           | Error e ->
               Alcotest.(check bool) "is_user_error false" false e.is_user_error
           | Ok _ -> Alcotest.fail "expected Error for missing file"))
@@ -127,7 +143,11 @@ let test_read_truncates_at_line_limit () =
       write_file (module E) ~path:"many_lines.txt" ~content ~sw;
       let args = `Assoc [ ("path", `String "many_lines.txt") ] in
       Eio.Cancel.sub (fun cancel ->
-          match Tool.execute tool ~ctx:(module E : Pera_env.Execution_env.S) ~args ~sw ~cancel with
+          match
+            Tool.execute tool
+              ~ctx:(module E : Pera_env.Execution_env.S)
+              ~args ~sw ~cancel
+          with
           | Ok (Tool_text s) ->
               Alcotest.(check bool)
                 "contains Use offset=" true
@@ -145,7 +165,11 @@ let test_read_offset_beyond_eof_returns_user_error () =
         `Assoc [ ("path", `String "short.txt"); ("offset", `Int 10) ]
       in
       Eio.Cancel.sub (fun cancel ->
-          match Tool.execute tool ~ctx:(module E : Pera_env.Execution_env.S) ~args ~sw ~cancel with
+          match
+            Tool.execute tool
+              ~ctx:(module E : Pera_env.Execution_env.S)
+              ~args ~sw ~cancel
+          with
           | Error e ->
               Alcotest.(check bool) "is_user_error true" true e.is_user_error
           | Ok _ -> Alcotest.fail "expected Error for offset beyond EOF"))

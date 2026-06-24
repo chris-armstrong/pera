@@ -7,7 +7,8 @@ type t = entry list
 (** The adapter is an immutable list of entries, built eagerly at create. *)
 
 (** Build one adapter entry from a registry pair. *)
-let build_entry ~api_key ~env ~sw (api_name, (module P : Pera_connector.Connector.S)) =
+let build_entry ~api_key ~env ~sw
+    (api_name, (module P : Pera_connector.Connector.S)) =
   let inst = P.create ~api_key ~env ~sw in
   let fn ~model ~context ~options ~sw =
     P.stream_simple inst ~model ~context ~options ~sw

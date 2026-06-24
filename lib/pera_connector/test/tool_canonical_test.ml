@@ -8,8 +8,7 @@ let test_model =
   Types.{ id = "claude-test"; api = "anthropic"; context_window = 200_000 }
 
 let make_context ?(tools = []) ?(system = "") messages =
-  Pera_connector.Connector.
-    { system; messages; tools }
+  Pera_connector.Connector.{ system; messages; tools }
 
 let make_options () =
   Pera_connector.Connector.
@@ -18,7 +17,7 @@ let make_options () =
       temperature = None;
       cache_policy = Types.No_cache;
       cache_ttl = Types.Five_minutes;
-        thinking_budget_tokens = None;
+      thinking_budget_tokens = None;
     }
 
 let string_testable = Alcotest.testable Format.pp_print_string String.equal
@@ -34,10 +33,7 @@ let test_anthropic_request_body_tools_are_canonical () =
   let schema =
     Json_schema.object_
       ~properties:
-        [
-          ("z", Json_schema.string ());
-          ("a", Json_schema.integer ());
-        ]
+        [ ("z", Json_schema.string ()); ("a", Json_schema.integer ()) ]
       ~required:[ "z"; "a" ] ()
   in
   let tool = tool_schema "my_tool" "Does a thing." schema in
@@ -61,16 +57,13 @@ let test_anthropic_request_body_tools_are_canonical () =
 (* ── OpenAI completions tool wrapping ──────────────────────────────────── *)
 
 (** OpenAI chat-completions request body [tools] array uses canonical
-    alphabetical field order inside the [function] object:
-    [description], [name], [parameters]. *)
+    alphabetical field order inside the [function] object: [description],
+    [name], [parameters]. *)
 let test_openai_request_body_tools_are_canonical () =
   let schema =
     Json_schema.object_
       ~properties:
-        [
-          ("z", Json_schema.string ());
-          ("a", Json_schema.integer ());
-        ]
+        [ ("z", Json_schema.string ()); ("a", Json_schema.integer ()) ]
       ~required:[ "z"; "a" ] ()
   in
   let tool = tool_schema "my_tool" "Does a thing." schema in

@@ -20,7 +20,9 @@ let run_tool_test
 let test_read_tool_schema_is_canonical () =
   run_tool_test (fun (module E) _sw ->
       let tool = Read_tool.read in
-      let schema_json = Tool.schema tool |> Pera_connector.Json_schema.to_json in
+      let schema_json =
+        Tool.schema tool |> Pera_connector.Json_schema.to_json
+      in
       let actual = Yojson.Safe.to_string schema_json in
       let expected =
         {|{"properties":{"limit":{"anyOf":[{"description":"Maximum number of lines to return. Default is 2000.","type":"integer"},{"const":null}]},"offset":{"anyOf":[{"description":"Start reading from this line number (1-indexed). Default is 0 (beginning).","type":"integer"},{"const":null}]},"path":{"description":"Path to read (use absolute path when possible).","type":"string"}},"required":["path"],"type":"object"}|}
@@ -30,7 +32,9 @@ let test_read_tool_schema_is_canonical () =
 let test_write_tool_schema_is_canonical () =
   run_tool_test (fun (module E) _sw ->
       let tool = Write_tool.write in
-      let schema_json = Tool.schema tool |> Pera_connector.Json_schema.to_json in
+      let schema_json =
+        Tool.schema tool |> Pera_connector.Json_schema.to_json
+      in
       let actual = Yojson.Safe.to_string schema_json in
       let expected =
         {|{"properties":{"content":{"description":"Content to write to the file.","type":"string"},"path":{"description":"Path to write to (relative or absolute).","type":"string"}},"required":["content","path"],"type":"object"}|}
@@ -40,7 +44,9 @@ let test_write_tool_schema_is_canonical () =
 let test_bash_tool_schema_is_canonical () =
   run_tool_test (fun (module E) _sw ->
       let tool = Bash_tool.bash in
-      let schema_json = Tool.schema tool |> Pera_connector.Json_schema.to_json in
+      let schema_json =
+        Tool.schema tool |> Pera_connector.Json_schema.to_json
+      in
       let actual = Yojson.Safe.to_string schema_json in
       let expected =
         {|{"properties":{"command":{"description":"Bash command to execute in the current working directory.","type":"string"},"timeout":{"anyOf":[{"description":"Timeout in seconds.","type":"number"},{"const":null}]}},"required":["command"],"type":"object"}|}
@@ -50,7 +56,9 @@ let test_bash_tool_schema_is_canonical () =
 let test_grep_tool_schema_is_canonical () =
   run_tool_test (fun (module E) _sw ->
       let tool = Grep_tool.grep in
-      let schema_json = Tool.schema tool |> Pera_connector.Json_schema.to_json in
+      let schema_json =
+        Tool.schema tool |> Pera_connector.Json_schema.to_json
+      in
       let actual = Yojson.Safe.to_string schema_json in
       let expected =
         {|{"properties":{"glob":{"anyOf":[{"description":"Filter files by glob pattern (e.g. '*.ml').","type":"string"},{"const":null}]},"path":{"anyOf":[{"description":"File or directory to search (default: current directory).","type":"string"},{"const":null}]},"pattern":{"description":"Search pattern (regular expression).","type":"string"}},"required":["pattern"],"type":"object"}|}

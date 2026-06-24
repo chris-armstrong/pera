@@ -14,7 +14,7 @@ let test_options =
       temperature = None;
       cache_policy = Pera_types.Types.No_cache;
       cache_ttl = Pera_types.Types.Five_minutes;
-        thinking_budget_tokens = None;
+      thinking_budget_tokens = None;
     }
 
 let default_convert_to_llm msgs =
@@ -280,9 +280,8 @@ let test_pending_tool_calls_updated_during_execution () =
   let tool =
     Pera_core.Agent_types.Tool.create ~name:"echo" ~description:"echo tool"
       ~schema:empty_schema ~parallel_safe:true
-      ~execute:
-        (fun ~ctx:_ ~args:_ ~sw:_ ~cancel:_ ->
-           Ok (Pera_core.Agent_types.Tool_text "done"))
+      ~execute:(fun ~ctx:_ ~args:_ ~sw:_ ~cancel:_ ->
+        Ok (Pera_core.Agent_types.Tool_text "done"))
   in
   let tc = make_tool_call "tc-1" "echo" (`Assoc []) in
   let script1 = make_tool_use_turn_script [ tc ] in
@@ -318,17 +317,15 @@ let test_pending_tool_calls_keyed_by_id_for_duplicate_names () =
   let tool =
     Pera_core.Agent_types.Tool.create ~name:"echo" ~description:"echo tool"
       ~schema:empty_schema ~parallel_safe:true
-      ~execute:
-        (fun ~ctx:_ ~args:_ ~sw:_ ~cancel:_ ->
-           incr started_count;
-           (* Once both tools have started, release the barrier from the
+      ~execute:(fun ~ctx:_ ~args:_ ~sw:_ ~cancel:_ ->
+        incr started_count;
+        (* Once both tools have started, release the barrier from the
               main fiber so both can complete. *)
-           if Int.equal !started_count 2 then
-             Eio.Promise.resolve release_r ();
-           (* Wait for the release signal before returning — this keeps
+        if Int.equal !started_count 2 then Eio.Promise.resolve release_r ();
+        (* Wait for the release signal before returning — this keeps
               both tools "in flight" simultaneously. *)
-           Eio.Promise.await release_p;
-           Ok (Pera_core.Agent_types.Tool_text "done"))
+        Eio.Promise.await release_p;
+        Ok (Pera_core.Agent_types.Tool_text "done"))
   in
   let tc1 = make_tool_call "tc-a" "echo" (`Assoc []) in
   let tc2 = make_tool_call "tc-b" "echo" (`Assoc []) in

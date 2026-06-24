@@ -38,11 +38,7 @@ let is_substring ~sub s =
 
 (** Find a tool by name in a tool list. Raises [Failure] if not found. *)
 let find_tool ~name tools =
-  match
-    List.find_opt
-      (fun t -> String.equal (Tool.name t) name)
-      tools
-  with
+  match List.find_opt (fun t -> String.equal (Tool.name t) name) tools with
   | Some t -> t
   | None -> failwith (Printf.sprintf "tool_driver: tool '%s' not found" name)
 
@@ -97,8 +93,8 @@ let run_bash ~t ~command ~env_mod ~sw ~cancel =
 (* ── Scenario helpers (≤ 2 levels of nesting each) ───────────────────────── *)
 
 (** Scenario 1 helper: read a file and check it contains expected substring. *)
-let check_read_contains ~read ~path ~expected ~tool ~scenario ~sw
-    ~cancel ~env_mod =
+let check_read_contains ~read ~path ~expected ~tool ~scenario ~sw ~cancel
+    ~env_mod =
   match read_file ~t:read ~env_mod ~path ~sw ~cancel with
   | Error msg ->
       let v = Fail (Printf.sprintf "read failed: %s" msg) in
@@ -118,7 +114,9 @@ let write_and_read_offset ~write ~read ~env_mod ~sw ~cancel =
   let lines =
     String.concat "\n" (List.init 10 (fun i -> string_of_int (i + 1)))
   in
-  match write_file ~t:write ~env_mod ~path:"numbers.txt" ~content:lines ~sw ~cancel with
+  match
+    write_file ~t:write ~env_mod ~path:"numbers.txt" ~content:lines ~sw ~cancel
+  with
   | Error msg -> Error msg
   | Ok () -> (
       let args =
@@ -156,8 +154,8 @@ let overwrite_twice ~t ~env_mod ~sw ~cancel =
     output or error. *)
 let write_and_grep ~write ~grep ~env_mod ~sw ~cancel =
   match
-    write_file ~t:write ~env_mod ~path:"grep_test.txt" ~content:"unique_grep_pattern_xyz"
-      ~sw ~cancel
+    write_file ~t:write ~env_mod ~path:"grep_test.txt"
+      ~content:"unique_grep_pattern_xyz" ~sw ~cancel
   with
   | Error msg -> Error msg
   | Ok () -> (
@@ -174,7 +172,8 @@ let scenario_read_basic ~read ~write ~env_mod ~sw ~cancel =
   let scenario = "basic read" in
   let tool_name = Tool.name read in
   match
-    write_file ~t:write ~env_mod ~path:"hello.txt" ~content:"hello world" ~sw ~cancel
+    write_file ~t:write ~env_mod ~path:"hello.txt" ~content:"hello world" ~sw
+      ~cancel
   with
   | Error msg ->
       let v = Fail (Printf.sprintf "write failed: %s" msg) in
@@ -209,7 +208,8 @@ let scenario_write_create ~read ~write ~env_mod ~sw ~cancel =
   let scenario = "create file" in
   let tool_name = Tool.name write in
   match
-    write_file ~t:write ~env_mod ~path:"created.txt" ~content:"write test" ~sw ~cancel
+    write_file ~t:write ~env_mod ~path:"created.txt" ~content:"write test" ~sw
+      ~cancel
   with
   | Error msg ->
       let v = Fail (Printf.sprintf "write failed: %s" msg) in
@@ -276,8 +276,7 @@ let scenario_bash_exit_code ~bash ~env_mod ~sw ~cancel =
 
 (** Scenario 7: Grep pattern search — create file with unique pattern, search
     for it. Skips if ripgrep (rg) is not installed. *)
-let scenario_grep_search ~grep ~write ~env_mod ~sw
-    ~cancel =
+let scenario_grep_search ~grep ~write ~env_mod ~sw ~cancel =
   let scenario = "pattern search" in
   let module E = (val env_mod : Pera_env.Execution_env.S) in
   match E.Sh.find_executable ~name:"rg" with
@@ -306,8 +305,7 @@ let scenario_grep_search ~grep ~write ~env_mod ~sw
 (** Scenario 8: Write a file with more lines than Truncate.max_lines; read it
     via the read tool; verify the output is shorter than the input and contains
     the truncation footer. *)
-let scenario_read_truncation ~read ~write ~env_mod ~sw
-    ~cancel =
+let scenario_read_truncation ~read ~write ~env_mod ~sw ~cancel =
   let scenario = "read truncation" in
   let line_count = Pera_tools.Truncate.max_lines * 2 in
   let content = String.concat "\n" (List.init line_count (fun _ -> "x")) in
@@ -380,15 +378,33 @@ let () =
         let verdicts =
           Eio.Cancel.sub (fun cancel ->
               [
-                scenario_read_basic ~read ~write ~env_mod:(module E : Pera_env.Execution_env.S) ~sw ~cancel;
-                scenario_read_offset ~read ~write ~env_mod:(module E : Pera_env.Execution_env.S) ~sw ~cancel;
-                scenario_write_create ~read ~write ~env_mod:(module E : Pera_env.Execution_env.S) ~sw ~cancel;
-                scenario_write_overwrite ~write ~env_mod:(module E : Pera_env.Execution_env.S) ~sw ~cancel;
-                scenario_bash_echo ~bash ~env_mod:(module E : Pera_env.Execution_env.S) ~sw ~cancel;
-                scenario_bash_exit_code ~bash ~env_mod:(module E : Pera_env.Execution_env.S) ~sw ~cancel;
-                scenario_grep_search ~grep ~write ~env_mod:(module E : Pera_env.Execution_env.S) ~sw ~cancel;
-                scenario_read_truncation ~read ~write ~env_mod:(module E : Pera_env.Execution_env.S) ~sw ~cancel;
-                scenario_read_missing_path_arg ~read ~env_mod:(module E : Pera_env.Execution_env.S) ~sw ~cancel;
+                scenario_read_basic ~read ~write
+                  ~env_mod:(module E : Pera_env.Execution_env.S)
+                  ~sw ~cancel;
+                scenario_read_offset ~read ~write
+                  ~env_mod:(module E : Pera_env.Execution_env.S)
+                  ~sw ~cancel;
+                scenario_write_create ~read ~write
+                  ~env_mod:(module E : Pera_env.Execution_env.S)
+                  ~sw ~cancel;
+                scenario_write_overwrite ~write
+                  ~env_mod:(module E : Pera_env.Execution_env.S)
+                  ~sw ~cancel;
+                scenario_bash_echo ~bash
+                  ~env_mod:(module E : Pera_env.Execution_env.S)
+                  ~sw ~cancel;
+                scenario_bash_exit_code ~bash
+                  ~env_mod:(module E : Pera_env.Execution_env.S)
+                  ~sw ~cancel;
+                scenario_grep_search ~grep ~write
+                  ~env_mod:(module E : Pera_env.Execution_env.S)
+                  ~sw ~cancel;
+                scenario_read_truncation ~read ~write
+                  ~env_mod:(module E : Pera_env.Execution_env.S)
+                  ~sw ~cancel;
+                scenario_read_missing_path_arg ~read
+                  ~env_mod:(module E : Pera_env.Execution_env.S)
+                  ~sw ~cancel;
               ])
         in
         Printf.printf "\n";

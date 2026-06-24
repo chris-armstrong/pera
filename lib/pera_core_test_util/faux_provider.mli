@@ -62,5 +62,5 @@ val as_provider : script list -> (module Pera_connector.Connector.S)
     The module has [type t = unit] (stateless). [create] ignores [~env] and
     [~sw] and returns [()]. [stream_simple] ignores the [unit] instance and
     delegates to {!stream_fn_of_scripts}. This function exists to prove that
-    [Faux_provider] is a valid [Connector.S] and that the adapter is trivial; the
-    loop itself always uses the {!Agent_types.stream_fn} form directly. *)
+    [Faux_provider] is a valid [Connector.S] and that the adapter is trivial;
+    the loop itself always uses the {!Agent_types.stream_fn} form directly. *)

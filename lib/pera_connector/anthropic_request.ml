@@ -61,8 +61,8 @@ let user_content_to_json_list content =
             ])
     content
 
-(** Render a [Connector.AssistantMessage] payload to the Anthropic content array.
-*)
+(** Render a [Connector.AssistantMessage] payload to the Anthropic content
+    array. *)
 let assistant_content_to_json_list content =
   List.map
     (function
@@ -241,9 +241,12 @@ let build_request_body ~model ~context ~options =
     | None -> with_tools
     | Some budget ->
         with_tools
-        @ [ ("thinking",
-              `Assoc [ ("type", `String "enabled");
-                        ("budget_tokens", `Int budget) ]) ]
+        @ [
+            ( "thinking",
+              `Assoc
+                [ ("type", `String "enabled"); ("budget_tokens", `Int budget) ]
+            );
+          ]
   in
   let with_temperature =
     match options.temperature with

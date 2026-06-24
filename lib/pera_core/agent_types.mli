@@ -67,10 +67,10 @@ module Tool : sig
     parallel_safe:bool ->
     execute:
       (ctx:'ctx ->
-       args:Yojson.Safe.t ->
-       sw:Eio.Switch.t ->
-       cancel:Eio.Cancel.t ->
-       (tool_output, Pera_types.Types.tool_error) result) ->
+      args:Yojson.Safe.t ->
+      sw:Eio.Switch.t ->
+      cancel:Eio.Cancel.t ->
+      (tool_output, Pera_types.Types.tool_error) result) ->
     'ctx t
   (** Construct a tool.
 
@@ -92,8 +92,8 @@ module Tool : sig
     (tool_output, Pera_types.Types.tool_error) result
 end
 
-(** Backwards-compatible alias for the opaque {!Tool.t}. *)
 type 'ctx tool = 'ctx Tool.t
+(** Backwards-compatible alias for the opaque {!Tool.t}. *)
 
 (** {1 Agent events} *)
 
@@ -182,12 +182,9 @@ val pp_before_tool_call_result :
 val show_before_tool_call_result : before_tool_call_result -> string
 
 type thinking_update =
-  | Inherit
-      (** Keep the current thinking budget setting (no change). *)
-  | Budget of int
-      (** Enable extended thinking with this budget. *)
-  | Disabled
-      (** Disable extended thinking. *)
+  | Inherit  (** Keep the current thinking budget setting (no change). *)
+  | Budget of int  (** Enable extended thinking with this budget. *)
+  | Disabled  (** Disable extended thinking. *)
 
 val equal_thinking_update : thinking_update -> thinking_update -> bool
 val pp_thinking_update : Format.formatter -> thinking_update -> unit

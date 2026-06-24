@@ -58,7 +58,9 @@ let test_stream_fn_resolves_registered_provider () =
     Pera_connector.Connector_registry.register
       Pera_connector.Connector_registry.empty ~name:"faux" provider_mod
   in
-  let adapter = Connector_adapter.create ~registry ~api_key:"test-key" ~env ~sw in
+  let adapter =
+    Connector_adapter.create ~registry ~api_key:"test-key" ~env ~sw
+  in
   let stream_fn = Connector_adapter.stream_fn adapter in
   let context =
     make_provider_context ~system:"test"
@@ -105,7 +107,9 @@ let test_stream_fn_unknown_api_returns_error_stream () =
   Faux_provider.reset_recorded ();
   (* Create adapter with an empty registry *)
   let registry = Pera_connector.Connector_registry.empty in
-  let adapter = Connector_adapter.create ~registry ~api_key:"test-key" ~env ~sw in
+  let adapter =
+    Connector_adapter.create ~registry ~api_key:"test-key" ~env ~sw
+  in
   let stream_fn = Connector_adapter.stream_fn adapter in
   let context =
     make_provider_context ~system:"test"
@@ -153,7 +157,9 @@ let test_stream_fn_preserves_provider_semantics () =
     Pera_connector.Connector_registry.register
       Pera_connector.Connector_registry.empty ~name:"faux" provider_mod
   in
-  let adapter = Connector_adapter.create ~registry ~api_key:"test-key" ~env ~sw in
+  let adapter =
+    Connector_adapter.create ~registry ~api_key:"test-key" ~env ~sw
+  in
   let stream_fn = Connector_adapter.stream_fn adapter in
   (* Build a loop config using the adapter's stream_fn.
      The model.api must match the registered name 'faux'. *)

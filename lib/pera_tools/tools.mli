@@ -22,8 +22,8 @@ val grep : local_tool
 (** [grep] is a grep tool. See {!Grep_tool.grep}. *)
 
 val default : local_tool list
-(** [default] returns [[read; write; bash; grep]]. This is the standard
-    assembly function for building all four tools.
+(** [default] returns [[read; write; bash; grep]]. This is the standard assembly
+    function for building all four tools.
 
     Loop config wiring:
     {[

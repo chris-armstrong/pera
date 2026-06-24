@@ -32,7 +32,11 @@ let test_grep_finds_pattern_in_file () =
       write_file (module E) ~path:"test.ml" ~content:"foo bar baz" ~sw;
       let args = `Assoc [ ("pattern", `String "foo") ] in
       Eio.Cancel.sub (fun cancel ->
-          match Tool.execute tool ~ctx:(module E : Pera_env.Execution_env.S) ~args ~sw ~cancel with
+          match
+            Tool.execute tool
+              ~ctx:(module E : Pera_env.Execution_env.S)
+              ~args ~sw ~cancel
+          with
           | Ok (Tool_text s) ->
               Alcotest.(check bool)
                 "output contains test.ml" true
@@ -49,7 +53,11 @@ let test_grep_no_match_returns_message () =
       write_file (module E) ~path:"hello.txt" ~content:"hello world" ~sw;
       let args = `Assoc [ ("pattern", `String "xyz") ] in
       Eio.Cancel.sub (fun cancel ->
-          match Tool.execute tool ~ctx:(module E : Pera_env.Execution_env.S) ~args ~sw ~cancel with
+          match
+            Tool.execute tool
+              ~ctx:(module E : Pera_env.Execution_env.S)
+              ~args ~sw ~cancel
+          with
           | Ok (Tool_text s) ->
               Alcotest.(check string)
                 "no matches message" "No matches found." (String.trim s)
@@ -64,7 +72,11 @@ let test_grep_caps_at_100_matches () =
       write_file (module E) ~path:"many.txt" ~content ~sw;
       let args = `Assoc [ ("pattern", `String "^match") ] in
       Eio.Cancel.sub (fun cancel ->
-          match Tool.execute tool ~ctx:(module E : Pera_env.Execution_env.S) ~args ~sw ~cancel with
+          match
+            Tool.execute tool
+              ~ctx:(module E : Pera_env.Execution_env.S)
+              ~args ~sw ~cancel
+          with
           | Ok (Tool_text s) ->
               let output_lines =
                 String.trim s |> String.split_on_char '\n'
@@ -90,7 +102,11 @@ let test_grep_glob_filters_file_types () =
         `Assoc [ ("pattern", `String "target"); ("glob", `String "*.ml") ]
       in
       Eio.Cancel.sub (fun cancel ->
-          match Tool.execute tool ~ctx:(module E : Pera_env.Execution_env.S) ~args ~sw ~cancel with
+          match
+            Tool.execute tool
+              ~ctx:(module E : Pera_env.Execution_env.S)
+              ~args ~sw ~cancel
+          with
           | Ok (Tool_text s) ->
               Alcotest.(check bool)
                 "file.ml found" true
@@ -109,6 +125,7 @@ let test_grep_ripgrep_not_found_returns_error () =
   in
   let module MockSh = struct
     [@@@warning "-16"]
+
     let exec = E.Sh.exec
     let find_executable ~name:_ = None
   end in
@@ -119,7 +136,11 @@ let test_grep_ripgrep_not_found_returns_error () =
   let tool = Grep_tool.grep in
   let args = `Assoc [ ("pattern", `String "foo") ] in
   Eio.Cancel.sub (fun cancel ->
-      match Tool.execute tool ~ctx:(module MockEnv : Pera_env.Execution_env.S) ~args ~sw ~cancel with
+      match
+        Tool.execute tool
+          ~ctx:(module MockEnv : Pera_env.Execution_env.S)
+          ~args ~sw ~cancel
+      with
       | Error e ->
           Alcotest.(check bool) "is_user_error false" false e.is_user_error;
           Alcotest.(check bool)

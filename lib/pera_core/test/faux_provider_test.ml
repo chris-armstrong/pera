@@ -93,7 +93,7 @@ let faux_options =
       temperature = None;
       cache_policy = Pera_types.Types.No_cache;
       cache_ttl = Pera_types.Types.Five_minutes;
-        thinking_budget_tokens = None;
+      thinking_budget_tokens = None;
     }
 
 (** ----------------------------------------------------------------------- Test
@@ -117,7 +117,8 @@ let test_script_emits_events_then_resolves_final () =
   let script = Faux_provider.Turn Faux_provider.{ events; final = final_msg } in
   let fn = Faux_provider.stream_fn_of_scripts [ script ] in
   let ctx =
-    make_context [ Pera_connector.Connector.UserMessage (make_user_message "hi") ]
+    make_context
+      [ Pera_connector.Connector.UserMessage (make_user_message "hi") ]
   in
   (* Act *)
   let stream = fn ~model:faux_model ~context:ctx ~options:faux_options ~sw in
@@ -217,7 +218,8 @@ let test_error_script_closes_stream_with_error () =
   in
   let fn = Faux_provider.stream_fn_of_scripts [ error_script ] in
   let ctx =
-    make_context [ Pera_connector.Connector.UserMessage (make_user_message "hi") ]
+    make_context
+      [ Pera_connector.Connector.UserMessage (make_user_message "hi") ]
   in
   (* Act *)
   let stream = fn ~model:faux_model ~context:ctx ~options:faux_options ~sw in

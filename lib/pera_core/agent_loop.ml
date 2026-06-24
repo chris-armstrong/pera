@@ -108,23 +108,22 @@ let apply_turn_update ~model_ref ~messages_ref ~current_thinking_budget
     (update : Agent_types.turn_update) =
   Option.iter (fun m -> model_ref := m) update.model;
   (match update.thinking with
-   | Agent_types.Inherit -> ()
-   | Agent_types.Budget n -> current_thinking_budget := Some n
-   | Agent_types.Disabled -> current_thinking_budget := None);
+  | Agent_types.Inherit -> ()
+  | Agent_types.Budget n -> current_thinking_budget := Some n
+  | Agent_types.Disabled -> current_thinking_budget := None);
   Option.iter (fun msgs -> messages_ref := msgs) update.messages
 
 (** Build the provider context for one LLM call.
 
     Applies [transform_context] (if set) and then [convert_to_llm] to produce
     the provider-level message list. *)
-let build_provider_context ~system ~transform_context ~convert_to_llm
-    ~tools messages =
+let build_provider_context ~system ~transform_context ~convert_to_llm ~tools
+    messages =
   let transformed =
     match transform_context with None -> messages | Some f -> f messages
   in
   let provider_messages = convert_to_llm transformed in
-  Pera_connector.Connector.
-    { system; messages = provider_messages; tools }
+  Pera_connector.Connector.{ system; messages = provider_messages; tools }
 
 (** Invoke [get_api_key] if set. The return value is not used by the loop; the
     call exists to satisfy provider contracts. *)
@@ -153,7 +152,8 @@ let consume_provider_stream ~provider_stream out_stream =
            let partial = partial_of_event event in
            partial_ref := partial;
            let agent_msg =
-             Agent_types.Real (Pera_connector.Connector.AssistantMessage partial)
+             Agent_types.Real
+               (Pera_connector.Connector.AssistantMessage partial)
            in
            if not !emitted_start then begin
              emitted_start := true;
@@ -264,7 +264,8 @@ let execute_one_tool ~config ~sw ~out_stream ~final_agent_msg
     in
     (* Step 2: validate args *)
     let* () =
-      Pera_connector.Json_schema.validate (Agent_types.Tool.schema tool)
+      Pera_connector.Json_schema.validate
+        (Agent_types.Tool.schema tool)
         tc.arguments
       |> Result.map_err (fun err ->
           fail_tool (Printf.sprintf "Schema validation failed: %s" err))
@@ -446,13 +447,13 @@ let rec run_inner ~config ~model_ref ~options_ref ~current_thinking_budget
   let provider_context =
     build_provider_context ~system:config.system
       ~transform_context:config.transform_context
-      ~convert_to_llm:config.convert_to_llm ~tools:tool_schemas
-      !messages_ref
+      ~convert_to_llm:config.convert_to_llm ~tools:tool_schemas !messages_ref
   in
   invoke_get_api_key config.get_api_key;
   let current_options =
     let opts : Pera_connector.Connector.simple_stream_options = !options_ref in
-    { opts with thinking_budget_tokens = !current_thinking_budget } in
+    { opts with thinking_budget_tokens = !current_thinking_budget }
+  in
   let provider_stream =
     config.stream_fn ~model:!model_ref ~context:provider_context
       ~options:current_options ~sw
@@ -540,8 +541,7 @@ let rec run_inner ~config ~model_ref ~options_ref ~current_thinking_budget
           else
             (* Tool calls or steering messages: continue the inner loop *)
             run_inner ~config ~model_ref ~options_ref ~current_thinking_budget
-              ~messages_ref
-              ~pending:steering ~sw out_stream
+              ~messages_ref ~pending:steering ~sw out_stream
         end
   end
 

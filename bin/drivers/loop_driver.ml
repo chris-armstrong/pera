@@ -80,7 +80,7 @@ let test_options =
       temperature = None;
       cache_policy = Types.No_cache;
       cache_ttl = Types.Five_minutes;
-        thinking_budget_tokens = None;
+      thinking_budget_tokens = None;
     }
 
 (** Empty JSON schema for tools that take no args. *)
@@ -398,9 +398,8 @@ let scenario_tool_error sw =
   in
   let failing_tool =
     Agent_types.Tool.create ~name:"failing_tool"
-      ~description:"Always returns an error."
-      ~schema:empty_schema ~parallel_safe:true
-      ~execute:(fun ~ctx:_ ~args:_ ~sw:_ ~cancel:_ ->
+      ~description:"Always returns an error." ~schema:empty_schema
+      ~parallel_safe:true ~execute:(fun ~ctx:_ ~args:_ ~sw:_ ~cancel:_ ->
         Error Types.{ message = "intentional failure"; is_user_error = false })
   in
   let stream_fn = Faux_provider.stream_fn_of_scripts [ script1; script2 ] in

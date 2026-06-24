@@ -385,8 +385,7 @@ let test_subscriber_receives_events env () =
 
 let make_error_script message =
   Faux_provider.Error
-    Faux_provider.
-      { error_events = []; error_message = message }
+    Faux_provider.{ error_events = []; error_message = message }
 
 (** 10. [last_error] is reset between sends: an errored send followed by a
     successful send leaves [last_error] as [None]. *)
@@ -397,13 +396,11 @@ let test_last_error_reset_between_sends env () =
   let session_path = Filename.concat dir "session.jsonl" in
   let config =
     make_config ~env ~cwd:dir ~session_path
-      [ make_error_script "first send failed";
-        make_text_turn_script "recovered"
+      [
+        make_error_script "first send failed"; make_text_turn_script "recovered";
       ]
   in
-  let t =
-    Result.get_exn (Pera_agent.Agent_harness.create ~config ~env ~sw)
-  in
+  let t = Result.get_exn (Pera_agent.Agent_harness.create ~config ~env ~sw) in
   Pera_agent.Agent_harness.send t "trigger error";
   Alcotest.(check bool)
     "last_error set after failed send" true

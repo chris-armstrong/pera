@@ -132,10 +132,7 @@ type agent_event =
 
 type before_tool_call_result = Allow | Deny of string [@@deriving eq, show]
 
-type thinking_update =
-  | Inherit
-  | Budget of int
-  | Disabled
+type thinking_update = Inherit | Budget of int | Disabled
 [@@deriving show, eq]
 
 type turn_update = {

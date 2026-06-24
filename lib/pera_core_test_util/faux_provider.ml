@@ -52,8 +52,7 @@ let stream_fn_of_scripts ?pause scripts =
         | () -> ()
         | exception exn -> (
             let err_msg = Printexc.to_string exn in
-            try
-              Pera_connector.Event_stream.close_internal_error stream err_msg
+            try Pera_connector.Event_stream.close_internal_error stream err_msg
             with _ -> ()));
     stream
 

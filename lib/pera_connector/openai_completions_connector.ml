@@ -107,7 +107,8 @@ let do_request ~provider ~model ~context ~options ~sw:_ stream =
         | None -> Pera_types.Types.Transport
       in
       Event_stream.close_error stream
-        (Http_client.error_to_string http_err) stop_err
+        (Http_client.error_to_string http_err)
+        stop_err
   | Ok () -> finalise ()
 
 let create ~api_key ~env ~sw =

@@ -42,7 +42,9 @@ module type S = sig
   type t
 
   val name : string
-  val create : api_key:string -> env:Eio_unix.Stdenv.base -> sw:Eio.Switch.t -> t
+
+  val create :
+    api_key:string -> env:Eio_unix.Stdenv.base -> sw:Eio.Switch.t -> t
 
   val stream_simple :
     t ->

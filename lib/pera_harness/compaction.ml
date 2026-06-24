@@ -98,11 +98,7 @@ let compact ~stream_fn ~model ~options ~messages ~tail_size ~sw =
     in
     let context =
       Connector.
-        {
-          system = summarise_prompt;
-          messages = [ user_msg ];
-          tools = [];
-        }
+        { system = summarise_prompt; messages = [ user_msg ]; tools = [] }
     in
     let stream = stream_fn ~model ~context ~options ~sw in
     let* final =

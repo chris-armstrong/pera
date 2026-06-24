@@ -333,7 +333,8 @@ let test_error_stop_reason_terminates_run () =
   Eio.Switch.run @@ fun sw ->
   Faux_provider.reset_recorded ();
   let error_final =
-    make_assistant_message ~stop_reason:(Pera_types.Types.Error Pera_types.Types.Transport)
+    make_assistant_message
+      ~stop_reason:(Pera_types.Types.Error Pera_types.Types.Transport)
       [ Pera_types.Types.AText "oops" ]
   in
   let error_script =

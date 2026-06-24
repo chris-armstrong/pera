@@ -184,9 +184,9 @@ let messages_to_json ?find_tool_name ~compat:_ messages =
      (e.g. per-endpoint field-name differences in message objects). *)
   List.map (message_to_json ?find_tool_name) messages
 
-(** Render a [Connector.tool_schema] to the OpenAI tools array format.
-    The nested [function] object fields are emitted in alphabetical key order
-    so the wire bytes are stable across identical tool definitions. *)
+(** Render a [Connector.tool_schema] to the OpenAI tools array format. The
+    nested [function] object fields are emitted in alphabetical key order so the
+    wire bytes are stable across identical tool definitions. *)
 let tool_to_json (tool : Connector.tool_schema) =
   `Assoc
     [

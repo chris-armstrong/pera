@@ -67,7 +67,7 @@ let test_options =
       temperature = None;
       cache_policy = Pera_types.Types.No_cache;
       cache_ttl = Pera_types.Types.Five_minutes;
-        thinking_budget_tokens = None;
+      thinking_budget_tokens = None;
     }
 
 (** {1 Script builders} *)
