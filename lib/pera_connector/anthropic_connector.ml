@@ -56,20 +56,23 @@ let process_chunks stream =
   (on_chunk, finalise)
 
 (** Build the HTTP request headers for the Anthropic API. *)
-let build_headers api_key =
-  [
+let build_headers ?(thinking = false) api_key =
+  let base = [
     ("x-api-key", api_key);
     ("anthropic-version", anthropic_version);
     ("content-type", "application/json");
     ("accept", "text/event-stream");
-  ]
+  ] in
+  if thinking then
+    ("anthropic-beta", "interleaved-thinking-2025-05-14") :: base
+  else base
 
 (** Run the HTTP request using the persistent provider client and process the
     streaming response body. Closes the stream when done. *)
 let do_request ~provider ~model ~context ~options ~sw:_ stream =
   let request_body = build_request_body ~model ~context ~options in
   let request_body_str = Yojson.Safe.to_string request_body in
-  let headers = build_headers provider.api_key in
+  let headers = build_headers ~thinking:(Option.is_some options.thinking_budget_tokens) provider.api_key in
   let on_chunk, finalise = process_chunks stream in
   let http_result =
     Http_client.post_stream ~client:provider.client ~headers

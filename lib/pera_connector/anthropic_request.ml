@@ -236,9 +236,18 @@ let build_request_body ~model ~context ~options =
     if List.is_empty tagged_tools then with_system
     else with_system @ [ ("tools", `List tagged_tools) ]
   in
+  let with_thinking =
+    match options.thinking_budget_tokens with
+    | None -> with_tools
+    | Some budget ->
+        with_tools
+        @ [ ("thinking",
+              `Assoc [ ("type", `String "enabled");
+                        ("budget_tokens", `Int budget) ]) ]
+  in
   let with_temperature =
     match options.temperature with
-    | None -> with_tools
-    | Some t -> with_tools @ [ ("temperature", `Float t) ]
+    | None -> with_thinking
+    | Some t -> with_thinking @ [ ("temperature", `Float t) ]
   in
   `Assoc with_temperature
