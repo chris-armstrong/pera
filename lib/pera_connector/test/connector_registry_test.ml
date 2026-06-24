@@ -61,7 +61,7 @@ let run_provider_and_get_events provider_mod =
   Eio.Switch.run @@ fun sw ->
   let inst = P.create ~env ~sw in
   let context =
-    Connector.{ system = ""; messages = []; tools = []; thinking = false }
+    Connector.{ system = ""; messages = []; tools = [] }
   in
   let options =
     {
@@ -69,6 +69,7 @@ let run_provider_and_get_events provider_mod =
       temperature = None;
       cache_policy = Pera_types.Types.No_cache;
       cache_ttl = Pera_types.Types.Five_minutes;
+      thinking_budget_tokens = None;
     }
   in
   let stream =

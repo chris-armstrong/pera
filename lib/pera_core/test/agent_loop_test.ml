@@ -209,7 +209,7 @@ let test_prepare_next_turn_swaps_model () =
         if Int.equal !turn_count 1 then
           Some
             Agent_types.
-              { messages = None; model = Some new_model; thinking = None }
+              { messages = None; model = Some new_model; thinking = Inherit }
         else None)
   in
   (* Use a steering message to force a second turn *)

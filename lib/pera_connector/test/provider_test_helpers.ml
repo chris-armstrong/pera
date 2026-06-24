@@ -33,12 +33,13 @@ let as_string label json =
 
 (** Build a minimal [Connector.context] around a message list. *)
 let make_context messages =
-  { Connector.system = ""; messages; tools = []; thinking = false }
+  { Connector.system = ""; messages; tools = [] }
 
 (** Build a minimal [Connector.simple_stream_options]. *)
 let make_options ?(cache_policy = Types.No_cache)
     ?(cache_ttl = Types.Five_minutes) () =
-  { Connector.max_tokens = 1024; temperature = None; cache_policy; cache_ttl }
+  { Connector.max_tokens = 1024; temperature = None; cache_policy; cache_ttl;
+    thinking_budget_tokens = None }
 
 (** A minimal model value. *)
 let test_model =

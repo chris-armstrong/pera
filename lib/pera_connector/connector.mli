@@ -44,10 +44,8 @@ type context = {
       (** Conversation history, oldest first. Must not be empty. *)
   tools : tool_schema list;
       (** Tools the model is allowed to call. Empty list means no tool use. *)
-  thinking : bool;
-      (** [true] to enable extended thinking (where supported by the model). *)
 }
-(** The full context passed to a provider for a single completion request. *)
+(** The full context passed to a connector for a single completion request. *)
 
 val equal_context : context -> context -> bool
 val pp_context : Format.formatter -> context -> unit
@@ -58,13 +56,16 @@ type simple_stream_options = {
       (** Maximum number of tokens to generate. Connector-imposed minimum is 1.
       *)
   temperature : float option;
-      (** Sampling temperature; [None] uses the provider default. *)
+      (** Sampling temperature; [None] uses the connector default. *)
   cache_policy : Types.cache_policy;
       (** Where to place [cache_control] markers in Anthropic requests.
-          Ignored by non-Anthropic providers. Default [No_cache]. *)
+          Ignored by non-Anthropic connectors. Default [No_cache]. *)
   cache_ttl : Types.cache_ttl;
       (** TTL applied to every cache breakpoint in the request.
           Default [Five_minutes]. *)
+  thinking_budget_tokens : int option;
+      (** [None] = thinking disabled (no betas header, no thinking block).
+          [Some n] = enable extended thinking with budget n tokens. *)
 }
 (** Options for a simple (non-agentic) streaming completion. *)
 

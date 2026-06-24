@@ -181,15 +181,27 @@ val pp_before_tool_call_result :
 
 val show_before_tool_call_result : before_tool_call_result -> string
 
+type thinking_update =
+  | Inherit
+      (** Keep the current thinking budget setting (no change). *)
+  | Budget of int
+      (** Enable extended thinking with this budget. *)
+  | Disabled
+      (** Disable extended thinking. *)
+
+val equal_thinking_update : thinking_update -> thinking_update -> bool
+val pp_thinking_update : Format.formatter -> thinking_update -> unit
+val show_thinking_update : thinking_update -> string
+
 type turn_update = {
   messages : agent_message list option;
       (** Replace the current message history; [None] to keep it. *)
   model : Pera_types.Types.model option;
       (** Switch to a different model for the next turn; [None] to keep the
           current model. *)
-  thinking : bool option;
-      (** Enable or disable extended thinking; [None] to keep the current
-          setting. *)
+  thinking : thinking_update;
+      (** Update the thinking budget for the next turn. [Inherit] keeps the
+          current setting. *)
 }
 
 val equal_turn_update : turn_update -> turn_update -> bool

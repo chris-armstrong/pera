@@ -119,6 +119,7 @@ let create ~config ~env ~sw =
         temperature = None;
         cache_policy = Pera_types.Types.No_cache;
         cache_ttl = Pera_types.Types.Five_minutes;
+        thinking_budget_tokens = None;
       }
   in
   let should_stop_hook cc (ctx : _ Pera_core.Agent_loop.should_stop_ctx) =
@@ -151,7 +152,7 @@ let create ~config ~env ~sw =
         pending_compacted := None;
         Some
           Pera_core.Agent_types.
-            { messages = Some msgs; model = None; thinking = None }
+            { messages = Some msgs; model = None; thinking = Inherit }
   in
   let loop_config =
     Pera_core.Agent_loop.

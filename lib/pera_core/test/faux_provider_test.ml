@@ -32,7 +32,7 @@ let make_user_message text =
 (** Build a minimal [Connector.context] with only a user message and no tools or
     system prompt. *)
 let make_context messages =
-  Pera_connector.Connector.{ system = ""; messages; tools = []; thinking = false }
+  Pera_connector.Connector.{ system = ""; messages; tools = [] }
 
 (** Collect all events from a stream into a list, returning the list and the
     final result. Raises on unexpected outcomes inside [Alcotest.failf]. *)
@@ -93,6 +93,7 @@ let faux_options =
       temperature = None;
       cache_policy = Pera_types.Types.No_cache;
       cache_ttl = Pera_types.Types.Five_minutes;
+        thinking_budget_tokens = None;
     }
 
 (** ----------------------------------------------------------------------- Test

@@ -155,6 +155,7 @@ let scenario_offline_faux ~env:_ =
         temperature = None;
         cache_policy = Pera_types.Types.No_cache;
         cache_ttl = Pera_types.Types.Five_minutes;
+        thinking_budget_tokens = None;
       }
   in
   let result =
@@ -180,6 +181,7 @@ let scenario_real_model ~env =
         temperature = None;
         cache_policy = Pera_types.Types.No_cache;
         cache_ttl = Pera_types.Types.Five_minutes;
+        thinking_budget_tokens = None;
       }
   in
   let registry =

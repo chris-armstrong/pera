@@ -110,6 +110,7 @@ let make_config ?(tools = []) ?(get_follow_up_messages = None) ~model stream_fn
             temperature = None;
             cache_policy = Types.No_cache;
             cache_ttl = Types.Five_minutes;
+        thinking_budget_tokens = None;
           };
       stream_fn;
       convert_to_llm = default_convert_to_llm;

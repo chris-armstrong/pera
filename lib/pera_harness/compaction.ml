@@ -102,7 +102,6 @@ let compact ~stream_fn ~model ~options ~messages ~tail_size ~sw =
           system = summarise_prompt;
           messages = [ user_msg ];
           tools = [];
-          thinking = false;
         }
     in
     let stream = stream_fn ~model ~context ~options ~sw in

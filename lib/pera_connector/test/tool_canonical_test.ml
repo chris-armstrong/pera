@@ -9,7 +9,7 @@ let test_model =
 
 let make_context ?(tools = []) ?(system = "") messages =
   Pera_connector.Connector.
-    { system; messages; tools; thinking = false }
+    { system; messages; tools }
 
 let make_options () =
   Pera_connector.Connector.
@@ -18,6 +18,7 @@ let make_options () =
       temperature = None;
       cache_policy = Types.No_cache;
       cache_ttl = Types.Five_minutes;
+        thinking_budget_tokens = None;
     }
 
 let string_testable = Alcotest.testable Format.pp_print_string String.equal

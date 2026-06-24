@@ -244,8 +244,8 @@ let build_request_body ~model ~context ~options ~compat =
     ]
   in
   let with_thinking =
-    match (context.thinking, compat.enable_thinking_field) with
-    | true, Some field -> base_fields @ [ (field, `Bool true) ]
+    match (options.thinking_budget_tokens, compat.enable_thinking_field) with
+    | Some _, Some field -> base_fields @ [ (field, `Bool true) ]
     | _ -> base_fields
   in
   let with_tools =

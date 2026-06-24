@@ -93,7 +93,6 @@ let run_default_scenario ~model_id ~prompt_text ~max_tokens =
         system = "You are a helpful assistant.";
         messages = [ Connector.UserMessage user_msg ];
         tools = [ get_weather_tool ];
-        thinking = false;
       }
   in
   let options = Connector.
@@ -102,6 +101,7 @@ let run_default_scenario ~model_id ~prompt_text ~max_tokens =
         temperature = None;
         cache_policy = Types.No_cache;
         cache_ttl = Types.Five_minutes;
+        thinking_budget_tokens = None;
       } in
   Printf.printf "model: %s\n" model_id;
   Printf.printf "prompt: %s\n" prompt_text;
@@ -147,7 +147,6 @@ let run_thinking_scenario () =
         system = "You are a helpful assistant.";
         messages = [ Connector.UserMessage user_msg ];
         tools = [];
-        thinking = true;
       }
   in
   let options =
@@ -157,6 +156,7 @@ let run_thinking_scenario () =
         temperature = None;
         cache_policy = Types.No_cache;
         cache_ttl = Types.Five_minutes;
+        thinking_budget_tokens = None;
       }
   in
   Printf.printf "thinking scenario: model=%s\n%!" model.Types.id;
@@ -195,8 +195,8 @@ let run_thinking_scenario () =
         Printf.printf "thinking scenario: FAIL: no AME_thinking_start events\n";
         exit 1)
 
-let run_openai_completions_scenario ~model_id ~prompt_text ~max_tokens ~thinking
-    () =
+let run_openai_completions_scenario ~model_id ~prompt_text ~max_tokens
+    ~enable_thinking () =
   match Sys.getenv_opt "OPENAI_API_KEY" with
   | None ->
       Printf.printf
@@ -212,7 +212,6 @@ let run_openai_completions_scenario ~model_id ~prompt_text ~max_tokens ~thinking
             system = "You are a helpful assistant.";
             messages = [ Connector.UserMessage user_msg ];
             tools = [];
-            thinking;
           }
       in
       let options = Connector.
@@ -221,6 +220,7 @@ let run_openai_completions_scenario ~model_id ~prompt_text ~max_tokens ~thinking
         temperature = None;
         cache_policy = Types.No_cache;
         cache_ttl = Types.Five_minutes;
+        thinking_budget_tokens = if enable_thinking then Some 8000 else None;
       } in
       let base_url =
         match Sys.getenv_opt "OPENAI_BASE_URL" with
@@ -357,7 +357,7 @@ let () =
       let remaining =
         Array.to_list (Array.sub argv 2 (max 0 (Array.length argv - 2)))
       in
-      let thinking = List.mem ~eq:String.equal "--thinking" remaining in
+      let enable_thinking = List.mem ~eq:String.equal "--thinking" remaining in
       let positional =
         List.filter (fun s -> not (String.equal s "--thinking")) remaining
       in
@@ -376,7 +376,7 @@ let () =
         | _ -> default_oc_max_tokens
       in
       run_openai_completions_scenario ~model_id ~prompt_text ~max_tokens
-        ~thinking ()
+        ~enable_thinking ()
   | _ -> (
       match Sys.getenv_opt "ANTHROPIC_API_KEY" with
       | None ->

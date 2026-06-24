@@ -26,7 +26,6 @@ type context = {
   system : string;
   messages : message list;
   tools : tool_schema list;
-  thinking : bool;
 }
 [@@deriving eq, show]
 
@@ -35,6 +34,7 @@ type simple_stream_options = {
   temperature : float option;
   cache_policy : Types.cache_policy;
   cache_ttl : Types.cache_ttl;
+  thinking_budget_tokens : int option;
 }
 [@@deriving eq, show]
 

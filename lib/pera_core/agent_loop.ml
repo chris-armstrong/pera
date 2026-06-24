@@ -104,25 +104,27 @@ let push_event out_stream event =
 
 (** Apply a [turn_update] to the mutable loop state refs. Any [None] field means
     "keep current value". *)
-let apply_turn_update ~model_ref ~messages_ref
+let apply_turn_update ~model_ref ~messages_ref ~current_thinking_budget
     (update : Agent_types.turn_update) =
   Option.iter (fun m -> model_ref := m) update.model;
-  (* thinking flag update deferred to Stage 7 when options are fully wired *)
-  ignore update.thinking;
+  (match update.thinking with
+   | Agent_types.Inherit -> ()
+   | Agent_types.Budget n -> current_thinking_budget := Some n
+   | Agent_types.Disabled -> current_thinking_budget := None);
   Option.iter (fun msgs -> messages_ref := msgs) update.messages
 
 (** Build the provider context for one LLM call.
 
     Applies [transform_context] (if set) and then [convert_to_llm] to produce
     the provider-level message list. *)
-let build_provider_context ~system ~transform_context ~convert_to_llm ~thinking
+let build_provider_context ~system ~transform_context ~convert_to_llm
     ~tools messages =
   let transformed =
     match transform_context with None -> messages | Some f -> f messages
   in
   let provider_messages = convert_to_llm transformed in
   Pera_connector.Connector.
-    { system; messages = provider_messages; tools; thinking }
+    { system; messages = provider_messages; tools }
 
 (** Invoke [get_api_key] if set. The return value is not used by the loop; the
     call exists to satisfy provider contracts. *)
@@ -385,8 +387,8 @@ let execute_tool_calls ~config ~sw ~out_stream ~final_agent_msg tool_calls =
     [pending] is the list of [agent_message] values to inject before this
     iteration's LLM call. For the initial call these come from the outer loop;
     for subsequent calls they are steering messages. *)
-let rec run_inner ~config ~model_ref ~options_ref ~messages_ref ~pending ~sw
-    out_stream =
+let rec run_inner ~config ~model_ref ~options_ref ~current_thinking_budget
+    ~messages_ref ~pending ~sw out_stream =
   (* Hook helpers — defined once, called in the [Ok tool_results] branch below.
      Each captures [config], [model_ref], [messages_ref], and [options_ref] by
      closure so call sites stay concise. *)
@@ -415,7 +417,9 @@ let rec run_inner ~config ~model_ref ~options_ref ~messages_ref ~pending ~sw
             tool_ctx = config.tool_ctx;
           }
         in
-        Option.iter (apply_turn_update ~model_ref ~messages_ref) (f ctx)
+        Option.iter
+          (apply_turn_update ~model_ref ~messages_ref ~current_thinking_budget)
+          (f ctx)
   in
   let get_steering_messages () =
     match config.get_steering_messages with None -> [] | Some f -> f ()
@@ -442,13 +446,16 @@ let rec run_inner ~config ~model_ref ~options_ref ~messages_ref ~pending ~sw
   let provider_context =
     build_provider_context ~system:config.system
       ~transform_context:config.transform_context
-      ~convert_to_llm:config.convert_to_llm ~thinking:false ~tools:tool_schemas
+      ~convert_to_llm:config.convert_to_llm ~tools:tool_schemas
       !messages_ref
   in
   invoke_get_api_key config.get_api_key;
+  let current_options =
+    let opts : Pera_connector.Connector.simple_stream_options = !options_ref in
+    { opts with thinking_budget_tokens = !current_thinking_budget } in
   let provider_stream =
     config.stream_fn ~model:!model_ref ~context:provider_context
-      ~options:!options_ref ~sw
+      ~options:current_options ~sw
   in
   (* Step 4: consume the provider stream, emitting message lifecycle events *)
   let final_msg = consume_provider_stream ~provider_stream out_stream in
@@ -532,7 +539,8 @@ let rec run_inner ~config ~model_ref ~options_ref ~messages_ref ~pending ~sw
             `Stop
           else
             (* Tool calls or steering messages: continue the inner loop *)
-            run_inner ~config ~model_ref ~options_ref ~messages_ref
+            run_inner ~config ~model_ref ~options_ref ~current_thinking_budget
+              ~messages_ref
               ~pending:steering ~sw out_stream
         end
   end
@@ -542,11 +550,11 @@ let rec run_inner ~config ~model_ref ~options_ref ~messages_ref ~pending ~sw
     Calls [run_inner] with [pending] as the initial messages. After the inner
     loop exits, checks [get_follow_up_messages]: if non-empty, restarts the
     inner loop; otherwise emits [AE_agent_end] and closes the stream. *)
-let rec run_outer ~config ~model_ref ~options_ref ~messages_ref ~pending ~sw
-    out_stream =
+let rec run_outer ~config ~model_ref ~options_ref ~current_thinking_budget
+    ~messages_ref ~pending ~sw out_stream =
   let outcome =
-    run_inner ~config ~model_ref ~options_ref ~messages_ref ~pending ~sw
-      out_stream
+    run_inner ~config ~model_ref ~options_ref ~current_thinking_budget
+      ~messages_ref ~pending ~sw out_stream
   in
   match outcome with
   | `Terminate ->
@@ -567,8 +575,8 @@ let rec run_outer ~config ~model_ref ~options_ref ~messages_ref ~pending ~sw
         Pera_connector.Event_stream.close out_stream final_messages
       end
       else
-        run_outer ~config ~model_ref ~options_ref ~messages_ref
-          ~pending:follow_ups ~sw out_stream
+        run_outer ~config ~model_ref ~options_ref ~current_thinking_budget
+          ~messages_ref ~pending:follow_ups ~sw out_stream
 
 (** {1 Entry point} *)
 
@@ -577,11 +585,12 @@ let run config ~messages ~sw =
   Eio.Fiber.fork ~sw (fun () ->
       let model_ref = ref config.model in
       let options_ref = ref config.options in
+      let current_thinking_budget = ref config.options.thinking_budget_tokens in
       let messages_ref = ref messages in
       push_event out_stream Agent_types.AE_agent_start;
       match
-        run_outer ~config ~model_ref ~options_ref ~messages_ref ~pending:[] ~sw
-          out_stream
+        run_outer ~config ~model_ref ~options_ref ~current_thinking_budget
+          ~messages_ref ~pending:[] ~sw out_stream
       with
       | () -> ()
       | exception exn ->

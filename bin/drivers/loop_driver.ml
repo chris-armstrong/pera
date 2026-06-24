@@ -80,6 +80,7 @@ let test_options =
       temperature = None;
       cache_policy = Types.No_cache;
       cache_ttl = Types.Five_minutes;
+        thinking_budget_tokens = None;
     }
 
 (** Empty JSON schema for tools that take no args. *)
@@ -933,7 +934,7 @@ let scenario_prepare_next_turn_update sw =
                       api = "faux";
                       context_window = 200_000;
                     };
-              thinking = None;
+              thinking = Inherit;
             })
   in
   let steering_count = ref 0 in

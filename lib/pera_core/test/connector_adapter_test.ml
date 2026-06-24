@@ -20,7 +20,7 @@ let is_message_end = function
 
 (** Build a minimal provider context for tests. *)
 let make_provider_context ~system messages =
-  Pera_connector.Connector.{ system; messages; tools = []; thinking = false }
+  Pera_connector.Connector.{ system; messages; tools = [] }
 
 (** Collect assistant_message_event values from a provider stream into a list,
     and return the final result. *)
@@ -81,6 +81,7 @@ let test_stream_fn_resolves_registered_provider () =
         temperature = None;
         cache_policy = Pera_types.Types.No_cache;
         cache_ttl = Pera_types.Types.Five_minutes;
+        thinking_budget_tokens = None;
       }
   in
   let stream = stream_fn ~model ~context ~options ~sw in
@@ -127,6 +128,7 @@ let test_stream_fn_unknown_api_returns_error_stream () =
         temperature = None;
         cache_policy = Pera_types.Types.No_cache;
         cache_ttl = Pera_types.Types.Five_minutes;
+        thinking_budget_tokens = None;
       }
   in
   let stream = stream_fn ~model ~context ~options ~sw in
@@ -169,6 +171,7 @@ let test_stream_fn_preserves_provider_semantics () =
         temperature = None;
         cache_policy = Pera_types.Types.No_cache;
         cache_ttl = Pera_types.Types.Five_minutes;
+        thinking_budget_tokens = None;
       }
   in
   let config =

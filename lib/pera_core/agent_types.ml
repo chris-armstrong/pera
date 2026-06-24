@@ -132,6 +132,12 @@ type agent_event =
 
 type before_tool_call_result = Allow | Deny of string [@@deriving eq, show]
 
+type thinking_update =
+  | Inherit
+  | Budget of int
+  | Disabled
+[@@deriving show, eq]
+
 type turn_update = {
   messages :
     (agent_message list option
@@ -143,7 +149,7 @@ type turn_update = {
         | Some msgs ->
             Format.fprintf fmt "Some [%d messages]" (List.length msgs)]);
   model : Pera_types.Types.model option;
-  thinking : bool option;
+  thinking : thinking_update;
 }
 [@@deriving eq, show]
 

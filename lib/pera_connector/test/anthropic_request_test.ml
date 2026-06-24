@@ -22,7 +22,6 @@ let make_cache_context () =
     Connector.system = "You are helpful";
     messages = [ user_message "hello" ];
     tools = [ read_tool; write_tool ];
-    thinking = false;
   }
 
 (** Build options for a specific cache policy and TTL. *)
@@ -210,7 +209,6 @@ let test_empty_system_omits_system_field_even_when_caching () =
       Connector.system = "";
       messages = [ user_message "hello" ];
       tools = [ read_tool ];
-      thinking = false;
     }
   in
   let options = make_cache_options Types.Conversation Types.Five_minutes in
