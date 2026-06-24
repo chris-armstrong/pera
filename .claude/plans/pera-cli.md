@@ -41,13 +41,6 @@ there is no concatenation for list fields (`commands`, `tools`, `mcp_servers`).
 A project config `commands` list replaces the user config `commands` list
 entirely. This matches the semantics used by Claude Code and OpenCode.
 
-`[?-1]` **Env vars vs project config precedence.** Standard Unix convention
-puts env vars above config files (a `PERA_MODEL=haiku` export in a shell
-session should win over whatever the project pinned). Alternative: project
-config above env vars, so a team `.pera` can enforce a model without each
-developer having to unset their personal env. Proposal: keep the standard
-order (env above config), document it clearly.
-
 ---
 
 ## Config file format
@@ -65,11 +58,6 @@ structurally typed — the OCaml type is the schema; no separate parser is writt
 Project config discovery walks up from the process cwd until `.pera` is found
 or the filesystem root is reached (git-style). If none is found, only the user
 config applies.
-
-`[?-2]` **Project config filename.** `.pera` (no extension, like `.gitignore`)
-vs `pera.sexp` vs `.pera.sexp`. Preference: `.pera` — visible, obvious, no
-extension ambiguity since the format is stable. The sexp format does not need
-an extension to be identified.
 
 ### Security: API keys in config
 
@@ -406,8 +394,8 @@ mutually exclusive; if more than one is set, the binary fails loudly.
 | `--api-key` | `auth.api_key (Key ...)` | — | Loud fail if multiple key sources |
 | `--api-key-file` | `auth.api_key (File ...)` | — | |
 | `--api-key-command` | `auth.api_key (Command ...)` | — | Space-split argv |
-| `--model` | `model.model` | — | Required; loud fail |
-| `--api` | `model.api` | — | Required; loud fail; no inference |
+| `--model` | `model.model` | — | Required in merged config; loud fail if absent after all sources merged |
+| `--api` | `model.api` | — | Required in merged config; loud fail; no inference |
 | `--base-url` | `model.base_url` | Provider default | openai-completions only |
 | `--context-window` | `model.context_window` | Lookup table | Loud fail when model unknown |
 | `--effort` | `model.effort` | `low` | `low\|medium\|high` |
@@ -517,10 +505,9 @@ module type Env = sig
   (** Construct the execution context. Called once at startup. *)
 
   val tools : ctx -> ctx Pera_core.Agent_types.tool list
-  (** The primary tool set for this env. Called after [create].
-      Owns the complete tool set — pera-cli does not add built-ins on top.
-      MCP tools and config-defined shell tools are added separately if
-      applicable (see below). *)
+  (** The base tool set for this env. Called after [create].
+      Config-defined shell tools and MCP tools are added by [pera-cli]
+      on top of this list (see below). *)
 
   val has_shell : bool
   (** Whether this env supports shell execution. False suppresses
@@ -626,12 +613,16 @@ from empirical testing.
 
 **Stack changes required:**
 
-1. `Provider.simple_stream_options` gets a new field:
+1. `Provider.simple_stream_options` gets a new required field:
    ```ocaml
    thinking_budget_tokens : int option;
    (* None = thinking disabled or provider default. Passed as
       thinking.budget_tokens in Anthropic requests when thinking=true. *)
    ```
+   This is a breaking record change. All `simple_stream_options` construction
+   sites (drivers, harness, tests) must add `thinking_budget_tokens = None`.
+   The drivers are expected to be removed as part of the CLI work; remaining
+   sites are `agent_harness.ml` and any test helpers.
 2. `agent_harness` maps `effort` to `(thinking, budget)` and passes both to
    the loop config. The loop no longer hardcodes `~thinking:false`.
 3. `Anthropic_request` reads `thinking_budget_tokens` from `simple_stream_options`
@@ -647,10 +638,10 @@ set effort.
 
 | # | Question | Proposal |
 |---|---|---|
-| 1 | Env vars above or below project config? | Above (standard Unix order) |
-| 2 | Project config filename: `.pera`, `pera.sexp`, `.pera.sexp`? | `.pera` |
+| 1 | Env vars above or below project config? | **Settled:** above (standard Unix order — matches env vars section). |
+| 2 | Project config filename: `.pera`, `pera.sexp`, `.pera.sexp`? | **Settled:** `.pera` (used throughout this spec). |
 | 3 | Which models in the built-in context-window table? | claude-* tested variants + kimi-k2.6 |
-| 4 | `--effort` thresholds for medium and high? | 8 000 / 32 000 tokens |
+| 4 | `--effort` thresholds for medium and high? | 8 000 / 32 000 tokens (provisional) |
 | 5 | MCP tool naming collisions? | Built-ins win; colliding MCP tools prefixed `<server>__<tool>` |
 | 7 | `Env.create` → `Env.tools` wiring: does `ctx` carry the env handle? | **Settled: yes.** `type ctx = (module Execution_env.S)` for default binary. `Env.tools _ctx = Pera_tools.Tools.default`. |
 
@@ -725,15 +716,15 @@ A third-party custom binary depends on `pera-cli` plus their own env library.
 |---|---|---|
 | `sexplib` | S-expression parsing and printing | v1 (config) |
 | `ppx_sexp_conv` | Derive `sexp_of` / `of_sexp` for config types | v1 (config) |
+| `xdg` | XDG base directory resolution (config, state, data paths) | v1 (CLI) |
 | `cmdliner` | CLI argument parsing | v1 (CLI) |
 | `jsonrpc` | JSON-RPC framing for MCP client implementation | v2 (MCP) |
 | `cohttp-eio` | HTTP transport for MCP HTTP/SSE servers (already in project) | v2 (MCP) |
 
-**Note on XDG:** No opam library is needed. XDG base directory resolution is
-~25 lines of env-var lookups with standard fallbacks
-(`$XDG_CONFIG_HOME` → `~/.config`, `$XDG_STATE_HOME` → `~/.local/state`,
-`$XDG_DATA_HOME` → `~/.local/share`, `$XDG_DATA_DIRS` → `/usr/local/share:/usr/share`).
-This is implemented inline in `pera-cli` as a small `Xdg` submodule.
+**Note on `xdg`:** The `xdg` opam package (from the Dune/ocaml-lsp project) is
+pure OCaml — it only reads env vars and computes paths. It works with any
+runtime including Eio. Provides `Xdg.config_home`, `Xdg.state_home`,
+`Xdg.data_home`, and `Xdg.data_dirs` with correct platform fallbacks.
 
 ---
 
