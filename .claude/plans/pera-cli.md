@@ -1,8 +1,8 @@
 # Pera CLI — specification
 
 > Status: design draft v0.3 — open questions marked `[?]`.
-> Covers: the `pera` binary, `pera_cli` library, config file format, skills loading,
-> slash commands, tool extension points.
+> Covers: the `pera` binary, `pera_cli` library, config file format,
+> slash commands, tool extension points, system prompt customisation.
 > Does NOT cover: implementation sequencing, M7 details (compact-model).
 
 ---
@@ -12,11 +12,11 @@
 The CLI layer splits into two OCaml packages:
 
 **`pera-cli` (library, `lib/pera_cli/`)** — reusable wiring: argument parsing,
-config loading, event rendering, the interactive input loop, skills loading, MCP
-client, config-defined shell tool construction. It is generic over the tool
-context type `'ctx`. Users who need a different execution environment (SSH,
-Irmin, sandboxed, no-filesystem) write their own binary that links against
-`pera-cli` and supplies their own env and tool set.
+config loading, event rendering, the interactive input loop, MCP client,
+config-defined shell tool construction. It is generic over the tool context
+type `'ctx`. Users who need a different execution environment (SSH, Irmin,
+sandboxed, no-filesystem) write their own binary that links against `pera-cli`
+and supplies their own env and tool set.
 
 **`pera` (executable, `bin/pera/`)** — the standard binary. Composes `pera-cli`
 with `Local_env` and the default four tools. Adds config-defined shell-backed
@@ -35,6 +35,11 @@ built-in defaults
       ← env vars      (PERA_*)
         ← CLI flags   (--flag)
 ```
+
+Each higher-priority source **replaces** the value from lower-priority sources —
+there is no concatenation for list fields (`commands`, `tools`, `mcp_servers`).
+A project config `commands` list replaces the user config `commands` list
+entirely. This matches the semantics used by Claude Code and OpenCode.
 
 `[?-1]` **Env vars vs project config precedence.** Standard Unix convention
 puts env vars above config files (a `PERA_MODEL=haiku` export in a shell
@@ -55,7 +60,7 @@ structurally typed — the OCaml type is the schema; no separate parser is writt
 | File | Purpose |
 |---|---|
 | `$XDG_CONFIG_HOME/pera/config.sexp` | User defaults — API keys, personal model preference, output style |
-| `.pera` in project root (walk up from cwd) | Project settings — model, cache policy, skill set, compaction |
+| `.pera` in project root (walk up from cwd) | Project settings — model, cache policy, tools, compaction |
 
 Project config discovery walks up from the process cwd until `.pera` is found
 or the filesystem root is reached (git-style). If none is found, only the user
@@ -127,18 +132,6 @@ type session_config = {
     (** Default: $XDG_STATE_HOME/pera/sessions/ *)
 } [@@deriving sexp]
 
-type skills_config = {
-  dirs      : string list; [@sexp.default []]
-    (** Extra directories to search beyond XDG data dirs *)
-  available : string list; [@sexp.default []]
-    (** Filter by front-matter name; empty list = all *)
-  enabled   : bool option; [@sexp.option]
-    (** false disables all skill loading; absent = true *)
-} [@@deriving sexp]
-(** Parsed in v1 but unused — skills loading is deferred to v2.
-    Kept in the config type so project .pera files can include skills
-    fields without breaking the parser when v2 ships. *)
-
 type compaction_config = {
   threshold : int  option; [@sexp.option]  (** % of context window; default 70 *)
   tail      : int  option; [@sexp.option]  (** turns kept verbatim; default 4 *)
@@ -154,7 +147,7 @@ type output_config = {
 (** A user-defined slash command. *)
 type command_def = {
   name        : string;  (** Invoked as /<name> *)
-  description : string;  (** Shown in /info and skill catalogue *)
+  description : string;  (** Shown in /info output *)
   template    : string;
     (** Injected as a user message. Substitution:
           {args}  — everything typed after the command name
@@ -165,7 +158,9 @@ type command_def = {
 (** Shell-backed tool argument type. See §Tool extension points §1. *)
 type shell_arg_type =
   | String of { description : string }
-  | Int    of { description : string; min : int option; max : int option }
+  | Int    of { description   : string
+              ; min           : int option [@sexp.option]
+              ; max           : int option [@sexp.option] }
 [@@deriving sexp]
 
 type shell_arg = {
@@ -180,7 +175,7 @@ type shell_tool_def = {
   command       : string;
     (** Template string; {arg_name} is shell-quoted and substituted. *)
   parallel_safe : bool;
-  args          : shell_arg list;  (** empty = no-arg tool *)
+  args          : shell_arg list; [@sexp.default []]  (** empty = no-arg tool *)
 } [@@deriving sexp]
 
 (** MCP server transport. See §Tool extension points §2. Deferred to v2. *)
@@ -199,13 +194,11 @@ type config = {
   model       : model_config       option; [@sexp.option]
   cache       : cache_config       option; [@sexp.option]
   session     : session_config     option; [@sexp.option]
-  skills      : skills_config      option; [@sexp.option]
   compaction  : compaction_config  option; [@sexp.option]
   output      : output_config      option; [@sexp.option]
   commands    : command_def list;   [@sexp.default []]
-    (** User-defined slash commands, separate from skill-file invocations.
-        Both skills and commands are reachable as /<name> in interactive mode;
-        name collision: command_def wins (explicit beats discovered). *)
+    (** User-defined slash commands. Reachable as /<name> in interactive mode.
+        Built-in names (compact, info, quit) are reserved. *)
   tools       : shell_tool_def list; [@sexp.default []]
     (** Config-defined shell-backed tools. See §Tool extension points §1. *)
   mcp_servers : mcp_server_def list; [@sexp.default []]
@@ -222,38 +215,36 @@ type config = {
 ```sexp
 ; Pera user configuration
 ((auth
-   (api_key (File "/home/alice/.config/pera/anthropic_key")))
+   ((api_key (File "/home/alice/.config/pera/anthropic_key"))))
  (model
-   (api anthropic)
-   (model "claude-sonnet-4-6")
-   (effort low)
-   (max_tokens 8192))
+   ((api anthropic)
+    (model "claude-sonnet-4-6")
+    (effort Low)
+    (max_tokens 8192)))
  (cache
-   (policy Conversation)
-   (ttl Five_minutes))
- (skills
-   (enabled true))
+   ((policy Conversation)
+    (ttl Five_minutes)))
  (compaction
-   (threshold 70)
-   (tail 4)
-   (enabled true))
+   ((threshold 70)
+    (tail 4)
+    (enabled true)))
  (output
-   (plain false)
-   (show_thinking false)))
+   ((plain false)
+    (show_thinking false))))
 ```
 
 ### User config — macOS Keychain example
 
 ```sexp
 ((auth
-   (api_key (Command (security find-generic-password -s pera-anthropic -w)))))
+   ((api_key (Command (security find-generic-password -s pera-anthropic -w))))))
 ```
 
 ### User config — Linux secret-tool example
 
 ```sexp
 ((auth
-   (api_key (Command (secret-tool lookup service pera account anthropic)))))
+   ((api_key (Command (secret-tool lookup service pera account anthropic))))))
 ```
 
 ### Project config — `.pera` in project root
@@ -262,34 +253,33 @@ type config = {
 ; Project config — committed to the repo.
 ; No api_key field allowed here.
 ((model
-   (api anthropic)
-   (model "claude-sonnet-4-6")
-   (context_window 200000))
+   ((api anthropic)
+    (model "claude-sonnet-4-6")
+    (context_window 200000)))
  (cache
-   (policy Conversation))
- (skills
-   (available (ocaml-style commit-message)))
+   ((policy Conversation)))
  (tools
-   ((name run-tests)
-    (description "Run the project test suite and return results")
-    (command "dune test 2>&1")
-    (parallel_safe false))
-   ((name lint)
-    (description "Run ocamlformat and semgrep checks on a file")
-    (command "ocamlformat --check {file} 2>&1 && semgrep --config .semgrep/ {file}")
-    (parallel_safe true)
-    (args
-      ((file (string (description "Absolute path of the OCaml file to check")))))))
+   (((name run-tests)
+     (description "Run the project test suite and return results")
+     (command "dune test 2>&1")
+     (parallel_safe false))
+    ((name lint)
+     (description "Run ocamlformat and semgrep checks on a file")
+     (command "ocamlformat --check {file} 2>&1 && semgrep --config .semgrep/ {file}")
+     (parallel_safe true)
+     (args
+       (((name file)
+         (arg_type (String ((description "Absolute path of the OCaml file to check"))))))))))
  (mcp_servers
-   ((name filesystem)
-    (transport (Stdio (command (npx -y @modelcontextprotocol/server-filesystem /tmp))))))
+   (((name filesystem)
+     (transport (Stdio ((command (npx -y @modelcontextprotocol/server-filesystem /tmp))))))))
  (commands
-   ((name review)
-    (description "Review staged diff for correctness")
-    (template "Review the following diff for bugs and style issues:\n{args}"))
-   ((name explain)
-    (description "Explain a file or symbol")
-    (template "Explain what {args} does, in plain language."))))
+   (((name review)
+     (description "Review staged diff for correctness")
+     (template "Review the following diff for bugs and style issues:\n{args}"))
+    ((name explain)
+     (description "Explain a file or symbol")
+     (template "Explain what {args} does, in plain language.")))))
 ```
 
 ---
@@ -317,108 +307,6 @@ override the directory only (the timestamp+UUID filename is still generated).
 
 ---
 
-## Skills loading
-
-Skills follow the pi Agent Skills spec. They are markdown files with YAML
-front matter, discovered from:
-
-1. `$XDG_DATA_DIRS/pera/skills/` (system-wide, lowest priority)
-2. `$XDG_DATA_HOME/pera/skills/` (user skills)
-3. Project-local `.pera/skills/` directory under cwd
-4. Any `skills.dirs` entries from config (highest priority)
-
-Discovery is ordered; later directories shadow earlier ones by skill name.
-Name must match the parent directory name (pi spec rule), be lowercase
-`a-z0-9-`, max 64 characters.
-
-### Skill file structure
-
-A skill is either:
-- A direct `.md` file at the root of a skills directory, or
-- A `SKILL.md` inside a named subdirectory (pi convention; name comes from
-  the directory name, frontmatter `name` must match).
-
-Minimum front matter:
-
-```markdown
----
-name: ocaml-style
-description: Enforce pera project OCaml coding conventions.
----
-
-When reviewing or writing OCaml code, apply the following conventions...
-(body follows)
-```
-
-Optional front matter field:
-
-```yaml
-disable-model-invocation: true
-```
-
-### Two invocation modes
-
-**Model-loadable (default, `disable-model-invocation` absent or false):**
-The system prompt receives an `<available_skills>` XML block listing name,
-description, and **file path** for each such skill:
-
-```
-<available_skills>
-  <skill>
-    <name>ocaml-style</name>
-    <description>Enforce pera project OCaml coding conventions.</description>
-    <location>/home/alice/.local/share/pera/skills/ocaml-style/SKILL.md</location>
-  </skill>
-</available_skills>
-```
-
-The LLM is instructed to use the `read` tool to load a skill's content when
-the task matches its description. The body is loaded on demand as a tool
-call — it is never embedded in the system prompt. This keeps the prompt
-cache-stable: only name/description/path need to be stable across turns.
-
-**User-only (`disable-model-invocation: true`):**
-The skill is invisible to the LLM. Not listed in the system prompt. Only
-reachable via `/<name> [args]` in interactive mode or `--skill <name>` at
-startup. When invoked, the full body is injected into the user message as:
-
-```xml
-<skill name="ocaml-style" location="/path/to/SKILL.md">
-References are relative to /path/to/.
-
-...body content...
-</skill>
-```
-
-### Code-backed skills
-
-Skills are pure prose. They cannot execute code at invocation time. If a
-task requires code (e.g. "run git diff then review"), the skill body
-instructs the LLM to use the `bash` tool — execution happens through the
-agent's existing tools, not through the skill itself.
-
-A slash command that needs to run code without LLM involvement (e.g. a
-harness-level action) is a **built-in command**, not a skill. User-defined
-code-backed commands are explicitly out of scope for v1. The correct
-alternative for "run a script and give the output to the LLM" is to pipe
-from outside: `git diff | pera "review this"`.
-
-**Cache-stability note:**
-Changing the set of available model-loadable skills (by editing `skills.dirs`,
-`skills.available`, or the skill files themselves) changes the
-`<available_skills>` block and invalidates the Anthropic cache prefix.
-The `--skills` flag and `skills.available` config field documentation both
-note this. `disable-model-invocation: true` skills do not appear in the block
-and do not affect cache stability.
-
-### Slash command collision
-
-If a `command_def` in the config has the same name as a discovered skill,
-the `command_def` wins (explicit beats discovered). Skills from earlier
-directories are shadowed by those from later directories.
-
----
-
 ## System prompt construction
 
 `pera-cli` assembles the system prompt before creating the harness and passes
@@ -427,17 +315,13 @@ it via a new `system_prompt : string` field added to `agent_harness.config`
 The existing `build_system_prompt` function in `agent_harness.ml` is removed;
 `agent_harness` no longer owns a default.
 
-**v1 assembly (skills deferred to v2):**
+**Assembly:**
 
 The system prompt is just `base_text`:
 
 - `base_text` — from `--system` / `--system-file` if either is supplied;
   otherwise the built-in default (below). `--system` and `--system-file` are
   mutually exclusive; supplying both is a startup error.
-
-**v2 note:** when skills land, a `<available_skills>` block will be appended as
-a stable suffix after `base_text`. The assembly function in `pera-cli` is the
-right place to add it; no v1 API changes are required.
 
 **Built-in default text** (moved from `agent_harness.ml`; tool listing dropped
 — tools are already in `Provider.context.tools` and visible to the model natively):
@@ -478,9 +362,8 @@ Available in interactive (tty) mode only:
 | `/info` | Print current stats: tokens, cache read/write, model, turn count |
 | `/quit` | Exit cleanly |
 
-User-defined commands (from `commands` in config) and skill invocations extend
-this set. Built-in names (`compact`, `info`, `quit`) are reserved and cannot
-be overridden.
+User-defined commands (from `commands` in config) extend this set.
+Built-in names (`compact`, `info`, `quit`) are reserved and cannot be overridden.
 
 ---
 
@@ -507,8 +390,6 @@ No component below `bin/pera/` reads environment variables.
 | `PERA_SESSION` | Explicit session file path |
 | `PERA_SESSION_DIR` | `session.dir` |
 | `PERA_CWD` | Working directory for tools |
-| `PERA_SKILLS_DIR` | Prepended to `skills.dirs` — **deferred to v2** |
-| `PERA_SKILLS` | `skills.available` (comma-separated) — **deferred to v2** |
 | `PERA_NO_COMPACT` | `compaction.enabled = false` |
 | `PERA_COMPACT_THRESHOLD` | `compaction.threshold` |
 | `PERA_COMPACT_TAIL` | `compaction.tail` |
@@ -538,10 +419,6 @@ mutually exclusive; if more than one is set, the binary fails loudly.
 | `--cwd` | — | Process cwd | |
 | `--system` | — | Built-in | Literal system prompt override |
 | `--system-file` | — | — | Load system prompt from file |
-| `--skills-dir` | Prepends `skills.dirs` | — | **Deferred to v2** |
-| `--skills` | `skills.available` | all | **Deferred to v2** |
-| `--skill` | — | — | **Deferred to v2** |
-| `--no-skills` | `skills.enabled = false` | — | **Deferred to v2** |
 | `--no-compact` | `compaction.enabled = false` | — | |
 | `--compact-threshold` | `compaction.threshold` | 70 | |
 | `--compact-tail` | `compaction.tail` | 4 | |
@@ -551,7 +428,6 @@ mutually exclusive; if more than one is set, the binary fails loudly.
 | `--json` | — | — | Newline-delimited JSON events |
 | `--verbose` | — | — | Tool args, cache warnings, compaction |
 
-**Deferred to v2 (skills):** `--skills-dir`, `--skills`, `--skill`, `--no-skills`.
 **Deferred to M7:** `--compact-model` / `compaction.model`.
 **Deferred (batch mode):** `--max-turns`.
 
@@ -573,8 +449,8 @@ existing bash execution path with a fixed command template.
 **Command template substitution:**
 - `{arg_name}` is replaced by the LLM-provided value, quoted with
   `Filename.quote` (single-quote escaping on POSIX).
-- The substituted command is passed to `Sh.exec` as a shell command string
-  (i.e., run under `$SHELL -c`).
+- The substituted command is passed to `(E : Execution_env.S).Sh.exec` —
+  the same path the built-in `bash` tool uses (run under `$SHELL -c`).
 - Only declared args are substituted; unknown `{...}` tokens are a startup
   error (not runtime).
 
@@ -582,9 +458,9 @@ existing bash execution path with a fixed command template.
 tool gets `{"type": "object", "properties": {}, "required": []}`. The LLM
 sees the `name`, `description`, and schema exactly as with built-in tools.
 
-**Limitation:** shell-backed tools require a shell (`Sh.exec`). If a custom
-exec env does not support shell execution, the tool's execute function returns
-a `tool_error`; the LLM sees an error result and can adapt.
+**Limitation:** shell-backed tools require a shell (`Execution_env.S.Sh.exec`).
+If a custom exec env does not support shell execution, the tool's execute
+function returns a `tool_error`; the LLM sees an error result and can adapt.
 
 ### 2 — MCP servers (config, v2 target)
 
@@ -629,8 +505,9 @@ compose it with a different env and tool set:
 
 module type Env = sig
   type ctx
-  (** The tool context type. For Local_env-backed tools this is [unit]
-      (env captured in closure). For other envs it may carry the env handle. *)
+  (** The tool context type. For the default [pera] binary this is
+      [(module Execution_env.S)] — the env handle passed as [~ctx] to
+      every tool execute call. Custom binaries may use their own handle type. *)
 
   val create :
     env:Eio_unix.Stdenv.base ->
@@ -702,8 +579,8 @@ let () = Cli.run ()
 ```
 
 This binary gets full CLI arg parsing, config loading, session management,
-skills, MCP tools from config, and the interactive loop for free — only the
-env and tool set differ.
+MCP tools from config, and the interactive loop for free — only the env and
+tool set differ.
 
 **Config-defined shell tools and MCP** interact with the `Env` as follows:
 - Shell tools from `tools` config section: for the standard `pera` binary,
@@ -830,7 +707,7 @@ pera-core       (unchanged)
 pera-env        (unchanged)
 pera-tools      (modified — tool refactor: unit tool → (module Execution_env.S) tool)
 pera-harness    (unchanged)
-pera-agent      (modified — tool refactor: add system_prompt to config; remove build_system_prompt)
+pera-agent      (modified — tool refactor: add system_prompt and effort to config; remove build_system_prompt)
 pera-cli        (new library — reusable CLI wiring, generic over Env)
 pera            (executable — Pera_cli.Make(Local_env + default tools))
 ```
