@@ -54,3 +54,12 @@ module type S = sig
     sw:Eio.Switch.t ->
     (Types.assistant_message_event, Types.assistant_message) Event_stream.t
 end
+
+(** Shared helper for connectors that read their API key from a single
+    environment variable. Parameterised over [create] so it works for any
+    connector satisfying {!S}; the error-message format lives in one place. *)
+let create_from_env_var ~var_name ~create ~env ~sw =
+  match Sys.getenv_opt var_name with
+  | Some k -> Ok (create ~api_key:k ~env ~sw)
+  | None ->
+      Error (Fmt.str "%s environment variable is not set" var_name)

@@ -18,6 +18,13 @@ let recorded : Pera_connector.Connector.context list ref = ref []
 let recorded_contexts () = List.rev !recorded
 let reset_recorded () = recorded := []
 
+(** Module-level recording of the API keys each [create] call received, in call
+    order. Used to verify per-connector key routing in [Connector_adapter]. *)
+let recorded_api_keys_ref : string list ref = ref []
+
+let recorded_api_keys () = List.rev !recorded_api_keys_ref
+let reset_recorded_api_keys () = recorded_api_keys_ref := []
+
 let stream_fn_of_scripts ?pause scripts =
   let scripts_ref = ref scripts in
   fun ~model:_ ~context ~options:_ ~sw ->
@@ -62,7 +69,9 @@ let as_provider scripts =
     type t = unit
 
     let name = "Faux"
-    let create ~api_key:_ ~env:_ ~sw:_ = ()
+    let create ~api_key:k ~env:_ ~sw:_ =
+      recorded_api_keys_ref := k :: !recorded_api_keys_ref;
+      ()
 
     let stream_simple () ~model ~context ~options ~sw =
       fn ~model ~context ~options ~sw

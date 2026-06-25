@@ -1,11 +1,10 @@
 open Containers
 open Pera_types
 
-(** {1 Cache-control helpers} *)
+(** {1 Cache-control helpers}
 
-(** Sort an assoc list alphabetically by key. *)
-let sort_assoc_pairs pairs =
-  List.sort (fun (a, _) (b, _) -> String.compare a b) pairs
+    Key-order canonicalisation is delegated to {!Json_schema.sort_assoc_pairs}
+    so the comparator lives in exactly one place. *)
 
 (** Build an Anthropic [cache_control] marker for the given TTL. *)
 let cache_marker ttl =
@@ -13,13 +12,13 @@ let cache_marker ttl =
   | Types.Five_minutes -> `Assoc [ ("type", `String "ephemeral") ]
   | Types.One_hour ->
       `Assoc
-        (sort_assoc_pairs
+        (Json_schema.sort_assoc_pairs
            [ ("type", `String "ephemeral"); ("ttl", `String "1h") ])
 
 (** Add a [cache_control] marker to an existing JSON object, keeping its keys
     alphabetically sorted. *)
 let with_cache_control marker (`Assoc pairs) =
-  `Assoc (sort_assoc_pairs (("cache_control", marker) :: pairs))
+  `Assoc (Json_schema.sort_assoc_pairs (("cache_control", marker) :: pairs))
 
 (** Tag the last JSON object in a list with a cache-control marker. *)
 let tag_last_assoc marker blocks =
@@ -68,8 +67,20 @@ let assistant_content_to_json_list content =
     (function
       | Types.AText text ->
           `Assoc [ ("type", `String "text"); ("text", `String text) ]
-      | Types.AThinking { text; _ } ->
-          `Assoc [ ("type", `String "thinking"); ("thinking", `String text) ]
+      | Types.AThinking { text; signature } ->
+          (* The [signature] is required by Anthropic when replaying thinking
+             blocks on later turns. Omit it entirely when absent so the
+             first-turn (no-signature-yet) wire bytes are unchanged. *)
+          (match signature with
+           | None ->
+               `Assoc [ ("type", `String "thinking"); ("thinking", `String text) ]
+           | Some sig_value ->
+               `Assoc
+                 [
+                   ("type", `String "thinking");
+                   ("thinking", `String text);
+                   ("signature", `String sig_value);
+                 ])
       | Types.AToolCall { id; name; arguments } ->
           `Assoc
             [
@@ -172,7 +183,12 @@ let tag_last_tool marker tools = tag_last_assoc marker tools
 
 (** Tag the last content block of the last user message with a cache-control
     marker. The last rendered message is expected to be a user message at turn
-    start; any other role is an invariant violation. *)
+    start (the harness appends user/tool-result messages before each call).
+
+    A resumed or compacted session whose final entry is an assistant message is a
+    legitimate runtime condition, not an invariant violation: in that case there
+    is no trailing user message to tag, so the cache breakpoint is simply skipped
+    and the messages are returned unchanged. *)
 let tag_last_user_message marker messages =
   let update_message (`Assoc fields) =
     let content =
@@ -190,15 +206,13 @@ let tag_last_user_message marker messages =
           if String.equal k "content" then (k, `List new_content) else (k, v))
         fields
     in
-    `Assoc (sort_assoc_pairs new_fields)
+    `Assoc (Json_schema.sort_assoc_pairs new_fields)
   in
   match List.rev messages with
   | (`Assoc fields as last) :: rest -> (
       match List.assoc_opt ~eq:String.equal "role" fields with
       | Some (`String "user") -> List.rev (update_message last :: rest)
-      | _ ->
-          failwith
-            "tag_last_user_message: expected last message to have role 'user'")
+      | _ -> messages)
   | _ -> messages
 
 let build_request_body ~model ~context ~options =

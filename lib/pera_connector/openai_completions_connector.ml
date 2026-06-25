@@ -91,7 +91,7 @@ let do_request ~provider ~model ~context ~options ~sw:_ stream =
   let request_body_str = Yojson.Safe.to_string request_body in
   let full_url = provider.compat.base_url ^ "/v1/chat/completions" in
   Log.info (fun m -> m "POST %s  model=%s" full_url model.Types.id);
-  if Option.is_some (Sys.getenv_opt "PERA_LOG_CHUNKS") then
+  if log_chunks then
     Log.debug (fun m -> m "request body: %s" request_body_str);
   let headers = build_headers provider.api_key in
   let on_chunk, finalise = process_chunks stream ~compat:provider.compat in
@@ -125,7 +125,7 @@ let create ~api_key ~env ~sw =
   let compat = { base_compat with base_url } in
   Log.debug (fun m ->
       m "OPENAI_COMPAT=%s  base_url=%s"
-        (Option.get_or ~default:"(unset)" (Sys.getenv_opt "OPENAI_COMPAT"))
+        (Option.value ~default:"(unset)" (Sys.getenv_opt "OPENAI_COMPAT"))
         base_url);
   let client =
     match Http_client.create ~env ~sw base_url with
@@ -138,9 +138,7 @@ let create ~api_key ~env ~sw =
   { client; api_key; compat }
 
 let create_from_env ~env ~sw =
-  match Sys.getenv_opt "OPENAI_API_KEY" with
-  | Some k -> Ok (create ~api_key:k ~env ~sw)
-  | None -> Error "OPENAI_API_KEY environment variable is not set"
+  Connector.create_from_env_var ~var_name:"OPENAI_API_KEY" ~create ~env ~sw
 
 let stream_simple provider ~model ~context ~options ~sw =
   let stream :

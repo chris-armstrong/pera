@@ -55,6 +55,16 @@ val recorded_contexts : unit -> Pera_connector.Connector.context list
 val reset_recorded : unit -> unit
 (** Clears the recorded context list. Call between test cases. *)
 
+val recorded_api_keys : unit -> string list
+(** Returns the API keys passed to each [create] call, in call order (oldest
+    first). Used to verify [Connector_adapter] routes a per-connector key to the
+    right provider rather than fanning a single key out to all connectors.
+
+    Module-level state; call {!reset_recorded_api_keys} between tests. *)
+
+val reset_recorded_api_keys : unit -> unit
+(** Clears the recorded API-key list. Call between test cases. *)
+
 val as_provider : script list -> (module Pera_connector.Connector.S)
 (** [as_provider scripts] wraps [scripts] in a first-class module satisfying
     {!Pera_connector.Connector.S}.

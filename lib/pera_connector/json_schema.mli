@@ -64,6 +64,12 @@ val optional : t -> t
 
 (** {2 Operations} *)
 
+val sort_assoc_pairs : (string * 'a) list -> (string * 'a) list
+(** [sort_assoc_pairs pairs] returns [pairs] sorted alphabetically by key. Used
+    to keep serialised wire bytes stable (required for Anthropic prompt-cache
+    hits). Exposed so other modules that build JSON by hand can canonicalise
+    consistently with {!to_json}. *)
+
 val to_json : t -> Yojson.Safe.t
 (** [to_json schema] renders [schema] as a JSON Schema draft-07 object suitable
     for sending to an LLM API.

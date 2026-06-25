@@ -24,6 +24,16 @@ let build_registry () =
   | None -> ());
   !registry
 
+(** Build the per-connector API-key association list from available keys.
+    Mirrors {!build_registry}: a connector is registered iff its env var is
+    set, and here it is paired with its key so [Connector_adapter] passes the
+    right credential to each provider. *)
+let build_api_keys () =
+  List.filter_map
+    (fun (var_name, api_name) ->
+      Option.map (fun k -> (api_name, k)) (Sys.getenv_opt var_name))
+    [ ("ANTHROPIC_API_KEY", "anthropic"); ("OPENAI_API_KEY", "openai-completions") ]
+
 (** Select the model based on available providers and an optional CLI argument.
 *)
 let select_model registry argv =
@@ -89,9 +99,7 @@ let () =
   Eio.Switch.run @@ fun sw ->
   let adapter =
     Connector_adapter.create ~registry
-      ~api_key:
-        (Option.get_exn_or "ANTHROPIC_API_KEY"
-           (Sys.getenv_opt "ANTHROPIC_API_KEY"))
+      ~api_keys:(build_api_keys ())
       ~env ~sw
   in
   let stream_fn = Connector_adapter.stream_fn adapter in

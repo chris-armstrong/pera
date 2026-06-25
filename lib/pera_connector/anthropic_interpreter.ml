@@ -5,8 +5,11 @@ open Pera_types
 type active_block =
   | ActiveText of { buf : string }
       (** A text block accumulating delta fragments. *)
-  | ActiveThinking of { buf : string }
-      (** A thinking block accumulating delta fragments. *)
+  | ActiveThinking of { buf : string; signature : string }
+      (** A thinking block accumulating thinking-text and signature fragments.
+          [signature] is the concatenated [signature_delta] payloads;
+          [Some] iff non-empty once the block is finalised. Anthropic requires
+          this signature when replaying thinking blocks on later turns. *)
   | ActiveToolUse of {
       index : int;
       id : string;
@@ -20,7 +23,7 @@ type active_block =
     stable content list for partial snapshots even before message_stop. *)
 type completed_block =
   | CompletedText of string
-  | CompletedThinking of { text : string }
+  | CompletedThinking of { text : string; signature : string option }
   | CompletedToolCall of Types.tool_call
 
 type state = {
@@ -59,12 +62,16 @@ let initial_state =
     provenance = default_provenance;
   }
 
+let signature_of_buf buf =
+  if String.is_empty buf then None else Some buf
+
 (** Build the [assistant_content list] from the current state, including any
     active block that is being streamed. This is used for partial snapshots. *)
 let build_content_list state =
   let from_completed = function
     | CompletedText text -> Types.AText text
-    | CompletedThinking { text } -> Types.AThinking { text; signature = None }
+    | CompletedThinking { text; signature } ->
+        Types.AThinking { text; signature }
     | CompletedToolCall tc -> Types.AToolCall tc
   in
   let completed_content = List.map from_completed state.completed_blocks in
@@ -72,8 +79,9 @@ let build_content_list state =
     match state.active_block with
     | None -> []
     | Some (ActiveText { buf }) -> [ Types.AText buf ]
-    | Some (ActiveThinking { buf }) ->
-        [ Types.AThinking { text = buf; signature = None } ]
+    | Some (ActiveThinking { buf; signature }) ->
+        [ Types.AThinking { text = buf; signature = signature_of_buf signature }
+        ]
     | Some (ActiveToolUse { id; name; _ }) ->
         (* The tool call is in-progress; expose placeholder with empty arguments *)
         [ Types.AToolCall { id; name; arguments = `Assoc [] } ]
@@ -191,7 +199,7 @@ let dispatch_block_start state index block_type block_fields =
       Some (new_state, [ Types.AME_text_start { partial } ])
   | "thinking" ->
       let new_state =
-        { state with active_block = Some (ActiveThinking { buf = "" }) }
+        { state with active_block = Some (ActiveThinking { buf = ""; signature = "" }) }
       in
       let partial = snapshot new_state in
       Some (new_state, [ Types.AME_thinking_start { partial } ])
@@ -255,13 +263,35 @@ let apply_thinking_delta state delta_fields =
     json_string_field_opt delta_fields "thinking" |> Option.value ~default:""
   in
   match state.active_block with
-  | Some (ActiveThinking { buf }) ->
+  | Some (ActiveThinking { buf; signature }) ->
       let new_buf = buf ^ text in
       let new_state =
-        { state with active_block = Some (ActiveThinking { buf = new_buf }) }
+        { state with
+          active_block = Some (ActiveThinking { buf = new_buf; signature }) }
       in
       let partial = snapshot new_state in
       Some (new_state, [ Types.AME_thinking_delta { text; partial } ])
+  | _ -> None
+
+(** Apply a signature delta to the active thinking block. Anthropic streams the
+    cryptographic signature required to replay a thinking block as a series of
+    [signature_delta] events; we accumulate them here and emit the signature with
+    the [AThinking] block once finalised. *)
+let apply_signature_delta state delta_fields =
+  let sig_fragment =
+    json_string_field_opt delta_fields "signature" |> Option.value ~default:""
+  in
+  match state.active_block with
+  | Some (ActiveThinking { buf; signature }) ->
+      let new_state =
+        { state with
+          active_block =
+            Some (ActiveThinking { buf; signature = signature ^ sig_fragment })
+        }
+      in
+      (* No partial event is emitted for signature deltas: the signature is an
+         opaque token that is only meaningful once the block is finalised. *)
+      Some (new_state, [])
   | _ -> None
 
 (** Apply an input_json delta to the active tool-use block. *)
@@ -304,6 +334,7 @@ let handle_content_block_delta state json =
     match delta_type with
     | "text_delta" -> apply_text_delta state delta_fields
     | "thinking_delta" -> apply_thinking_delta state delta_fields
+    | "signature_delta" -> apply_signature_delta state delta_fields
     | "input_json_delta" -> apply_input_json_delta state delta_fields
     (* Forward-compat: Anthropic SSE delta types are an open set.
        Unknown deltas are silently dropped; the default below is the no-op. *)
@@ -328,13 +359,15 @@ let handle_content_block_stop state =
         }
       in
       (new_state, [])
-  | Some (ActiveThinking { buf }) ->
+  | Some (ActiveThinking { buf; signature }) ->
       let new_state =
         {
           state with
           active_block = None;
           completed_blocks =
-            state.completed_blocks @ [ CompletedThinking { text = buf } ];
+            state.completed_blocks
+            @ [ CompletedThinking { text = buf; signature = signature_of_buf signature }
+              ];
         }
       in
       (new_state, [])

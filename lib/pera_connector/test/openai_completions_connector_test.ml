@@ -28,7 +28,7 @@ let test_satisfies_provider_s () =
   ()
 
 let () =
-  Alcotest.run "OpenAI_completions_provider"
+  Alcotest.run "OpenAI_completions_connector"
     [
       ( "create",
         [

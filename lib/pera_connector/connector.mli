@@ -114,3 +114,17 @@ module type S = sig
 
       Never raises on expected failures (network errors, API errors). *)
 end
+
+val create_from_env_var :
+     var_name:string
+  -> create:(api_key:string
+                -> env:Eio_unix.Stdenv.base
+                -> sw:Eio.Switch.t
+                -> 't)
+  -> env:Eio_unix.Stdenv.base
+  -> sw:Eio.Switch.t
+  -> ('t, string) result
+(** [create_from_env_var ~var_name ~create ~env ~sw] reads [var_name] from the
+    environment and, if present, passes it to [create ~api_key]; otherwise
+    returns [Error] with a uniform message. Shared by connectors that source
+    their key from a single env var, eliminating duplicated boilerplate. *)

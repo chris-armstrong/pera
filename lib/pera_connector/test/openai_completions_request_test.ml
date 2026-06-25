@@ -259,6 +259,51 @@ let test_go_compat_presets_are_correct () =
   Alcotest.(check bool)
     "require_tool_result_name" false c.require_tool_result_name
 
+(* ── thinking-field tests ── *)
+
+let test_default_compat_omits_enable_thinking_when_thinking_enabled () =
+  (* Standard api.openai.com does not recognise an [enable_thinking] field:
+     emitting it yields HTTP 400, so [default_compat] must have
+     [enable_thinking_field = None] and the request body must omit it even when
+     a thinking budget is set. *)
+  let context = make_context [] in
+  let options =
+    { (make_options ()) with Connector.thinking_budget_tokens = Some 1024 }
+  in
+  let model =
+    { Types.id = "o3"; api = "openai-completions"; context_window = 200_000 }
+  in
+  let body =
+    Openai_completions_request.build_request_body ~model ~context ~options
+      ~compat:Openai_completions_request.default_compat
+  in
+  let fields = as_assoc "body" body in
+  assoc_absent "enable_thinking" fields
+
+let test_compat_with_enable_thinking_field_emits_it () =
+  (* A compat that opts into an [enable_thinking] field (e.g. a proxy that
+     requires it) must emit [enable_thinking: true] when a budget is set. *)
+  let context = make_context [] in
+  let options =
+    { (make_options ()) with Connector.thinking_budget_tokens = Some 1024 }
+  in
+  let model =
+    { Types.id = "kimi"; api = "openai-completions"; context_window = 128_000 }
+  in
+  let compat =
+    { Openai_completions_request.opencode_zen_compat with
+      enable_thinking_field = Some "enable_thinking";
+    }
+  in
+  let body =
+    Openai_completions_request.build_request_body ~model ~context ~options
+      ~compat
+  in
+  let fields = as_assoc "body" body in
+  let flag = assoc_exn "enable_thinking" fields in
+  Alcotest.(check bool)
+    "enable_thinking is true" true (Yojson.Safe.equal flag (`Bool true))
+
 (* ── Test runner ── *)
 
 let () =
@@ -295,5 +340,13 @@ let () =
             test_zen_compat_presets_are_correct;
           Alcotest.test_case "go_compat_presets_are_correct" `Quick
             test_go_compat_presets_are_correct;
+        ] );
+      ( "thinking_field",
+        [
+          Alcotest.test_case
+            "default_compat_omits_enable_thinking_when_thinking_enabled" `Quick
+            test_default_compat_omits_enable_thinking_when_thinking_enabled;
+          Alcotest.test_case "compat_with_enable_thinking_field_emits_it" `Quick
+            test_compat_with_enable_thinking_field_emits_it;
         ] );
     ]

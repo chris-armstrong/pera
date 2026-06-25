@@ -107,9 +107,7 @@ let create ~api_key ~env ~sw =
   { client; api_key }
 
 let create_from_env ~env ~sw =
-  match Sys.getenv_opt "ANTHROPIC_API_KEY" with
-  | Some k -> Ok (create ~api_key:k ~env ~sw)
-  | None -> Error "ANTHROPIC_API_KEY environment variable is not set"
+  Connector.create_from_env_var ~var_name:"ANTHROPIC_API_KEY" ~create ~env ~sw
 
 let stream_simple provider ~model ~context ~options ~sw =
   let stream :

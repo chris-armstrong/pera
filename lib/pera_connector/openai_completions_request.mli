@@ -11,9 +11,10 @@ type compat = {
   require_tool_result_name : bool;
       (** When [true], tool-result messages must include a [name] field. *)
   enable_thinking_field : string option;
-      (** If [Some field], send [field: true] when [context.thinking = true].
-          [None] for providers that enable thinking via model selection (e.g.
-          OpenAI o-series). *)
+      (** If [Some field], send [field: true] when a thinking budget is set
+          ([simple_stream_options.thinking_budget_tokens = Some _]). [None] for
+          providers that enable thinking via model selection (e.g. OpenAI
+          o-series). *)
 }
 (** Per-endpoint compatibility configuration for the OpenAI chat-completions
     API.

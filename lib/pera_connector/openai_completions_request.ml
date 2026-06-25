@@ -7,9 +7,11 @@ type compat = {
   max_tokens_field : string;
   require_tool_result_name : bool;
   enable_thinking_field : string option;
-      (** If [Some field], send [field: true] in the request body when
-          [context.thinking = true]. Use [None] for providers that enable
-          thinking via model selection (e.g. OpenAI o-series). *)
+      (** If [Some field], send [field: true] in the request body when a
+          thinking budget is set
+          ([simple_stream_options.thinking_budget_tokens = Some _]). Use [None]
+          for providers that enable thinking via model selection (e.g. OpenAI
+          o-series). *)
 }
 (** Per-endpoint compatibility configuration for the OpenAI chat-completions
     API.
@@ -42,7 +44,10 @@ let default_compat =
     reasoning_field = "reasoning_content";
     max_tokens_field = "max_completion_tokens";
     require_tool_result_name = false;
-    enable_thinking_field = Some "enable_thinking";
+    (* Standard api.openai.com does not recognise an [enable_thinking] field:
+       sending it yields HTTP 400. The o-series enables reasoning via model
+       selection, so no opt-in field is needed here. *)
+    enable_thinking_field = None;
   }
 
 (** Select a compatibility preset by name. Valid values:

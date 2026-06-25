@@ -126,9 +126,13 @@ let build_provider_context ~system ~transform_context ~convert_to_llm ~tools
   Pera_connector.Connector.{ system; messages = provider_messages; tools }
 
 (** Invoke [get_api_key] if set. The return value is not used by the loop; the
-    call exists to satisfy provider contracts. *)
-let invoke_get_api_key get_api_key =
-  Option.iter (fun f -> ignore (f ~provider:"anthropic")) get_api_key
+    call exists to satisfy provider contracts. The provider name is taken from
+    the active model so a callback that routes keys by provider receives the
+    correct name. *)
+let invoke_get_api_key get_api_key ~model =
+  Option.iter
+    (fun f -> ignore (f ~provider:model.Pera_types.Types.api))
+    get_api_key
 
 (** {1 Provider stream consumption} *)
 
@@ -449,7 +453,7 @@ let rec run_inner ~config ~model_ref ~options_ref ~current_thinking_budget
       ~transform_context:config.transform_context
       ~convert_to_llm:config.convert_to_llm ~tools:tool_schemas !messages_ref
   in
-  invoke_get_api_key config.get_api_key;
+  invoke_get_api_key config.get_api_key ~model:!model_ref;
   let current_options =
     let opts : Pera_connector.Connector.simple_stream_options = !options_ref in
     { opts with thinking_budget_tokens = !current_thinking_budget }

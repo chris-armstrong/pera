@@ -59,7 +59,7 @@ let test_stream_fn_resolves_registered_provider () =
       Pera_connector.Connector_registry.empty ~name:"faux" provider_mod
   in
   let adapter =
-    Connector_adapter.create ~registry ~api_key:"test-key" ~env ~sw
+    Connector_adapter.create ~registry ~api_keys:[("faux","test-key")] ~env ~sw
   in
   let stream_fn = Connector_adapter.stream_fn adapter in
   let context =
@@ -108,7 +108,7 @@ let test_stream_fn_unknown_api_returns_error_stream () =
   (* Create adapter with an empty registry *)
   let registry = Pera_connector.Connector_registry.empty in
   let adapter =
-    Connector_adapter.create ~registry ~api_key:"test-key" ~env ~sw
+    Connector_adapter.create ~registry ~api_keys:[] ~env ~sw
   in
   let stream_fn = Connector_adapter.stream_fn adapter in
   let context =
@@ -158,7 +158,7 @@ let test_stream_fn_preserves_provider_semantics () =
       Pera_connector.Connector_registry.empty ~name:"faux" provider_mod
   in
   let adapter =
-    Connector_adapter.create ~registry ~api_key:"test-key" ~env ~sw
+    Connector_adapter.create ~registry ~api_keys:[("faux","test-key")] ~env ~sw
   in
   let stream_fn = Connector_adapter.stream_fn adapter in
   (* Build a loop config using the adapter's stream_fn.
@@ -248,6 +248,30 @@ let test_stream_fn_preserves_provider_semantics () =
           | _ -> Alcotest.fail "expected AText content")
       | _ -> Alcotest.fail "expected AssistantMessage")
 
+(** {1 Test 4: per-connector API-key routing} *)
+
+(** Register two faux providers under distinct names and build the adapter with
+    a per-connector [api_keys] list. Each provider's [create] must receive its
+    own key — never a single key fanned out to all of them. *)
+let test_create_routes_api_keys_per_connector () =
+  Eio_main.run @@ fun env ->
+  Eio.Switch.run @@ fun sw ->
+  Faux_provider.reset_recorded_api_keys ();
+  let provider_a = Faux_provider.as_provider [] in
+  let provider_b = Faux_provider.as_provider [] in
+  let registry =
+    Pera_connector.Connector_registry.empty
+    |> fun r -> Pera_connector.Connector_registry.register r ~name:"faux-a" provider_a
+    |> fun r -> Pera_connector.Connector_registry.register r ~name:"faux-b" provider_b
+  in
+  let api_keys = [ ("faux-a", "key-a"); ("faux-b", "key-b") ] in
+  let _adapter = Connector_adapter.create ~registry ~api_keys ~env ~sw in
+  (* [create] is called eagerly in registry order; the registry stores
+     most-recently-registered first, so order is [faux-b; faux-a]. *)
+  let received = Faux_provider.recorded_api_keys () in
+  Alcotest.(check (list string))
+    "each connector received its own key" [ "key-b"; "key-a" ] received
+
 let () =
   Alcotest.run "provider_adapter"
     [
@@ -261,5 +285,7 @@ let () =
           Alcotest.test_case
             "stream_fn preserves provider semantics through Agent_loop.run"
             `Quick test_stream_fn_preserves_provider_semantics;
+          Alcotest.test_case "create routes api keys per connector" `Quick
+            test_create_routes_api_keys_per_connector;
         ] );
     ]

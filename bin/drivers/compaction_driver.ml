@@ -192,14 +192,15 @@ let scenario_real_model ~env =
     Connector_registry.register Connector_registry.empty ~name:"anthropic"
       (module Anthropic_connector)
   in
+  let api_keys =
+    [ ("anthropic",
+       Option.get_exn_or "ANTHROPIC_API_KEY" (Sys.getenv_opt "ANTHROPIC_API_KEY"))
+    ]
+  in
   let result =
     Eio.Switch.run @@ fun sw ->
     let adapter =
-      Connector_adapter.create ~registry
-        ~api_key:
-          (Option.get_exn_or "ANTHROPIC_API_KEY"
-             (Sys.getenv_opt "ANTHROPIC_API_KEY"))
-        ~env ~sw
+      Connector_adapter.create ~registry ~api_keys ~env ~sw
     in
     let stream_fn = Connector_adapter.stream_fn adapter in
     Pera_harness.Compaction.compact ~stream_fn ~model ~options ~messages

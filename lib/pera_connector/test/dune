@@ -51,8 +51,8 @@
  (libraries pera_connector pera_types alcotest containers))
 
 (test
- (name openai_completions_provider_test)
- (modules openai_completions_provider_test)
+ (name openai_completions_connector_test)
+ (modules openai_completions_connector_test)
  (libraries pera_connector pera_types alcotest containers eio_main))
 
 (test

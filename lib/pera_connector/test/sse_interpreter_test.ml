@@ -172,6 +172,39 @@ let content_block_stop_event ?(index = 0) () =
   make_framed "content_block_stop"
     (`Assoc [ ("type", `String "content_block_stop"); ("index", `Int index) ])
 
+let content_block_start_thinking_event ?(index = 0) () =
+  make_framed "content_block_start"
+    (`Assoc
+       [
+         ("type", `String "content_block_start");
+         ("index", `Int index);
+         ("content_block", `Assoc [ ("type", `String "thinking"); ("thinking", `String "") ]);
+       ])
+
+let content_block_delta_thinking_event ?(index = 0) text =
+  make_framed "content_block_delta"
+    (`Assoc
+       [
+         ("type", `String "content_block_delta");
+         ("index", `Int index);
+         ( "delta",
+           `Assoc [ ("type", `String "thinking_delta"); ("thinking", `String text) ] );
+       ])
+
+(** An Anthropic [signature_delta] event carrying a fragment of the thinking
+    block's cryptographic signature. *)
+let content_block_delta_signature_event ?(index = 0) signature =
+  make_framed "content_block_delta"
+    (`Assoc
+       [
+         ("type", `String "content_block_delta");
+         ("index", `Int index);
+         ( "delta",
+           `Assoc
+             [ ("type", `String "signature_delta"); ("signature", `String signature) ]
+         );
+       ])
+
 let message_delta_event ?(input_tokens = 12) ?(output_tokens = 5)
     ?(stop_reason = "end_turn") () =
   make_framed "message_delta"
@@ -436,6 +469,40 @@ let test_partial_snapshot_is_immutable () =
   let are_different = not (String.equal first_content_str second_content_str) in
   Alcotest.(check bool) "partials are distinct" true are_different
 
+(* ── Test: thinking stream captures signature_delta ── *)
+
+(** Anthropic streams the thinking-block signature as a series of
+    [signature_delta] events. The interpreter must accumulate them and expose
+    the full signature on the [AThinking] block, so the request builder can
+    replay it on later turns (Anthropic rejects a thinking block without its
+    signature with HTTP 400). *)
+let test_thinking_stream_captures_signature () =
+  let framed_events =
+    [
+      message_start_event ();
+      content_block_start_thinking_event ();
+      content_block_delta_thinking_event "reasoning...";
+      content_block_delta_signature_event "sig-fragment-1";
+      content_block_delta_signature_event "sig-fragment-2";
+      content_block_stop_event ();
+      message_delta_event ();
+      message_stop_event ();
+    ]
+  in
+  let events = run_interpreter framed_events in
+  let done_event =
+    match List.find_opt (function Types.AME_done _ -> true | _ -> false) events with
+    | Some (Types.AME_done { message }) -> message
+    | _ -> Alcotest.fail "expected an AME_done event"
+  in
+  (match done_event.content with
+   | [ Types.AThinking { text; signature } ] ->
+       Alcotest.(check string) "thinking text accumulated" "reasoning..." text;
+       Alcotest.(check (option string))
+         "signature accumulated from both fragments"
+         (Some "sig-fragment-1sig-fragment-2") signature
+   | _ -> Alcotest.fail "expected a single AThinking block in the final message")
+
 (* ── Test runner ── *)
 
 let () =
@@ -465,5 +532,10 @@ let () =
         [
           Alcotest.test_case "partial_snapshot_is_immutable" `Quick
             test_partial_snapshot_is_immutable;
+        ] );
+      ( "thinking_stream",
+        [
+          Alcotest.test_case "captures_signature_delta" `Quick
+            test_thinking_stream_captures_signature;
         ] );
     ]

@@ -12,16 +12,22 @@ type t
 
 val create :
   registry:Pera_connector.Connector_registry.t ->
-  api_key:string ->
+  api_keys:(string * string) list ->
   env:Eio_unix.Stdenv.base ->
   sw:Eio.Switch.t ->
   t
-(** [create ~registry ~api_key ~env ~sw] iterates the registry. For each
-    [(api_name, (module P : Connector.S))]:
+(** [create ~registry ~api_keys ~env ~sw] iterates the registry. For each
+    [(api_name, (module P : Connector.S))] it looks up [api_name] in
+    [api_keys] (an association list of connector name -> API key); connectors
+    with no key in [api_keys] are skipped. For the rest:
     - [let inst = P.create ~api_key ~env ~sw]
     - [let fn ~model ~context ~options ~sw = P.stream_simple inst ~model
        ~context ~options ~sw]
     - [(api_name, fn)] is added to the list.
+
+    Passing a single key to every connector would fan one provider's credential
+    out to all of them (e.g. an OpenAI request authenticated with the Anthropic
+    key); the per-connector [api_keys] list prevents that.
 
     The provider instances are created eagerly and live as long as [sw]. *)
 

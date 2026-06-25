@@ -161,6 +161,13 @@ let build_anthropic_registry () =
   Connector_registry.register Connector_registry.empty ~name:"anthropic"
     (module Anthropic_connector)
 
+(** The per-connector API-key list for the Anthropic-only registry built by
+    {!build_anthropic_registry}. *)
+let anthropic_api_keys () =
+  [ ("anthropic",
+     Option.get_exn_or "ANTHROPIC_API_KEY" (Sys.getenv_opt "ANTHROPIC_API_KEY"))
+  ]
+
 (* ── Scenarios ────────────────────────────────────────────────────────────── *)
 
 (** Format a [stop_error] as a short category label for the outer message. *)
@@ -198,9 +205,7 @@ let scenario_bash_echo ~model ~tmpdir ~env ~registry =
   let sentinel = "pera_echo_42" in
   let adapter =
     Connector_adapter.create ~registry
-      ~api_key:
-        (Option.get_exn_or "ANTHROPIC_API_KEY"
-           (Sys.getenv_opt "ANTHROPIC_API_KEY"))
+      ~api_keys:(anthropic_api_keys ())
       ~env ~sw
   in
   let stream_fn = Connector_adapter.stream_fn adapter in
@@ -232,9 +237,7 @@ let scenario_read_preseeded ~model ~tmpdir ~env ~registry =
   let session_path = Filename.concat tmpdir "read_preseeded.jsonl" in
   let adapter =
     Connector_adapter.create ~registry
-      ~api_key:
-        (Option.get_exn_or "ANTHROPIC_API_KEY"
-           (Sys.getenv_opt "ANTHROPIC_API_KEY"))
+      ~api_keys:(anthropic_api_keys ())
       ~env ~sw
   in
   let stream_fn = Connector_adapter.stream_fn adapter in
@@ -265,9 +268,7 @@ let scenario_multi_turn ~model ~tmpdir ~env ~registry =
   let sentinel = "pera_token_789" in
   let adapter =
     Connector_adapter.create ~registry
-      ~api_key:
-        (Option.get_exn_or "ANTHROPIC_API_KEY"
-           (Sys.getenv_opt "ANTHROPIC_API_KEY"))
+      ~api_keys:(anthropic_api_keys ())
       ~env ~sw
   in
   let stream_fn = Connector_adapter.stream_fn adapter in
