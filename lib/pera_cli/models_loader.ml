@@ -1,45 +1,39 @@
 open Containers
 
+let provider_named ~name (p : Models_config.provider_spec) =
+  String.equal p.name name
+
+let model_named ~name (m : Models_config.model_spec) = String.equal m.name name
+
+let names_of_providers =
+  List.map (fun (p : Models_config.provider_spec) -> p.name)
+
+let names_of_models = List.map (fun (m : Models_config.model_spec) -> m.name)
+
+let merge_model_lists base_models overlay_models =
+  let overlay_names = names_of_models overlay_models in
+  let is_not_overlaid (bm : Models_config.model_spec) =
+    not (List.mem ~eq:String.equal bm.name overlay_names)
+  in
+  let kept = List.filter is_not_overlaid base_models in
+  overlay_models @ kept
+
+let merge_one_provider base_providers (op : Models_config.provider_spec) =
+  match List.find_opt (provider_named ~name:op.name) base_providers with
+  | Some bp -> { op with models = merge_model_lists bp.models op.models }
+  | None -> op
+
+let merge_providers base_providers overlay_providers =
+  let merged = List.map (merge_one_provider base_providers) overlay_providers in
+  let overlay_names = names_of_providers overlay_providers in
+  let is_kept (bp : Models_config.provider_spec) =
+    not (List.mem ~eq:String.equal bp.name overlay_names)
+  in
+  let kept = List.filter is_kept base_providers in
+  merged @ kept
+
 let merge ~base ~overlay =
   let open Models_config in
-  let merge_model_lists base_models overlay_models =
-    (* Overlay models take precedence; keep base models not in overlay *)
-    let kept =
-      List.filter
-        (fun (bm : model_spec) ->
-          Option.is_none
-            (List.find_opt
-               (fun (om : model_spec) -> String.equal om.name bm.name)
-               overlay_models))
-        base_models
-    in
-    overlay_models @ kept
-  in
-  let merge_providers base_providers overlay_providers =
-    let merged =
-      List.map
-        (fun (op : provider_spec) ->
-          match
-            List.find_opt
-              (fun (bp : provider_spec) -> String.equal bp.name op.name)
-              base_providers
-          with
-          | Some bp ->
-              { op with models = merge_model_lists bp.models op.models }
-          | None -> op)
-        overlay_providers
-    in
-    let kept =
-      List.filter
-        (fun (bp : provider_spec) ->
-          Option.is_none
-            (List.find_opt
-               (fun (op : provider_spec) -> String.equal op.name bp.name)
-               overlay_providers))
-        base_providers
-    in
-    merged @ kept
-  in
   { providers = merge_providers base.providers overlay.providers }
 
 let read_and_parse ~path =
@@ -80,9 +74,7 @@ let resolve_model mf qualified_name =
              qualified_name)
   in
   let* p =
-    List.find_opt
-      (fun (p : provider_spec) -> String.equal p.name provider_name)
-      mf.providers
+    List.find_opt (provider_named ~name:provider_name) mf.providers
     |> Option.to_result
          (Printf.sprintf
             "[pera] unknown provider %S — add it to \
@@ -90,9 +82,7 @@ let resolve_model mf qualified_name =
             provider_name)
   in
   let* m =
-    List.find_opt
-      (fun (m : model_spec) -> String.equal m.name model_name)
-      p.models
+    List.find_opt (model_named ~name:model_name) p.models
     |> Option.to_result
          (Printf.sprintf
             "[pera] unknown model %S in provider %S — add it to \

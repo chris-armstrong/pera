@@ -1,8 +1,6 @@
 open Containers
 
-type load_error =
-  | Parse_error of string
-  | Api_key_in_project_config
+type load_error = Parse_error of string | Api_key_in_project_config
 
 let load_user_config ~path =
   if not (Sys.file_exists path) then Ok None
@@ -13,19 +11,20 @@ let load_user_config ~path =
       let cfg = Pera_config.config_of_sexp sexp in
       Ok (Some cfg)
     with exn ->
-      Error (Parse_error (Printf.sprintf "failed to parse %S: %s" path
-                            (Printexc.to_string exn)))
+      Error
+        (Parse_error
+           (Printf.sprintf "failed to parse %S: %s" path
+              (Printexc.to_string exn)))
 
 let find_project_config ~cwd =
   let rec walk dir =
-    let candidate = Filename.concat dir ".pera" in
+    let candidate = Fpath.(dir / ".pera") |> Fpath.to_string in
     if Sys.file_exists candidate then Some candidate
     else
-      let parent = Filename.dirname dir in
-      if String.equal parent dir then None
-      else walk parent
+      let parent = Fpath.parent dir in
+      if Fpath.equal parent dir then None else walk parent
   in
-  walk cwd
+  walk (Fpath.v cwd)
 
 let load_project_config ~path =
   if not (Sys.file_exists path) then Ok None
@@ -35,21 +34,22 @@ let load_project_config ~path =
       let sexp = Sexplib.Sexp.of_string content in
       let cfg = Pera_config.config_of_sexp sexp in
       (* Reject any api_key field in provider entries *)
-      let has_api_key = List.exists (fun (p : Pera_config.provider_auth) ->
-        Option.is_some p.api_key) cfg.providers
+      let has_api_key =
+        List.exists
+          (fun (p : Pera_config.provider_auth) -> Option.is_some p.api_key)
+          cfg.providers
       in
-      if has_api_key then Error Api_key_in_project_config
-      else Ok (Some cfg)
+      if has_api_key then Error Api_key_in_project_config else Ok (Some cfg)
     with exn ->
-        Error (Parse_error (Printf.sprintf "failed to parse %S: %s" path
-                              (Printexc.to_string exn)))
+      Error
+        (Parse_error
+           (Printf.sprintf "failed to parse %S: %s" path
+              (Printexc.to_string exn)))
 
 let merge ~base ~overlay =
   let open Pera_config in
   let pick opt_field base_field =
-    match opt_field with
-    | Some _ -> opt_field
-    | None -> base_field
+    match opt_field with Some _ -> opt_field | None -> base_field
   in
   let pick_list overlay_list base_list =
     if List.is_empty overlay_list then base_list else overlay_list
