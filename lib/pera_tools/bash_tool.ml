@@ -54,7 +54,7 @@ let bash =
       let on_stderr chunk = Buffer.add_string buf chunk in
       let exec_result =
         E.Sh.exec ~command
-          ?cwd:(None : string option)
+          ?cwd:(Some E.cwd : string option)
           ?env:(None : (string * string) list option)
           ?timeout:(timeout_opt : float option)
           ?on_stdout:(Some on_stdout : (string -> unit) option)

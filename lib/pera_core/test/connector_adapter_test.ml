@@ -59,7 +59,9 @@ let test_stream_fn_resolves_registered_provider () =
       Pera_connector.Connector_registry.empty ~name:"faux" provider_mod
   in
   let adapter =
-    Connector_adapter.create ~registry ~api_keys:[("faux","test-key")] ~env ~sw
+    Connector_adapter.create ~registry
+      ~api_keys:[ ("faux", "test-key") ]
+      ~env ~sw
   in
   let stream_fn = Connector_adapter.stream_fn adapter in
   let context =
@@ -107,9 +109,7 @@ let test_stream_fn_unknown_api_returns_error_stream () =
   Faux_provider.reset_recorded ();
   (* Create adapter with an empty registry *)
   let registry = Pera_connector.Connector_registry.empty in
-  let adapter =
-    Connector_adapter.create ~registry ~api_keys:[] ~env ~sw
-  in
+  let adapter = Connector_adapter.create ~registry ~api_keys:[] ~env ~sw in
   let stream_fn = Connector_adapter.stream_fn adapter in
   let context =
     make_provider_context ~system:"test"
@@ -158,7 +158,9 @@ let test_stream_fn_preserves_provider_semantics () =
       Pera_connector.Connector_registry.empty ~name:"faux" provider_mod
   in
   let adapter =
-    Connector_adapter.create ~registry ~api_keys:[("faux","test-key")] ~env ~sw
+    Connector_adapter.create ~registry
+      ~api_keys:[ ("faux", "test-key") ]
+      ~env ~sw
   in
   let stream_fn = Connector_adapter.stream_fn adapter in
   (* Build a loop config using the adapter's stream_fn.
@@ -260,9 +262,10 @@ let test_create_routes_api_keys_per_connector () =
   let provider_a = Faux_provider.as_provider [] in
   let provider_b = Faux_provider.as_provider [] in
   let registry =
-    Pera_connector.Connector_registry.empty
-    |> fun r -> Pera_connector.Connector_registry.register r ~name:"faux-a" provider_a
-    |> fun r -> Pera_connector.Connector_registry.register r ~name:"faux-b" provider_b
+    Pera_connector.Connector_registry.empty |> fun r ->
+    Pera_connector.Connector_registry.register r ~name:"faux-a" provider_a
+    |> fun r ->
+    Pera_connector.Connector_registry.register r ~name:"faux-b" provider_b
   in
   let api_keys = [ ("faux-a", "key-a"); ("faux-b", "key-b") ] in
   let _adapter = Connector_adapter.create ~registry ~api_keys ~env ~sw in
@@ -273,7 +276,7 @@ let test_create_routes_api_keys_per_connector () =
     "each connector received its own key" [ "key-b"; "key-a" ] received
 
 let () =
-  Alcotest.run "provider_adapter"
+  Alcotest.run "connector_adapter"
     [
       ( "adapter",
         [

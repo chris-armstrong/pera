@@ -119,6 +119,41 @@ let test_bash_tail_truncation_preserves_end () =
           | Ok _ -> Alcotest.fail "expected Tool_text"
           | Error e -> Alcotest.failf "bash failed: %s" e.message))
 
+let test_bash_relative_command_runs_in_env_cwd () =
+  Eio_main.run @@ fun env ->
+  let tmpdir = make_temp_dir env in
+  let old_cwd = Sys.getcwd () in
+  Fun.protect ~finally:(fun () -> Unix.chdir old_cwd)
+  @@ fun () ->
+  (* Move the process cwd away from the agent cwd to prove the tool uses
+     E.cwd rather than the process cwd. *)
+  Unix.chdir "/";
+  Eio.Switch.run @@ fun sw ->
+  let module E =
+    (val Pera_env.Local_env.create ~env ~cwd:tmpdir : Pera_env.Execution_env.S)
+  in
+  let tool = Bash_tool.bash in
+  let args =
+    `Assoc [ ("command", `String "echo probe > rel_cwd_probe.txt") ]
+  in
+  Eio.Cancel.sub (fun cancel ->
+      match
+        Tool.execute tool
+          ~ctx:(module E : Pera_env.Execution_env.S)
+          ~args ~sw ~cancel
+      with
+      | Ok _ ->
+          (* The relative path must resolve against E.cwd (the env's cwd),
+             not the process cwd ("/"). Check via Fs which is rooted at the
+             same cwd. *)
+          (match E.Fs.exists ~path:"rel_cwd_probe.txt" ~sw with
+           | Ok true -> ()
+           | Ok false ->
+               Alcotest.fail "relative file not created in the agent cwd"
+           | Error e ->
+               Alcotest.failf "fs.exists failed: %s" e.message)
+      | Error e -> Alcotest.failf "bash failed: %s" e.message)
+
 let () =
   Alcotest.run "bash_tool"
     [
@@ -136,5 +171,7 @@ let () =
             test_bash_no_output_command_returns_no_output;
           Alcotest.test_case "tail_truncation_preserves_end" `Quick
             test_bash_tail_truncation_preserves_end;
+          Alcotest.test_case "relative_command_runs_in_env_cwd" `Quick
+            test_bash_relative_command_runs_in_env_cwd;
         ] );
     ]

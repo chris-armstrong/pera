@@ -130,6 +130,7 @@ let test_grep_ripgrep_not_found_returns_error () =
     let find_executable ~name:_ = None
   end in
   let module MockEnv = struct
+    let cwd = E.cwd
     module Fs = E.Fs
     module Sh = MockSh
   end in
