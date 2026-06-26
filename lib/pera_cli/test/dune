@@ -1,0 +1,17 @@
+(include_subdirs no)
+
+(test
+ (name models_config_test)
+ (libraries pera_cli alcotest containers sexplib yojson fpath re eio eio_main))
+
+(test
+ (name pera_config_test)
+ (libraries pera_cli alcotest containers sexplib yojson fpath re eio eio_main))
+
+(test
+ (name models_loader_test)
+ (libraries pera_cli alcotest containers sexplib yojson fpath re eio eio_main))
+
+(test
+ (name config_loader_test)
+ (libraries pera_cli alcotest containers sexplib yojson fpath re eio eio_main))
