@@ -15,3 +15,23 @@
 (test
  (name config_loader_test)
  (libraries pera_cli alcotest containers sexplib yojson fpath re eio eio_main))
+
+(test
+ (name session_path_test)
+ (libraries pera_cli alcotest containers re))
+
+(test
+ (name effort_resolver_test)
+ (libraries pera_cli alcotest containers))
+
+(test
+ (name env_reader_test)
+ (libraries pera_cli alcotest containers))
+
+(test
+ (name cli_args_test)
+ (libraries pera_cli alcotest containers cmdliner))
+
+(test
+ (name config_resolver_test)
+ (libraries pera_cli alcotest containers pera_types pera_agent))
