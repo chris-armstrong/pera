@@ -12,7 +12,7 @@
 (test
  (name session_types_test)
  (modules session_types_test)
- (libraries pera_harness pera_provider pera_types alcotest containers yojson))
+ (libraries pera_harness pera_connector pera_types alcotest containers yojson))
 
 (test
  (name session_writer_test)
@@ -20,7 +20,7 @@
  (libraries
   pera_harness
   pera_harness_test_util
-  pera_provider
+  pera_connector
   pera_types
   alcotest
   containers
@@ -35,12 +35,17 @@
   pera_harness
   pera_core
   pera_core_test_util
-  pera_provider
+  pera_connector
   pera_types
   alcotest
   containers
   eio_main
   eio))
+
+(test
+ (name cache_fingerprint_test)
+ (modules cache_fingerprint_test)
+ (libraries pera_harness pera_core pera_connector pera_types alcotest containers))
 
 (test
  (name compaction_test)
@@ -49,7 +54,7 @@
   pera_harness
   pera_core
   pera_core_test_util
-  pera_provider
+  pera_connector
   pera_types
   alcotest
   containers

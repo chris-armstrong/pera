@@ -15,6 +15,10 @@ type compaction_config = {
 }
 (** Configuration for autonomous compaction. *)
 
+val default_system_prompt : string
+(** The built-in default system prompt. Callers that do not assemble a custom
+    prompt should pass this as [config.system_prompt]. *)
+
 type config = {
   cwd : string;
   model : Pera_types.Types.model;
@@ -22,6 +26,10 @@ type config = {
   stream_fn : Pera_core.Agent_types.stream_fn;
   max_tokens : int;
   exec_env : (module Pera_env.Execution_env.S);
+  system_prompt : string;  (** System prompt passed to the agent loop. *)
+  thinking_budget_tokens : int option;
+      (** [None] = thinking disabled. [Some n] = enable extended thinking with
+          budget n tokens. *)
   compaction : compaction_config option;
       (** [None] = no autonomous compaction (M5 behaviour). [Some cc] = compact
           automatically when the estimated token count exceeds
@@ -48,3 +56,8 @@ val send : t -> string -> unit
 val subscribe : t -> (Pera_core.Agent_types.agent_event -> unit) -> unit -> unit
 (** [subscribe t f] registers [f] to receive every agent event. Returns an
     unsubscribe function. *)
+
+val last_error : t -> (string * Pera_types.Types.stop_error) option
+(** [last_error t] returns the most recent provider error, if any. The pair is
+    [(human_message, structured_error)]. Check after [send] to distinguish
+    infrastructure failures from scenario-level verification failures. *)

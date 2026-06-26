@@ -60,12 +60,12 @@ type 'ctx agent_loop_config = {
       (** The model to use for LLM calls. May be overridden by
           [prepare_next_turn]. *)
   system : string;  (** System prompt. *)
-  options : Pera_provider.Provider.simple_stream_options;
+  options : Pera_connector.Connector.simple_stream_options;
       (** Streaming options (max_tokens, temperature). *)
   stream_fn : Agent_types.stream_fn;
       (** Provider-agnostic seam for making LLM calls. *)
   convert_to_llm :
-    Agent_types.agent_message list -> Pera_provider.Provider.message list;
+    Agent_types.agent_message list -> Pera_connector.Connector.message list;
       (** Converts the agent message history to the provider message format.
           Applied after [transform_context]. *)
   tool_ctx : 'ctx;  (** Context value passed to all tool [execute] calls. *)
@@ -120,18 +120,18 @@ val run :
   sw:Eio.Switch.t ->
   ( Agent_types.agent_event,
     Agent_types.agent_message list )
-  Pera_provider.Event_stream.t
+  Pera_connector.Event_stream.t
 (** [run config ~messages ~sw] starts an agent loop run.
 
     Forks a fibre under [sw] that drives the outer/inner loop and pushes
     {!Agent_types.agent_event} values into the returned
-    {!Pera_provider.Event_stream.t}.
+    {!Pera_connector.Event_stream.t}.
 
     The stream is closed with [Ok final_messages] on [AE_agent_end], where
     [final_messages] is the complete conversation history including all turns.
 
-    The caller should consume the stream via {!Pera_provider.Event_stream.iter}
-    and read the final messages via {!Pera_provider.Event_stream.result}.
+    The caller should consume the stream via {!Pera_connector.Event_stream.iter}
+    and read the final messages via {!Pera_connector.Event_stream.result}.
 
     @param messages
       Initial conversation history (typically a single user message).

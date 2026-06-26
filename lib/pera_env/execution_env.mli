@@ -129,6 +129,10 @@ end
     An [S] value provides both filesystem and shell operations bound to a common
     current working directory. *)
 module type S = sig
+  val cwd : string
+  (** The working directory this env is rooted at. Pass to [Sh.exec ~cwd]
+      to run subprocesses in the agent's cwd regardless of the process cwd. *)
+
   module Fs : FILESYSTEM
   (** Filesystem operations. *)
 

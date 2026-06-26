@@ -28,9 +28,9 @@
    (>= 1.6))))
 
 (package
- (name pera-provider)
- (synopsis "Provider layer for Pera")
- (description "Streaming completion provider layer for the Pera AI agent framework")
+ (name pera-connector)
+ (synopsis "Connector layer for Pera")
+ (description "Streaming completion connector layer for the Pera AI agent framework")
  (depends
   (ocaml
    (>= 5.4))
@@ -81,7 +81,7 @@
     (>= 5.4))
    (pera-types
     (= :version))
-   (pera-provider
+   (pera-connector
     (= :version))
    (containers
     (>= 3.0))
@@ -93,6 +93,10 @@
     (>= 1.0))
    (eio_linux
     (>= 1.0))
+   (logs
+    (>= 0.7))
+   (re
+    (>= 1.10))
    (ppx_deriving
     (>= 1.6))
    (qcheck-core
@@ -141,7 +145,7 @@
    (>= 5.4))
   (pera-types
    (= :version))
-  (pera-provider
+  (pera-connector
    (= :version))
   (containers
    (>= 3.0))
@@ -153,6 +157,8 @@
    (>= 1.0))
   (ppx_deriving
    (>= 1.6))
+  (logs
+   (>= 0.7))
   (alcotest
    (and
     (>= 1.7)
@@ -168,7 +174,7 @@
     (>= 5.4))
    (pera-types
     (= :version))
-   (pera-provider
+   (pera-connector
     (= :version))
    (pera-core
     (= :version))
@@ -199,7 +205,7 @@
    (= :version))
   (pera-core
    (= :version))
-  (pera-provider
+  (pera-connector
    (= :version))
   (containers
    (>= 3.0))
@@ -232,7 +238,7 @@
    (= :version))
   (pera-core
    (= :version))
-  (pera-provider
+  (pera-connector
    (= :version))
   (pera-harness
    (= :version))

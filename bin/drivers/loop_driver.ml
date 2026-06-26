@@ -1,7 +1,7 @@
 open Containers
 open Pera_core
 open Pera_core_test_util
-open Pera_provider
+open Pera_connector
 open Pera_types
 
 let src = Logs.Src.create "pera.driver.loop" ~doc:"Loop driver"
@@ -36,7 +36,7 @@ let make_assistant_message ?(stop_reason = Types.EndTurn) text =
 (** Build an [agent_message] wrapping a user message. *)
 let make_user_agent_message text =
   let um = Types.{ role = "user"; content = [ UText text ] } in
-  Agent_types.Real (Provider.UserMessage um)
+  Agent_types.Real (Connector.UserMessage um)
 
 (** Build an assistant message with tool calls and ToolUse stop_reason. *)
 let make_tool_use_message tool_calls =
@@ -73,7 +73,15 @@ let test_model =
   Types.{ id = "faux-model"; api = "faux"; context_window = 200_000 }
 
 (** Default options for loop calls. *)
-let test_options = Provider.{ max_tokens = 1024; temperature = None }
+let test_options =
+  Connector.
+    {
+      max_tokens = 1024;
+      temperature = None;
+      cache_policy = Types.No_cache;
+      cache_ttl = Types.Five_minutes;
+      thinking_budget_tokens = None;
+    }
 
 (** Empty JSON schema for tools that take no args. *)
 let empty_schema = Json_schema.object_ ~properties:[] ~required:[] ()
@@ -127,8 +135,8 @@ let run_scenario ~name ~messages ~sw config ~check_result =
       let passed = check_result !events final_messages in
       if passed then Printf.printf "  PASS\n%!" else Printf.printf "  FAIL\n%!";
       passed
-  | Error err ->
-      Printf.printf "  => stream error: %s\n%!" err;
+  | Error (err_msg, _stop_err) ->
+      Printf.printf "  => stream error: %s\n%!" err_msg;
       let passed = check_result !events [] in
       if passed then Printf.printf "  PASS\n%!" else Printf.printf "  FAIL\n%!";
       passed
@@ -320,26 +328,22 @@ let scenario_sequential_tool_calls sw =
   in
   let call_order = ref [] in
   let counter_tool =
-    Agent_types.
-      {
-        name = "counter";
-        description = "Record invocation order.";
-        schema =
-          Json_schema.object_
-            ~properties:
-              [ ("step", Json_schema.object_ ~properties:[] ~required:[] ()) ]
-            ~required:[] ();
-        mode = `Sequential;
-        execute =
-          (fun ~ctx:_ ~args ~sw:_ ~cancel:_ ->
-            let step =
-              match Yojson.Safe.Util.member "step" args with
-              | `Int n -> string_of_int n
-              | _ -> "?"
-            in
-            call_order := !call_order @ [ step ];
-            Ok (Agent_types.Tool_text ("step=" ^ step)));
-      }
+    Agent_types.Tool.create ~name:"counter"
+      ~description:"Record invocation order."
+      ~schema:
+        (Json_schema.object_
+           ~properties:
+             [ ("step", Json_schema.object_ ~properties:[] ~required:[] ()) ]
+           ~required:[] ())
+      ~parallel_safe:false
+      ~execute:(fun ~ctx:_ ~args ~sw:_ ~cancel:_ ->
+        let step =
+          match Yojson.Safe.Util.member "step" args with
+          | `Int n -> string_of_int n
+          | _ -> "?"
+        in
+        call_order := !call_order @ [ step ];
+        Ok (Agent_types.Tool_text ("step=" ^ step)))
   in
   let stream_fn = Faux_provider.stream_fn_of_scripts [ script1; script2 ] in
   let config =
@@ -393,17 +397,10 @@ let scenario_tool_error sw =
         }
   in
   let failing_tool =
-    Agent_types.
-      {
-        name = "failing_tool";
-        description = "Always returns an error.";
-        schema = empty_schema;
-        mode = `Parallel;
-        execute =
-          (fun ~ctx:_ ~args:_ ~sw:_ ~cancel:_ ->
-            Error
-              Types.{ message = "intentional failure"; is_user_error = false });
-      }
+    Agent_types.Tool.create ~name:"failing_tool"
+      ~description:"Always returns an error." ~schema:empty_schema
+      ~parallel_safe:true ~execute:(fun ~ctx:_ ~args:_ ~sw:_ ~cancel:_ ->
+        Error Types.{ message = "intentional failure"; is_user_error = false })
   in
   let stream_fn = Faux_provider.stream_fn_of_scripts [ script1; script2 ] in
   let config = make_config ~tools:[ failing_tool ] stream_fn in
@@ -851,7 +848,7 @@ let scenario_transform_context_applied sw =
   in
   let injected =
     Agent_types.Real
-      (Provider.UserMessage
+      (Connector.UserMessage
          Types.{ role = "user"; content = [ Types.UText "INJECTED" ] })
   in
   let transform_context = Some (fun msgs -> msgs @ [ injected ]) in
@@ -869,14 +866,14 @@ let scenario_transform_context_applied sw =
           let found =
             List.exists
               (function
-                | Provider.UserMessage um ->
+                | Connector.UserMessage um ->
                     List.exists
                       (function
                         | Types.UText s -> String.equal s "INJECTED"
                         | _ -> false)
                       um.Types.content
                 | _ -> false)
-              ctx.Provider.messages
+              ctx.Connector.messages
           in
           Printf.printf "    injected_found=%b\n%!" found;
           found)
@@ -936,7 +933,7 @@ let scenario_prepare_next_turn_update sw =
                       api = "faux";
                       context_window = 200_000;
                     };
-              thinking = None;
+              thinking = Inherit;
             })
   in
   let steering_count = ref 0 in
@@ -1019,7 +1016,7 @@ let scenario_thinking_blocks sw =
         List.exists
           (function
             | Agent_types.AE_message_end
-                { message = Real (Provider.AssistantMessage am) } ->
+                { message = Real (Connector.AssistantMessage am) } ->
                 List.exists
                   (function Types.AThinking _ -> true | _ -> false)
                   am.content

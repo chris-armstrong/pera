@@ -15,7 +15,7 @@ type message_entry = {
   id : entry_id;
   parent_id : entry_id option;
   timestamp : float;
-  message : Pera_provider.Provider.message;
+  message : Pera_connector.Connector.message;
 }
 
 type leaf_entry = {
@@ -59,7 +59,7 @@ let stop_reason_to_string = function
   | Pera_types.Types.ToolUse -> "tool_use"
   | Pera_types.Types.MaxTokens -> "max_tokens"
   | Pera_types.Types.StopSequence -> "stop_sequence"
-  | Pera_types.Types.Error -> "error"
+  | Pera_types.Types.Error _ -> "error"
   | Pera_types.Types.Aborted -> "aborted"
 
 let user_content_to_json = function
@@ -125,10 +125,10 @@ let provenance_to_json (p : Pera_types.Types.provenance) =
   `Assoc (base @ err_field)
 
 let message_to_json = function
-  | Pera_provider.Provider.UserMessage { role; content } ->
+  | Pera_connector.Connector.UserMessage { role; content } ->
       let content_json = List.map user_content_to_json content in
       `Assoc [ ("role", `String role); ("content", `List content_json) ]
-  | Pera_provider.Provider.AssistantMessage am ->
+  | Pera_connector.Connector.AssistantMessage am ->
       let content_json = List.map assistant_content_to_json am.content in
       `Assoc
         [
@@ -138,7 +138,7 @@ let message_to_json = function
           ("provenance", provenance_to_json am.provenance);
           ("usage", usage_to_json am.usage);
         ]
-  | Pera_provider.Provider.ToolResultMessage { tool_call_id; content; is_error }
+  | Pera_connector.Connector.ToolResultMessage { tool_call_id; content; is_error }
     ->
       `Assoc
         [

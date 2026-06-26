@@ -4,14 +4,14 @@ type synthetic = Compaction_summary of { summary : string }
 [@@deriving eq, show]
 
 type agent_message =
-  | Real of Pera_provider.Provider.message
+  | Real of Pera_connector.Connector.message
   | Synthetic of synthetic
 
 let compaction_framing = "Context from earlier conversation:\n\n"
 
 let synthetic_to_message = function
   | Compaction_summary { summary } ->
-      Pera_provider.Provider.UserMessage
+      Pera_connector.Connector.UserMessage
         Pera_types.Types.
           { role = "user"; content = [ UText (compaction_framing ^ summary) ] }
 
@@ -22,13 +22,13 @@ let to_provider_message = function
 (** Compare two [agent_message] values for structural equality. *)
 let agent_message_equal m1 m2 =
   match (m1, m2) with
-  | Real a, Real b -> Pera_provider.Provider.equal_message a b
+  | Real a, Real b -> Pera_connector.Connector.equal_message a b
   | Synthetic a, Synthetic b -> equal_synthetic a b
   | Real _, Synthetic _ | Synthetic _, Real _ -> false
 
 let pp_agent_message ppf = function
   | Real msg ->
-      Format.fprintf ppf "Real(%s)" (Pera_provider.Provider.show_message msg)
+      Format.fprintf ppf "Real(%s)" (Pera_connector.Connector.show_message msg)
   | Synthetic s -> Format.fprintf ppf "Synthetic(%s)" (show_synthetic s)
 
 type tool_output =
@@ -40,18 +40,34 @@ type tool_output =
         fun fmt v -> Format.pp_print_string fmt (Yojson.Safe.to_string v)])
 [@@deriving eq, show]
 
-type 'ctx tool = {
-  name : string;
-  description : string;
-  schema : Pera_provider.Json_schema.t;
-  mode : [ `Sequential | `Parallel ];
-  execute :
-    ctx:'ctx ->
-    args:Yojson.Safe.t ->
-    sw:Eio.Switch.t ->
-    cancel:Eio.Cancel.t ->
-    (tool_output, Pera_types.Types.tool_error) result;
-}
+(** Opaque tool constructor and accessors. *)
+module Tool = struct
+  type 'ctx t = {
+    name : string;
+    description : string;
+    schema : Pera_connector.Json_schema.t;
+    parallel_safe : bool;
+    execute :
+      ctx:'ctx ->
+      args:Yojson.Safe.t ->
+      sw:Eio.Switch.t ->
+      cancel:Eio.Cancel.t ->
+      (tool_output, Pera_types.Types.tool_error) result;
+  }
+
+  let create ~name ~description ~schema ~parallel_safe ~execute =
+    Cache_lint.warn_if_dynamic ~field:"tool description" description;
+    { name; description; schema; parallel_safe; execute }
+
+  let name t = t.name
+  let description t = t.description
+  let schema t = t.schema
+  let parallel_safe t = t.parallel_safe
+  let execute t ~ctx ~args ~sw ~cancel = t.execute ~ctx ~args ~sw ~cancel
+end
+
+type 'ctx tool = 'ctx Tool.t
+(** Backwards-compatible alias. *)
 
 type agent_event =
   | AE_agent_start
@@ -116,6 +132,9 @@ type agent_event =
 
 type before_tool_call_result = Allow | Deny of string [@@deriving eq, show]
 
+type thinking_update = Inherit | Budget of int | Disabled
+[@@deriving show, eq]
+
 type turn_update = {
   messages :
     (agent_message list option
@@ -127,18 +146,18 @@ type turn_update = {
         | Some msgs ->
             Format.fprintf fmt "Some [%d messages]" (List.length msgs)]);
   model : Pera_types.Types.model option;
-  thinking : bool option;
+  thinking : thinking_update;
 }
 [@@deriving eq, show]
 
 type stream_fn =
   model:Pera_types.Types.model ->
-  context:Pera_provider.Provider.context ->
-  options:Pera_provider.Provider.simple_stream_options ->
+  context:Pera_connector.Connector.context ->
+  options:Pera_connector.Connector.simple_stream_options ->
   sw:Eio.Switch.t ->
   ( Pera_types.Types.assistant_message_event,
     Pera_types.Types.assistant_message )
-  Pera_provider.Event_stream.t
+  Pera_connector.Event_stream.t
 
 let tool_output_to_result_content ~tool_call_id ~is_error output =
   let content =

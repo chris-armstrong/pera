@@ -28,11 +28,15 @@ let run_grep_test (body : (module Execution_env.S) -> Eio.Switch.t -> unit) =
 
 let test_grep_finds_pattern_in_file () =
   run_grep_test (fun (module E) sw ->
-      let tool = Grep_tool.grep (module E) in
+      let tool = Grep_tool.grep in
       write_file (module E) ~path:"test.ml" ~content:"foo bar baz" ~sw;
       let args = `Assoc [ ("pattern", `String "foo") ] in
       Eio.Cancel.sub (fun cancel ->
-          match tool.execute ~ctx:() ~args ~sw ~cancel with
+          match
+            Tool.execute tool
+              ~ctx:(module E : Pera_env.Execution_env.S)
+              ~args ~sw ~cancel
+          with
           | Ok (Tool_text s) ->
               Alcotest.(check bool)
                 "output contains test.ml" true
@@ -45,11 +49,15 @@ let test_grep_finds_pattern_in_file () =
 
 let test_grep_no_match_returns_message () =
   run_grep_test (fun (module E) sw ->
-      let tool = Grep_tool.grep (module E) in
+      let tool = Grep_tool.grep in
       write_file (module E) ~path:"hello.txt" ~content:"hello world" ~sw;
       let args = `Assoc [ ("pattern", `String "xyz") ] in
       Eio.Cancel.sub (fun cancel ->
-          match tool.execute ~ctx:() ~args ~sw ~cancel with
+          match
+            Tool.execute tool
+              ~ctx:(module E : Pera_env.Execution_env.S)
+              ~args ~sw ~cancel
+          with
           | Ok (Tool_text s) ->
               Alcotest.(check string)
                 "no matches message" "No matches found." (String.trim s)
@@ -58,13 +66,17 @@ let test_grep_no_match_returns_message () =
 
 let test_grep_caps_at_100_matches () =
   run_grep_test (fun (module E) sw ->
-      let tool = Grep_tool.grep (module E) in
+      let tool = Grep_tool.grep in
       let lines = List.init 200 (fun i -> "match" ^ string_of_int i) in
       let content = String.concat "\n" lines in
       write_file (module E) ~path:"many.txt" ~content ~sw;
       let args = `Assoc [ ("pattern", `String "^match") ] in
       Eio.Cancel.sub (fun cancel ->
-          match tool.execute ~ctx:() ~args ~sw ~cancel with
+          match
+            Tool.execute tool
+              ~ctx:(module E : Pera_env.Execution_env.S)
+              ~args ~sw ~cancel
+          with
           | Ok (Tool_text s) ->
               let output_lines =
                 String.trim s |> String.split_on_char '\n'
@@ -83,14 +95,18 @@ let test_grep_caps_at_100_matches () =
 
 let test_grep_glob_filters_file_types () =
   run_grep_test (fun (module E) sw ->
-      let tool = Grep_tool.grep (module E) in
+      let tool = Grep_tool.grep in
       write_file (module E) ~path:"file.ml" ~content:"target" ~sw;
       write_file (module E) ~path:"file.py" ~content:"target" ~sw;
       let args =
         `Assoc [ ("pattern", `String "target"); ("glob", `String "*.ml") ]
       in
       Eio.Cancel.sub (fun cancel ->
-          match tool.execute ~ctx:() ~args ~sw ~cancel with
+          match
+            Tool.execute tool
+              ~ctx:(module E : Pera_env.Execution_env.S)
+              ~args ~sw ~cancel
+          with
           | Ok (Tool_text s) ->
               Alcotest.(check bool)
                 "file.ml found" true
@@ -108,17 +124,24 @@ let test_grep_ripgrep_not_found_returns_error () =
     (val Pera_env.Local_env.create ~env ~cwd:"/tmp" : Pera_env.Execution_env.S)
   in
   let module MockSh = struct
+    [@@@warning "-16"]
+
     let exec = E.Sh.exec
     let find_executable ~name:_ = None
   end in
   let module MockEnv = struct
+    let cwd = E.cwd
     module Fs = E.Fs
     module Sh = MockSh
   end in
-  let tool = Grep_tool.grep (module MockEnv) in
+  let tool = Grep_tool.grep in
   let args = `Assoc [ ("pattern", `String "foo") ] in
   Eio.Cancel.sub (fun cancel ->
-      match tool.execute ~ctx:() ~args ~sw ~cancel with
+      match
+        Tool.execute tool
+          ~ctx:(module MockEnv : Pera_env.Execution_env.S)
+          ~args ~sw ~cancel
+      with
       | Error e ->
           Alcotest.(check bool) "is_user_error false" false e.is_user_error;
           Alcotest.(check bool)
@@ -131,6 +154,8 @@ let () =
     [
       ( "grep_tool",
         [
+          Alcotest.test_case "ripgrep_not_found_returns_error" `Quick
+            test_grep_ripgrep_not_found_returns_error;
           Alcotest.test_case "finds_pattern_in_file" `Quick
             test_grep_finds_pattern_in_file;
           Alcotest.test_case "no_match_returns_message" `Quick
@@ -139,7 +164,5 @@ let () =
             test_grep_caps_at_100_matches;
           Alcotest.test_case "glob_filters_file_types" `Quick
             test_grep_glob_filters_file_types;
-          Alcotest.test_case "ripgrep_not_found_returns_error" `Quick
-            test_grep_ripgrep_not_found_returns_error;
         ] );
     ]

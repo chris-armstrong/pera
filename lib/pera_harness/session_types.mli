@@ -20,7 +20,7 @@ type message_entry = {
   id : entry_id;
   parent_id : entry_id option;
   timestamp : float;
-  message : Pera_provider.Provider.message;
+  message : Pera_connector.Connector.message;
 }
 
 type leaf_entry = {
@@ -64,7 +64,7 @@ val entry_to_json : session_entry -> Yojson.Safe.t
     [timestamp] fields plus variant-specific fields. [parent_id] is included
     only when [Some]; absent optionals are omitted, not set to [null]. *)
 
-val message_to_json : Pera_provider.Provider.message -> Yojson.Safe.t
+val message_to_json : Pera_connector.Connector.message -> Yojson.Safe.t
 (** [message_to_json m] serialises a provider message to the session JSON
     format. [cost_usd] is serialised as a JSON string via [Decimal.to_string]
     when [Some]; the key is omitted entirely when [None]. *)

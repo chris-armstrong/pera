@@ -1,0 +1,61 @@
+(include_subdirs no)
+
+(test
+ (name tool_canonical_test)
+ (modules tool_canonical_test)
+ (libraries pera_connector pera_types alcotest containers))
+
+(test
+ (name json_schema_test)
+ (modules json_schema_test)
+ (libraries pera_connector alcotest containers))
+
+(test
+ (name json_repair_test)
+ (modules json_repair_test)
+ (libraries pera_connector alcotest containers))
+
+(test
+ (name sse_parser_test)
+ (modules sse_parser_test)
+ (libraries pera_connector alcotest qcheck-alcotest qcheck-core))
+
+(test
+ (name event_stream_test)
+ (modules event_stream_test)
+ (libraries alcotest eio_main pera_connector))
+
+(test
+ (name sse_interpreter_test)
+ (modules sse_interpreter_test)
+ (libraries pera_connector pera_types alcotest))
+
+(test
+ (name http_client_test)
+ (modules http_client_test)
+ (libraries pera_connector alcotest eio_main containers))
+
+(test
+ (name anthropic_request_test)
+ (modules anthropic_request_test provider_test_helpers)
+ (libraries pera_connector pera_types alcotest containers fmt))
+
+(test
+ (name openai_completions_request_test)
+ (modules openai_completions_request_test provider_test_helpers)
+ (libraries pera_connector pera_types alcotest containers fmt))
+
+(test
+ (name openai_completions_interpreter_test)
+ (modules openai_completions_interpreter_test)
+ (libraries pera_connector pera_types alcotest containers))
+
+(test
+ (name openai_completions_connector_test)
+ (modules openai_completions_connector_test)
+ (libraries pera_connector pera_types alcotest containers eio_main))
+
+(test
+ (name connector_registry_test)
+ (modules connector_registry_test)
+ (libraries pera_connector pera_core_test_util alcotest containers eio_main))

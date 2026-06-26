@@ -1,6 +1,6 @@
 open Containers
 open Pera_core
-open Pera_provider
+open Pera_connector
 open Pera_types
 
 let src =
@@ -13,41 +13,32 @@ module Log = (val Logs.src_log src : Logs.LOG)
 
 (** Echo: return the [text] argument as-is. Mode: Parallel. *)
 let echo_tool =
-  Agent_types.
-    {
-      name = "echo";
-      description = "Echo the text argument back.";
-      schema =
-        Json_schema.object_
-          ~properties:
-            [ ("text", Json_schema.string ~description:"Text to echo." ()) ]
-          ~required:[ "text" ] ();
-      mode = `Parallel;
-      execute =
-        (fun ~ctx:_ ~args ~sw:_ ~cancel:_ ->
-          let text =
-            match Yojson.Safe.Util.member "text" args with
-            | `String s -> s
-            | _ -> "(no text)"
-          in
-          Ok (Agent_types.Tool_text text));
-    }
+  Agent_types.Tool.create ~name:"echo"
+    ~description:"Echo the text argument back."
+    ~schema:
+      (Json_schema.object_
+         ~properties:
+           [ ("text", Json_schema.string ~description:"Text to echo." ()) ]
+         ~required:[ "text" ] ())
+    ~parallel_safe:true
+    ~execute:(fun ~ctx:_ ~args ~sw:_ ~cancel:_ ->
+      let text =
+        match Yojson.Safe.Util.member "text" args with
+        | `String s -> s
+        | _ -> "(no text)"
+      in
+      Ok (Agent_types.Tool_text text))
 
 (** Counter: stateful incrementing integer. Mode: Sequential. *)
 let counter_state = ref 0
 
 let counter_tool =
-  Agent_types.
-    {
-      name = "counter";
-      description = "Return an incrementing integer as a string.";
-      schema = Json_schema.object_ ~properties:[] ~required:[] ();
-      mode = `Sequential;
-      execute =
-        (fun ~ctx:_ ~args:_ ~sw:_ ~cancel:_ ->
-          incr counter_state;
-          Ok (Agent_types.Tool_text (string_of_int !counter_state)));
-    }
+  Agent_types.Tool.create ~name:"counter"
+    ~description:"Return an incrementing integer as a string."
+    ~schema:(Json_schema.object_ ~properties:[] ~required:[] ())
+    ~parallel_safe:false ~execute:(fun ~ctx:_ ~args:_ ~sw:_ ~cancel:_ ->
+      incr counter_state;
+      Ok (Agent_types.Tool_text (string_of_int !counter_state)))
 
 (** {1 Event description} *)
 
@@ -102,7 +93,7 @@ let default_convert_to_llm msgs = List.map Agent_types.to_provider_message msgs
 (** Build a user [agent_message]. *)
 let make_user_message text =
   let um = Types.{ role = "user"; content = [ UText text ] } in
-  Agent_types.Real (Provider.UserMessage um)
+  Agent_types.Real (Connector.UserMessage um)
 
 (** {1 Loop configuration} *)
 
@@ -112,7 +103,15 @@ let make_config ?(tools = []) ?(get_follow_up_messages = None) ~model stream_fn
     {
       model;
       system = "You are a helpful test assistant.";
-      options = Provider.{ max_tokens = 1024; temperature = None };
+      options =
+        Connector.
+          {
+            max_tokens = 1024;
+            temperature = None;
+            cache_policy = Types.No_cache;
+            cache_ttl = Types.Five_minutes;
+            thinking_budget_tokens = None;
+          };
       stream_fn;
       convert_to_llm = default_convert_to_llm;
       tool_ctx = ();
@@ -145,14 +144,14 @@ let run_scenario ~name ~messages ~sw ~check_result config =
       List.find_opt
         (fun msg ->
           match msg with
-          | Agent_types.Real (Provider.AssistantMessage _) -> true
-          | Agent_types.Real (Provider.UserMessage _) -> false
-          | Agent_types.Real (Provider.ToolResultMessage _) -> false
+          | Agent_types.Real (Connector.AssistantMessage _) -> true
+          | Agent_types.Real (Connector.UserMessage _) -> false
+          | Agent_types.Real (Connector.ToolResultMessage _) -> false
           | Agent_types.Synthetic _ -> false)
         (List.rev msgs)
     in
     match last_assistant with
-    | Some (Agent_types.Real (Provider.AssistantMessage am)) ->
+    | Some (Agent_types.Real (Connector.AssistantMessage am)) ->
         let text =
           List.filter_map
             (fun block ->
@@ -163,8 +162,8 @@ let run_scenario ~name ~messages ~sw ~check_result config =
         in
         if not (List.is_empty text) then
           Printf.printf "  => text: %s\n%!" (String.concat "" text)
-    | Some (Agent_types.Real (Provider.UserMessage _)) -> ()
-    | Some (Agent_types.Real (Provider.ToolResultMessage _)) -> ()
+    | Some (Agent_types.Real (Connector.UserMessage _)) -> ()
+    | Some (Agent_types.Real (Connector.ToolResultMessage _)) -> ()
     | Some (Agent_types.Synthetic _) -> ()
     | None -> ()
   in
@@ -175,8 +174,8 @@ let run_scenario ~name ~messages ~sw ~check_result config =
       let passed = check_result !events final_messages in
       if passed then Printf.printf "  PASS\n%!" else Printf.printf "  FAIL\n%!";
       passed
-  | Error err ->
-      Log.err (fun m -> m "stream error: %s" err);
+  | Error (err_msg, _stop_err) ->
+      Log.err (fun m -> m "stream error: %s" err_msg);
       let passed = check_result !events [] in
       if passed then Printf.printf "  PASS\n%!" else Printf.printf "  FAIL\n%!";
       passed

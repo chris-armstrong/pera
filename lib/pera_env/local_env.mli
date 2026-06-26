@@ -9,6 +9,8 @@ val create : env:Eio_unix.Stdenv.base -> cwd:string -> (module Execution_env.S)
 
     - Filesystem operations use [env#fs] (Eio directory handle).
     - Shell execution uses [env#process_mgr].
-    - [cwd] is the base directory for resolving relative paths.
+    - [cwd] is the base directory for resolving relative paths. It is exposed
+      via [Execution_env.S.cwd] so subprocesses can run in the agent's cwd
+      regardless of the process cwd.
     - All IO operations return Result; OS exceptions are mapped to
       [Pera_types.Types.file_error] or [Pera_types.Types.execution_error]. *)

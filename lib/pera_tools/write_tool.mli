@@ -4,8 +4,9 @@
     directories are created automatically (delegated to [Fs.write_file]).
     Overwrites existing files. Returns the number of bytes written. *)
 
-val write : (module Pera_env.Execution_env.S) -> unit Pera_core.Agent_types.tool
-(** [write env] constructs a write tool that writes files through [env].
+val write : (module Pera_env.Execution_env.S) Pera_core.Agent_types.tool
+(** [write] is a write tool that writes files through the execution environment
+    passed as [~ctx] at execute time.
 
     Schema arguments:
     - ["path"] (string, required): Path to write to.

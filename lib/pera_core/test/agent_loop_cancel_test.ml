@@ -29,7 +29,7 @@ let make_config ?(get_follow_up_messages = None) ?(tools = [])
 (** Collect events from an [Event_stream] into a ref list. Returns a function to
     call after the switch to get the collected events. *)
 let collect_events_into buf stream =
-  Pera_provider.Event_stream.iter stream ~f:(fun e -> buf := !buf @ [ e ])
+  Pera_connector.Event_stream.iter stream ~f:(fun e -> buf := !buf @ [ e ])
 
 (** Check whether an event is [AE_agent_start]. *)
 let is_agent_start = function Agent_types.AE_agent_start -> true | _ -> false
@@ -167,41 +167,32 @@ let test_cancellation_during_parallel_tools_appends_completed_in_source_order ()
   (* Shared ref to capture the switch so the control fibre can fail it *)
   let sw_ref : Eio.Switch.t option ref = ref None in
   let tool1 =
-    Agent_types.
-      {
-        name = "tool1";
-        description = "slow tool — waits for tool2";
-        schema = empty_schema;
-        mode = `Parallel;
-        execute =
-          (fun ~ctx:_ ~args:_ ~sw:_ ~cancel:_ ->
-            (* Block until tool2 completes — the test will then cancel the
-               switch, causing this await to raise Eio.Cancel.Cancelled *)
-            Eio.Mutex.use_rw ~protect:false tool2_mutex (fun () ->
-                while not !tool2_done do
-                  Eio.Condition.await tool2_cond tool2_mutex
-                done);
-            Ok (Agent_types.Tool_text "result1"));
-      }
+    Agent_types.Tool.create ~name:"tool1"
+      ~description:"slow tool — waits for tool2" ~schema:empty_schema
+      ~parallel_safe:true
+      ~execute:
+        (fun ~ctx:_ ~args:_ ~sw:_ ~cancel:_ ->
+          (* Block until tool2 completes — the test will then cancel the
+             switch, causing this await to raise Eio.Cancel.Cancelled *)
+          Eio.Mutex.use_rw ~protect:false tool2_mutex (fun () ->
+              while not !tool2_done do
+                Eio.Condition.await tool2_cond tool2_mutex
+              done);
+          Ok (Agent_types.Tool_text "result1"))
   in
   let tool2 =
-    Agent_types.
-      {
-        name = "tool2";
-        description = "fast tool";
-        schema = empty_schema;
-        mode = `Parallel;
-        execute =
-          (fun ~ctx:_ ~args:_ ~sw:_ ~cancel:_ ->
-            (* Signal completion and then cancel the outer switch *)
-            Eio.Mutex.use_rw ~protect:false tool2_mutex (fun () ->
-                tool2_done := true;
-                Eio.Condition.broadcast tool2_cond);
-            Option.iter
-              (fun sw -> Eio.Switch.fail sw (Failure "cancel-tools"))
-              !sw_ref;
-            Ok (Agent_types.Tool_text "result2"));
-      }
+    Agent_types.Tool.create ~name:"tool2" ~description:"fast tool"
+      ~schema:empty_schema ~parallel_safe:true
+      ~execute:
+        (fun ~ctx:_ ~args:_ ~sw:_ ~cancel:_ ->
+          (* Signal completion and then cancel the outer switch *)
+          Eio.Mutex.use_rw ~protect:false tool2_mutex (fun () ->
+              tool2_done := true;
+              Eio.Condition.broadcast tool2_cond);
+          Option.iter
+            (fun sw -> Eio.Switch.fail sw (Failure "cancel-tools"))
+            !sw_ref;
+          Ok (Agent_types.Tool_text "result2"))
   in
   let tc1 = make_tool_call "call-1" "tool1" (`Assoc []) in
   let tc2 = make_tool_call "call-2" "tool2" (`Assoc []) in

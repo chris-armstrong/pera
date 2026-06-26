@@ -120,6 +120,8 @@ let make_harness_config ~tmpdir ~session_path ~stream_fn ~exec_env :
     stream_fn;
     max_tokens = 1024;
     exec_env;
+    system_prompt = Pera_agent.Agent_harness.default_system_prompt;
+    thinking_budget_tokens = None;
     compaction = None;
   }
 
@@ -188,26 +190,28 @@ let check_compaction_event_counts events =
   in
   let* () =
     if Int.equal n_start 1 then Ok ()
-    else
-      Error
-        (Printf.sprintf "expected 1 AE_compaction_start, got %d" n_start)
+    else Error (Printf.sprintf "expected 1 AE_compaction_start, got %d" n_start)
   in
   let* () =
     if Int.equal n_end 1 then Ok ()
-    else
-      Error (Printf.sprintf "expected 1 AE_compaction_end, got %d" n_end)
+    else Error (Printf.sprintf "expected 1 AE_compaction_end, got %d" n_end)
   in
   let* () =
     if Int.equal n_error 0 then Ok ()
     else Error "unexpected AE_compaction_error event"
   in
-  if List.exists (function Agent_types.AE_agent_end _ -> true | _ -> false) events
+  if
+    List.exists
+      (function Agent_types.AE_agent_end _ -> true | _ -> false)
+      events
   then Ok ()
   else Error "missing AE_agent_end"
 
 let check_compaction_event_ordering events =
   let turn_end_positions =
-    positions_of (function Agent_types.AE_turn_end _ -> true | _ -> false) events
+    positions_of
+      (function Agent_types.AE_turn_end _ -> true | _ -> false)
+      events
   in
   let compaction_start_positions =
     positions_of
@@ -224,8 +228,8 @@ let check_compaction_event_ordering events =
       else if not (cs_pos < t4_pos) then
         Error
           (Printf.sprintf
-             "AE_compaction_start (pos %d) not before final AE_turn_end \
-              (pos %d)"
+             "AE_compaction_start (pos %d) not before final AE_turn_end (pos \
+              %d)"
              cs_pos t4_pos)
       else Ok ()
   | turn_tail, cs_positions ->
@@ -233,8 +237,7 @@ let check_compaction_event_ordering events =
         (Printf.sprintf
            "unexpected shape: %d AE_turn_end after drop-2, %d \
             AE_compaction_start"
-           (List.length turn_tail)
-           (List.length cs_positions))
+           (List.length turn_tail) (List.length cs_positions))
 
 let find_compaction_idx entries =
   let rec go i = function
@@ -252,15 +255,11 @@ let check_compaction_summary_field compaction_entry =
   | Some _ -> Ok ()
 
 let find_text_in_content content_json =
-  let blocks =
-    try Yojson.Safe.Util.to_list content_json with _ -> []
-  in
+  let blocks = try Yojson.Safe.Util.to_list content_json with _ -> [] in
   match
     List.find_opt
       (fun b ->
-        match get_string_opt "type" b with
-        | Some "text" -> true
-        | _ -> false)
+        match get_string_opt "type" b with Some "text" -> true | _ -> false)
       blocks
   with
   | None -> None
@@ -273,8 +272,7 @@ let check_synthetic_follows_compaction compaction_entry synth_entry =
   let* () =
     match get_string_opt "role" msg_json with
     | Some r when String.equal r "user" -> Ok ()
-    | Some r ->
-        Error (Printf.sprintf "synthetic role='%s', expected 'user'" r)
+    | Some r -> Error (Printf.sprintf "synthetic role='%s', expected 'user'" r)
     | None -> Error "synthetic message entry has no 'role' field"
   in
   let content_json = Yojson.Safe.Util.member "content" msg_json in
@@ -292,21 +290,17 @@ let check_synthetic_follows_compaction compaction_entry synth_entry =
   if Option.exists (String.equal comp_id) synth_parent then Ok ()
   else
     Error
-      (Printf.sprintf
-         "synthetic parent_id='%s', expected compaction id='%s'"
+      (Printf.sprintf "synthetic parent_id='%s', expected compaction id='%s'"
          (Option.value ~default:"<none>" synth_parent)
          comp_id)
 
 let check_leaf_count entries expected =
   let n =
     List.length
-      (List.filter
-         (fun e -> String.equal (get_string "type" e) "leaf")
-         entries)
+      (List.filter (fun e -> String.equal (get_string "type" e) "leaf") entries)
   in
   if Int.equal n expected then Ok ()
-  else
-    Error (Printf.sprintf "expected %d leaf entries, got %d" expected n)
+  else Error (Printf.sprintf "expected %d leaf entries, got %d" expected n)
 
 let verify_autonomous_compaction_session entries =
   (* Expected session structure for a 3-tool-turn run with one compaction:
@@ -425,9 +419,7 @@ let scenario_autonomous_compaction ~tmpdir ~env =
      [4] turn 4 — final text turn (EndTurn)
      trigger_tokens=1000: estimate after turn 3 ≈ 1250 > 1000; after turn 2 ≈ 840. *)
   Eio.Switch.run @@ fun sw ->
-  let session_path =
-    Filename.concat tmpdir "autonomous_compaction.jsonl"
-  in
+  let session_path = Filename.concat tmpdir "autonomous_compaction.jsonl" in
   let bash_args cmd = `Assoc [ ("command", `String cmd) ] in
   let scripts =
     [
@@ -451,12 +443,14 @@ let scenario_autonomous_compaction ~tmpdir ~env =
       stream_fn;
       max_tokens = 1024;
       exec_env;
+      system_prompt = Pera_agent.Agent_harness.default_system_prompt;
+      thinking_budget_tokens = None;
       compaction = Some compaction_cfg;
     }
   in
   match Pera_agent.Agent_harness.create ~config ~env ~sw with
   | Error e -> Fail (Printf.sprintf "create failed: %s" e.Types.message)
-  | Ok h ->
+  | Ok h -> (
       let collected = ref [] in
       let _unsub =
         Pera_agent.Agent_harness.subscribe h (fun event ->
@@ -471,7 +465,7 @@ let scenario_autonomous_compaction ~tmpdir ~env =
         let* () = check_compaction_event_ordering events in
         Ok ()
       in
-      (match event_check with
+      match event_check with
       | Error msg -> Fail ("event check: " ^ msg)
       | Ok () -> verify_autonomous_compaction_session entries)
 

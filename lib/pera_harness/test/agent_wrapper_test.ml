@@ -8,7 +8,14 @@ let test_model =
   Pera_types.Types.{ id = "test-model"; api = "faux"; context_window = 200_000 }
 
 let test_options =
-  Pera_provider.Provider.{ max_tokens = 1024; temperature = None }
+  Pera_connector.Connector.
+    {
+      max_tokens = 1024;
+      temperature = None;
+      cache_policy = Pera_types.Types.No_cache;
+      cache_ttl = Pera_types.Types.Five_minutes;
+      thinking_budget_tokens = None;
+    }
 
 let default_convert_to_llm msgs =
   List.map Pera_core.Agent_types.to_provider_message msgs
@@ -46,7 +53,7 @@ let make_tool_call id name arguments = Pera_types.Types.{ id; name; arguments }
 
 let make_user_agent_message text =
   let um = Pera_types.Types.{ role = "user"; content = [ UText text ] } in
-  Pera_core.Agent_types.Real (Pera_provider.Provider.UserMessage um)
+  Pera_core.Agent_types.Real (Pera_connector.Connector.UserMessage um)
 
 let make_text_turn_script text =
   let partial_msg = make_text_assistant_message "" in
@@ -86,7 +93,7 @@ let make_tool_use_turn_script tool_calls =
       }
 
 let empty_schema =
-  Pera_provider.Json_schema.object_ ~properties:[] ~required:[] ()
+  Pera_connector.Json_schema.object_ ~properties:[] ~required:[] ()
 
 (* ── Config helper ───────────────────────────────────────────────────────── *)
 
@@ -271,16 +278,10 @@ let test_pending_tool_calls_updated_during_execution () =
   Eio.Switch.run @@ fun sw ->
   Faux_provider.reset_recorded ();
   let tool =
-    Pera_core.Agent_types.
-      {
-        name = "echo";
-        description = "echo tool";
-        schema = empty_schema;
-        mode = `Parallel;
-        execute =
-          (fun ~ctx:_ ~args:_ ~sw:_ ~cancel:_ ->
-            Ok (Pera_core.Agent_types.Tool_text "done"));
-      }
+    Pera_core.Agent_types.Tool.create ~name:"echo" ~description:"echo tool"
+      ~schema:empty_schema ~parallel_safe:true
+      ~execute:(fun ~ctx:_ ~args:_ ~sw:_ ~cancel:_ ->
+        Ok (Pera_core.Agent_types.Tool_text "done"))
   in
   let tc = make_tool_call "tc-1" "echo" (`Assoc []) in
   let script1 = make_tool_use_turn_script [ tc ] in
@@ -314,23 +315,17 @@ let test_pending_tool_calls_keyed_by_id_for_duplicate_names () =
   let started_count = ref 0 in
   let release_p, release_r = Eio.Promise.create () in
   let tool =
-    Pera_core.Agent_types.
-      {
-        name = "echo";
-        description = "echo tool";
-        schema = empty_schema;
-        mode = `Parallel;
-        execute =
-          (fun ~ctx:_ ~args:_ ~sw:_ ~cancel:_ ->
-            incr started_count;
-            (* Once both tools have started, release the barrier from the
-                main fiber so both can complete. *)
-            if Int.equal !started_count 2 then Eio.Promise.resolve release_r ();
-            (* Wait for the release signal before returning — this keeps
-                both tools "in flight" simultaneously. *)
-            Eio.Promise.await release_p;
-            Ok (Pera_core.Agent_types.Tool_text "done"));
-      }
+    Pera_core.Agent_types.Tool.create ~name:"echo" ~description:"echo tool"
+      ~schema:empty_schema ~parallel_safe:true
+      ~execute:(fun ~ctx:_ ~args:_ ~sw:_ ~cancel:_ ->
+        incr started_count;
+        (* Once both tools have started, release the barrier from the
+              main fiber so both can complete. *)
+        if Int.equal !started_count 2 then Eio.Promise.resolve release_r ();
+        (* Wait for the release signal before returning — this keeps
+              both tools "in flight" simultaneously. *)
+        Eio.Promise.await release_p;
+        Ok (Pera_core.Agent_types.Tool_text "done"))
   in
   let tc1 = make_tool_call "tc-a" "echo" (`Assoc []) in
   let tc2 = make_tool_call "tc-b" "echo" (`Assoc []) in

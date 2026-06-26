@@ -1,6 +1,6 @@
 open Containers
 open Pera_core
-open Pera_provider
+open Pera_connector
 
 type compaction_result = {
   new_messages : Agent_types.agent_message list;
@@ -25,7 +25,7 @@ let summarise_prompt =
 
 let render_message buf msg =
   match msg with
-  | Provider.UserMessage Pera_types.Types.{ content; _ } ->
+  | Connector.UserMessage Pera_types.Types.{ content; _ } ->
       Buffer.add_string buf "User:\n";
       List.iter
         (fun block ->
@@ -35,7 +35,7 @@ let render_message buf msg =
               Buffer.add_string buf ("[image: " ^ url ^ "]"))
         content;
       Buffer.add_char buf '\n'
-  | Provider.AssistantMessage Pera_types.Types.{ content; _ } ->
+  | Connector.AssistantMessage Pera_types.Types.{ content; _ } ->
       Buffer.add_string buf "Assistant:\n";
       List.iter
         (fun block ->
@@ -50,7 +50,7 @@ let render_message buf msg =
                 ^ "]"))
         content;
       Buffer.add_char buf '\n'
-  | Provider.ToolResultMessage Pera_types.Types.{ tool_call_id; content; _ } ->
+  | Connector.ToolResultMessage Pera_types.Types.{ tool_call_id; content; _ } ->
       Buffer.add_string buf
         ("Tool result (id=" ^ tool_call_id ^ "): "
         ^ Yojson.Safe.to_string content);
@@ -89,7 +89,7 @@ let compact ~stream_fn ~model ~options ~messages ~tail_size ~sw =
       render_messages_to_text (List.map Agent_types.to_provider_message middle)
     in
     let user_msg =
-      Provider.UserMessage
+      Connector.UserMessage
         Pera_types.Types.
           {
             role = "user";
@@ -97,16 +97,13 @@ let compact ~stream_fn ~model ~options ~messages ~tail_size ~sw =
           }
     in
     let context =
-      Provider.
-        {
-          system = summarise_prompt;
-          messages = [ user_msg ];
-          tools = [];
-          thinking = false;
-        }
+      Connector.
+        { system = summarise_prompt; messages = [ user_msg ]; tools = [] }
     in
     let stream = stream_fn ~model ~context ~options ~sw in
-    let* final = Event_stream.iter stream ~f:(fun _ -> ()) in
+    let* final =
+      Event_stream.iter stream ~f:(fun _ -> ()) |> Result.map_err fst
+    in
     let summary = collect_summary_text final in
     if String.equal summary "" then Error "compaction produced empty summary"
     else

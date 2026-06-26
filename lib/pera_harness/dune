@@ -1,10 +1,10 @@
 (library
  (name pera_harness)
  (public_name pera-harness)
- (modules entry_id session_types session_writer agent_wrapper compaction)
+ (modules entry_id session_types session_writer agent_wrapper cache_fingerprint compaction)
  (libraries
   pera_types
-  pera_provider
+  pera_connector
   pera_core
   eio
   eio_main
@@ -13,6 +13,7 @@
   containers
   yojson
   uuidm
-  decimal)
+  decimal
+  logs)
  (preprocess
   (pps ppx_deriving.eq ppx_deriving.show)))

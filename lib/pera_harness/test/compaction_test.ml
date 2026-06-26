@@ -7,7 +7,14 @@ let test_model =
   Pera_types.Types.{ id = "test-model"; api = "faux"; context_window = 200_000 }
 
 let test_options =
-  Pera_provider.Provider.{ max_tokens = 1024; temperature = None }
+  Pera_connector.Connector.
+    {
+      max_tokens = 1024;
+      temperature = None;
+      cache_policy = Pera_types.Types.No_cache;
+      cache_ttl = Pera_types.Types.Five_minutes;
+      thinking_budget_tokens = None;
+    }
 
 let make_assistant_message content =
   Pera_types.Types.
@@ -40,11 +47,11 @@ let make_summary_script () =
 
 let make_user_agent_msg text =
   let um = Pera_types.Types.{ role = "user"; content = [ UText text ] } in
-  Pera_core.Agent_types.Real (Pera_provider.Provider.UserMessage um)
+  Pera_core.Agent_types.Real (Pera_connector.Connector.UserMessage um)
 
 let make_assistant_agent_msg text =
   let am =
-    Pera_provider.Provider.AssistantMessage
+    Pera_connector.Connector.AssistantMessage
       (make_assistant_message [ Pera_types.Types.AText text ])
   in
   Pera_core.Agent_types.Real am
@@ -145,7 +152,7 @@ let test_compact_renders_synthetic_as_user () =
   in
   let provider_msg = Pera_core.Agent_types.to_provider_message synthetic_msg in
   match provider_msg with
-  | Pera_provider.Provider.UserMessage Pera_types.Types.{ content; _ } ->
+  | Pera_connector.Connector.UserMessage Pera_types.Types.{ content; _ } ->
       let text =
         List.filter_map
           (fun c ->
@@ -159,7 +166,7 @@ let test_compact_renders_synthetic_as_user () =
         "text starts with compaction_framing" true starts_with_framing
   | other ->
       Alcotest.failf "expected UserMessage but got: %s"
-        (Pera_provider.Provider.show_message other)
+        (Pera_connector.Connector.show_message other)
 
 (** test_compact_too_short_returns_none: Messages of length tail_size + 1 → Ok
     None (stream_fn not called). *)
@@ -210,7 +217,7 @@ let test_compact_stream_error_returns_error () =
     containing a ToolResultMessage includes the result content text. *)
 let test_render_messages_to_text_includes_tool_results () =
   let tool_result =
-    Pera_provider.Provider.ToolResultMessage
+    Pera_connector.Connector.ToolResultMessage
       Pera_types.Types.
         {
           tool_call_id = "tc-123";

@@ -29,17 +29,17 @@ let make_assistant_message ?(stop_reason = Pera_types.Types.EndTurn) text =
 let make_user_message text =
   Pera_types.Types.{ role = "user"; content = [ UText text ] }
 
-(** Build a minimal [Provider.context] with only a user message and no tools or
+(** Build a minimal [Connector.context] with only a user message and no tools or
     system prompt. *)
 let make_context messages =
-  Pera_provider.Provider.{ system = ""; messages; tools = []; thinking = false }
+  Pera_connector.Connector.{ system = ""; messages; tools = [] }
 
 (** Collect all events from a stream into a list, returning the list and the
     final result. Raises on unexpected outcomes inside [Alcotest.failf]. *)
 let collect_events stream =
   let buf = ref [] in
   let result =
-    Pera_provider.Event_stream.iter stream ~f:(fun e -> buf := e :: !buf)
+    Pera_connector.Event_stream.iter stream ~f:(fun e -> buf := e :: !buf)
   in
   (List.rev !buf, result)
 
@@ -71,11 +71,14 @@ let result_testable =
             (match msg.Pera_types.Types.content with
             | [ AText t ] -> t
             | _ -> "<complex>")
-      | Error msg -> Format.fprintf ppf "Error(%s)" msg)
+      | Error (msg, stop_err) ->
+          Format.fprintf ppf "Error(%s, %s)" msg
+            (Pera_types.Types.show_stop_error stop_err))
     (fun r1 r2 ->
       match (r1, r2) with
       | Ok m1, Ok m2 -> Pera_types.Types.equal_assistant_message m1 m2
-      | Error e1, Error e2 -> String.equal e1 e2
+      | Error (e1, s1), Error (e2, s2) ->
+          String.equal e1 e2 && Pera_types.Types.equal_stop_error s1 s2
       | _, _ -> false)
 
 (** A model value suitable for Faux_provider calls (the model is ignored). *)
@@ -84,7 +87,14 @@ let faux_model =
 
 (** Simple stream options — Faux_provider ignores these. *)
 let faux_options =
-  Pera_provider.Provider.{ max_tokens = 1024; temperature = None }
+  Pera_connector.Connector.
+    {
+      max_tokens = 1024;
+      temperature = None;
+      cache_policy = Pera_types.Types.No_cache;
+      cache_ttl = Pera_types.Types.Five_minutes;
+      thinking_budget_tokens = None;
+    }
 
 (** ----------------------------------------------------------------------- Test
     1: A single-turn script emits events and then resolves with the scripted
@@ -107,7 +117,8 @@ let test_script_emits_events_then_resolves_final () =
   let script = Faux_provider.Turn Faux_provider.{ events; final = final_msg } in
   let fn = Faux_provider.stream_fn_of_scripts [ script ] in
   let ctx =
-    make_context [ Pera_provider.Provider.UserMessage (make_user_message "hi") ]
+    make_context
+      [ Pera_connector.Connector.UserMessage (make_user_message "hi") ]
   in
   (* Act *)
   let stream = fn ~model:faux_model ~context:ctx ~options:faux_options ~sw in
@@ -137,7 +148,7 @@ let test_multi_turn_scripts_advance_per_call () =
   let fn = Faux_provider.stream_fn_of_scripts [ script1; script2 ] in
   let ctx =
     make_context
-      [ Pera_provider.Provider.UserMessage (make_user_message "prompt") ]
+      [ Pera_connector.Connector.UserMessage (make_user_message "prompt") ]
   in
   (* First call — should yield script1's final *)
   let stream1 = fn ~model:faux_model ~context:ctx ~options:faux_options ~sw in
@@ -163,7 +174,7 @@ let test_recorded_context_is_observable () =
   in
   let fn = Faux_provider.stream_fn_of_scripts [ script ] in
   let user_msg = make_user_message "what is 2+2?" in
-  let ctx = make_context [ Pera_provider.Provider.UserMessage user_msg ] in
+  let ctx = make_context [ Pera_connector.Connector.UserMessage user_msg ] in
   (* Act *)
   let stream = fn ~model:faux_model ~context:ctx ~options:faux_options ~sw in
   let _events, _result = collect_events stream in
@@ -176,14 +187,14 @@ let test_recorded_context_is_observable () =
   in
   Alcotest.(check int)
     "recorded context has one message" 1
-    (List.length recorded_ctx.Pera_provider.Provider.messages);
+    (List.length recorded_ctx.Pera_connector.Connector.messages);
   let recorded_msg =
-    List.nth_opt recorded_ctx.Pera_provider.Provider.messages 0
+    List.nth_opt recorded_ctx.Pera_connector.Connector.messages 0
     |> Option.get_exn_or "expected a message in recorded context"
   in
   (* Compare the recorded message by checking its user content *)
   match recorded_msg with
-  | Pera_provider.Provider.UserMessage { role; content = [ UText t ] } ->
+  | Pera_connector.Connector.UserMessage { role; content = [ UText t ] } ->
       Alcotest.(check string) "role is user" "user" role;
       Alcotest.(check string) "message text matches" "what is 2+2?" t
   | _ -> Alcotest.fail "expected a UserMessage with UText content"
@@ -207,7 +218,8 @@ let test_error_script_closes_stream_with_error () =
   in
   let fn = Faux_provider.stream_fn_of_scripts [ error_script ] in
   let ctx =
-    make_context [ Pera_provider.Provider.UserMessage (make_user_message "hi") ]
+    make_context
+      [ Pera_connector.Connector.UserMessage (make_user_message "hi") ]
   in
   (* Act *)
   let stream = fn ~model:faux_model ~context:ctx ~options:faux_options ~sw in
@@ -216,9 +228,9 @@ let test_error_script_closes_stream_with_error () =
   Alcotest.(check int) "one event before error" 1 (List.length collected_events);
   (* Assert: result is Error *)
   match result with
-  | Error msg ->
+  | Error (err_msg, _stop_err) ->
       Alcotest.(check string)
-        "error message matches" "simulated transport failure" msg
+        "error message matches" "simulated transport failure" err_msg
   | Ok _ -> Alcotest.fail "expected Error result from error script"
 
 let () =

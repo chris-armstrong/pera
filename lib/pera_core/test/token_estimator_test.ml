@@ -7,7 +7,7 @@ let test_estimate_text_is_ceil_div_3 () =
 
 let test_estimate_message_includes_overhead () =
   let msg =
-    Pera_provider.Provider.UserMessage
+    Pera_connector.Connector.UserMessage
       Pera_types.Types.{ role = "user"; content = [ UText "x" ] }
   in
   let estimate = Token_estimator.estimate_message msg in
@@ -17,11 +17,11 @@ let test_estimate_message_includes_overhead () =
 
 let test_estimate_messages_monotonic () =
   let msg1 =
-    Pera_provider.Provider.UserMessage
+    Pera_connector.Connector.UserMessage
       Pera_types.Types.{ role = "user"; content = [ UText "hello" ] }
   in
   let msg2 =
-    Pera_provider.Provider.UserMessage
+    Pera_connector.Connector.UserMessage
       Pera_types.Types.{ role = "user"; content = [ UText "world" ] }
   in
   let single = Token_estimator.estimate_messages [ msg1 ] in
@@ -34,7 +34,7 @@ let test_estimate_messages_monotonic () =
 
 let test_estimate_counts_tool_call_arguments () =
   let make_tool_call_msg arguments =
-    Pera_provider.Provider.AssistantMessage
+    Pera_connector.Connector.AssistantMessage
       Pera_types.Types.
         {
           content = [ AToolCall { id = "call_1"; name = "bash"; arguments } ];

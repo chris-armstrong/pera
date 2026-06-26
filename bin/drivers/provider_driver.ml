@@ -1,5 +1,5 @@
 open Containers
-open Pera_provider
+open Pera_connector
 open Pera_types
 
 let src = Logs.Src.create "pera.driver.provider" ~doc:"Provider driver"
@@ -54,7 +54,7 @@ let summarise_content content =
     invocation. The driver does not implement the tool; it only exercises the
     provider's ability to request a call and parse the arguments. *)
 let get_weather_tool =
-  Provider.
+  Connector.
     {
       name = "get_weather";
       description = "Get the current weather conditions for a location.";
@@ -77,7 +77,7 @@ let stop_reason_string = function
   | Types.ToolUse -> "tool_use"
   | Types.MaxTokens -> "max_tokens"
   | Types.StopSequence -> "stop_sequence"
-  | Types.Error -> "error"
+  | Types.Error _ -> "error"
   | Types.Aborted -> "aborted"
 
 let run_default_scenario ~model_id ~prompt_text ~max_tokens =
@@ -88,23 +88,33 @@ let run_default_scenario ~model_id ~prompt_text ~max_tokens =
     Types.{ role = "user"; content = [ Types.UText prompt_text ] }
   in
   let context =
-    Provider.
+    Connector.
       {
         system = "You are a helpful assistant.";
-        messages = [ Provider.UserMessage user_msg ];
+        messages = [ Connector.UserMessage user_msg ];
         tools = [ get_weather_tool ];
-        thinking = false;
       }
   in
-  let options = Provider.{ max_tokens; temperature = None } in
+  let options =
+    Connector.
+      {
+        max_tokens;
+        temperature = None;
+        cache_policy = Types.No_cache;
+        cache_ttl = Types.Five_minutes;
+        thinking_budget_tokens = None;
+      }
+  in
   Printf.printf "model: %s\n" model_id;
   Printf.printf "prompt: %s\n" prompt_text;
   Printf.printf "---\n%!";
   Eio_main.run @@ fun env ->
   Eio.Switch.run @@ fun sw ->
-  let provider = Anthropic_provider.create ~env ~sw in
+  let provider =
+    Anthropic_connector.create_from_env ~env ~sw |> Result.get_exn
+  in
   let stream =
-    Anthropic_provider.stream_simple provider ~model ~context ~options ~sw
+    Anthropic_connector.stream_simple provider ~model ~context ~options ~sw
   in
   let result =
     Event_stream.iter stream ~f:(fun event ->
@@ -116,8 +126,9 @@ let run_default_scenario ~model_id ~prompt_text ~max_tokens =
       Printf.printf "done: stop_reason=%s content=[%s]\n"
         (stop_reason_string final_msg.Types.stop_reason)
         (summarise_content final_msg.Types.content);
+      Printf.printf "usage: %s\n" (Usage_status.format final_msg.Types.usage);
       exit 0
-  | Error msg ->
+  | Error (msg, _stop_err) ->
       Printf.printf "error: %s\n" msg;
       exit 1
 
@@ -135,22 +146,32 @@ let run_thinking_scenario () =
       }
   in
   let context =
-    Provider.
+    Connector.
       {
         system = "You are a helpful assistant.";
-        messages = [ Provider.UserMessage user_msg ];
+        messages = [ Connector.UserMessage user_msg ];
         tools = [];
-        thinking = true;
       }
   in
-  let options = Provider.{ max_tokens = 16000; temperature = None } in
+  let options =
+    Connector.
+      {
+        max_tokens = 16000;
+        temperature = None;
+        cache_policy = Types.No_cache;
+        cache_ttl = Types.Five_minutes;
+        thinking_budget_tokens = None;
+      }
+  in
   Printf.printf "thinking scenario: model=%s\n%!" model.Types.id;
   Printf.printf "---\n%!";
   Eio_main.run @@ fun env ->
   Eio.Switch.run @@ fun sw ->
-  let provider = Anthropic_provider.create ~env ~sw in
+  let provider =
+    Anthropic_connector.create_from_env ~env ~sw |> Result.get_exn
+  in
   let stream =
-    Anthropic_provider.stream_simple provider ~model ~context ~options ~sw
+    Anthropic_connector.stream_simple provider ~model ~context ~options ~sw
   in
   let events = ref [] in
   let result =
@@ -159,7 +180,7 @@ let run_thinking_scenario () =
         Printf.printf "%s\n%!" (describe_event event))
   in
   match result with
-  | Error msg ->
+  | Error (msg, _stop_err) ->
       Printf.printf "thinking scenario: FAIL: stream error: %s\n" msg;
       exit 1
   | Ok final_msg ->
@@ -167,6 +188,7 @@ let run_thinking_scenario () =
       Printf.printf "done: stop_reason=%s content=[%s]\n"
         (stop_reason_string final_msg.Types.stop_reason)
         (summarise_content final_msg.Types.content);
+      Printf.printf "usage: %s\n" (Usage_status.format final_msg.Types.usage);
       let has_thinking_event =
         List.exists
           (function Types.AME_thinking_start _ -> true | _ -> false)
@@ -179,8 +201,8 @@ let run_thinking_scenario () =
         Printf.printf "thinking scenario: FAIL: no AME_thinking_start events\n";
         exit 1)
 
-let run_openai_completions_scenario ~model_id ~prompt_text ~max_tokens ~thinking
-    () =
+let run_openai_completions_scenario ~model_id ~prompt_text ~max_tokens
+    ~enable_thinking () =
   match Sys.getenv_opt "OPENAI_API_KEY" with
   | None ->
       Printf.printf
@@ -191,15 +213,24 @@ let run_openai_completions_scenario ~model_id ~prompt_text ~max_tokens ~thinking
         Types.{ role = "user"; content = [ Types.UText prompt_text ] }
       in
       let context =
-        Provider.
+        Connector.
           {
             system = "You are a helpful assistant.";
-            messages = [ Provider.UserMessage user_msg ];
+            messages = [ Connector.UserMessage user_msg ];
             tools = [];
-            thinking;
           }
       in
-      let options = Provider.{ max_tokens; temperature = None } in
+      let options =
+        Connector.
+          {
+            max_tokens;
+            temperature = None;
+            cache_policy = Types.No_cache;
+            cache_ttl = Types.Five_minutes;
+            thinking_budget_tokens =
+              (if enable_thinking then Some 8000 else None);
+          }
+      in
       let base_url =
         match Sys.getenv_opt "OPENAI_BASE_URL" with
         | Some u -> u
@@ -229,10 +260,13 @@ let run_openai_completions_scenario ~model_id ~prompt_text ~max_tokens ~thinking
               context_window = 128_000;
             }
         in
-        let provider = Openai_completions_provider.create ~env ~sw in
+        let provider =
+          Openai_completions_connector.create_from_env ~env ~sw
+          |> Result.get_exn
+        in
         Printf.printf "(request sent, waiting for first token...)\n%!";
         let stream =
-          Openai_completions_provider.stream_simple provider ~model ~context
+          Openai_completions_connector.stream_simple provider ~model ~context
             ~options ~sw
         in
         let events = ref [] in
@@ -289,7 +323,7 @@ let run_openai_completions_scenario ~model_id ~prompt_text ~max_tokens ~thinking
         in
         Markdown_renderer.finish md;
         match result with
-        | Error msg ->
+        | Error (msg, _stop_err) ->
             Printf.printf
               "openai-completions scenario: FAIL: stream error: %s\n" msg;
             exit 1
@@ -298,6 +332,8 @@ let run_openai_completions_scenario ~model_id ~prompt_text ~max_tokens ~thinking
             Printf.printf "done: stop_reason=%s content=[%s]\n"
               (stop_reason_string final_msg.Types.stop_reason)
               (summarise_content final_msg.Types.content);
+            Printf.printf "usage: %s\n"
+              (Usage_status.format final_msg.Types.usage);
             let has_output =
               List.exists
                 (function
@@ -334,7 +370,7 @@ let () =
       let remaining =
         Array.to_list (Array.sub argv 2 (max 0 (Array.length argv - 2)))
       in
-      let thinking = List.mem ~eq:String.equal "--thinking" remaining in
+      let enable_thinking = List.mem ~eq:String.equal "--thinking" remaining in
       let positional =
         List.filter (fun s -> not (String.equal s "--thinking")) remaining
       in
@@ -353,7 +389,7 @@ let () =
         | _ -> default_oc_max_tokens
       in
       run_openai_completions_scenario ~model_id ~prompt_text ~max_tokens
-        ~thinking ()
+        ~enable_thinking ()
   | _ -> (
       match Sys.getenv_opt "ANTHROPIC_API_KEY" with
       | None ->

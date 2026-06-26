@@ -35,10 +35,10 @@ type 'ctx after_tool_call_ctx = {
 type 'ctx agent_loop_config = {
   model : Pera_types.Types.model;
   system : string;
-  options : Pera_provider.Provider.simple_stream_options;
+  options : Pera_connector.Connector.simple_stream_options;
   stream_fn : Agent_types.stream_fn;
   convert_to_llm :
-    Agent_types.agent_message list -> Pera_provider.Provider.message list;
+    Agent_types.agent_message list -> Pera_connector.Connector.message list;
   tool_ctx : 'ctx;
   tools : 'ctx Agent_types.tool list;
   tool_execution : [ `Sequential | `Parallel ];
@@ -93,41 +93,46 @@ let partial_of_event (event : Pera_types.Types.assistant_message_event) =
     should terminate the whole run (Error or Aborted). *)
 let stop_reason_is_terminal (stop_reason : Pera_types.Types.stop_reason) =
   match stop_reason with
-  | Pera_types.Types.Error | Pera_types.Types.Aborted -> true
+  | Pera_types.Types.Error _ | Pera_types.Types.Aborted -> true
   | Pera_types.Types.EndTurn | Pera_types.Types.ToolUse
   | Pera_types.Types.MaxTokens | Pera_types.Types.StopSequence ->
       false
 
 (** Push one event into the output stream. *)
 let push_event out_stream event =
-  Pera_provider.Event_stream.push out_stream event
+  Pera_connector.Event_stream.push out_stream event
 
 (** Apply a [turn_update] to the mutable loop state refs. Any [None] field means
     "keep current value". *)
-let apply_turn_update ~model_ref ~messages_ref
+let apply_turn_update ~model_ref ~messages_ref ~current_thinking_budget
     (update : Agent_types.turn_update) =
   Option.iter (fun m -> model_ref := m) update.model;
-  (* thinking flag update deferred to Stage 7 when options are fully wired *)
-  ignore update.thinking;
+  (match update.thinking with
+  | Agent_types.Inherit -> ()
+  | Agent_types.Budget n -> current_thinking_budget := Some n
+  | Agent_types.Disabled -> current_thinking_budget := None);
   Option.iter (fun msgs -> messages_ref := msgs) update.messages
 
 (** Build the provider context for one LLM call.
 
     Applies [transform_context] (if set) and then [convert_to_llm] to produce
     the provider-level message list. *)
-let build_provider_context ~system ~transform_context ~convert_to_llm ~thinking
-    ~tools messages =
+let build_provider_context ~system ~transform_context ~convert_to_llm ~tools
+    messages =
   let transformed =
     match transform_context with None -> messages | Some f -> f messages
   in
   let provider_messages = convert_to_llm transformed in
-  Pera_provider.Provider.
-    { system; messages = provider_messages; tools; thinking }
+  Pera_connector.Connector.{ system; messages = provider_messages; tools }
 
 (** Invoke [get_api_key] if set. The return value is not used by the loop; the
-    call exists to satisfy provider contracts. *)
-let invoke_get_api_key get_api_key =
-  Option.iter (fun f -> ignore (f ~provider:"anthropic")) get_api_key
+    call exists to satisfy provider contracts. The provider name is taken from
+    the active model so a callback that routes keys by provider receives the
+    correct name. *)
+let invoke_get_api_key get_api_key ~model =
+  Option.iter
+    (fun f -> ignore (f ~provider:model.Pera_types.Types.api))
+    get_api_key
 
 (** {1 Provider stream consumption} *)
 
@@ -147,11 +152,12 @@ let consume_provider_stream ~provider_stream out_stream =
   let cancelled = ref false in
   (try
      let _iter_result =
-       Pera_provider.Event_stream.iter provider_stream ~f:(fun event ->
+       Pera_connector.Event_stream.iter provider_stream ~f:(fun event ->
            let partial = partial_of_event event in
            partial_ref := partial;
            let agent_msg =
-             Agent_types.Real (Pera_provider.Provider.AssistantMessage partial)
+             Agent_types.Real
+               (Pera_connector.Connector.AssistantMessage partial)
            in
            if not !emitted_start then begin
              emitted_start := true;
@@ -170,14 +176,20 @@ let consume_provider_stream ~provider_stream out_stream =
       { !partial_ref with stop_reason = Pera_types.Types.Aborted }
     else begin
       (* Wait for the final result from the provider stream. *)
-      let stream_result = Pera_provider.Event_stream.result provider_stream in
+      let stream_result = Pera_connector.Event_stream.result provider_stream in
       match stream_result with
       | Ok final -> final
-      | Error _err -> { !partial_ref with stop_reason = Pera_types.Types.Error }
+      | Error (err_msg, stop_err) ->
+          {
+            !partial_ref with
+            stop_reason = Pera_types.Types.Error stop_err;
+            provenance =
+              { !partial_ref.provenance with error_message = Some err_msg };
+          }
     end
   in
   let final_agent_msg =
-    Agent_types.Real (Pera_provider.Provider.AssistantMessage final_msg)
+    Agent_types.Real (Pera_connector.Connector.AssistantMessage final_msg)
   in
   (* Emit AE_message_end under cancel protection so this emission succeeds even
      when the switch has been cancelled. push_event is non-blocking if the
@@ -199,23 +211,23 @@ let tool_calls_of_message (msg : Pera_types.Types.assistant_message) =
     msg.content
 
 (** Determine whether the batch should run sequentially: config default is used
-    unless any called tool has mode [\`Sequential], in which case the whole
+    unless any called tool has [parallel_safe = false], in which case the whole
     batch is forced sequential. *)
 let effective_execution_mode config tool_calls =
-  let any_sequential =
+  let any_not_parallel_safe =
     List.exists
       (fun (tc : Pera_types.Types.tool_call) ->
         match
           List.find_opt
-            (fun (t : 'ctx Agent_types.tool) -> String.equal t.name tc.name)
+            (fun (t : 'ctx Agent_types.tool) ->
+              String.equal (Agent_types.Tool.name t) tc.name)
             config.tools
         with
-        | Some tool -> (
-            match tool.mode with `Sequential -> true | `Parallel -> false)
+        | Some tool -> not (Agent_types.Tool.parallel_safe tool)
         | None -> false)
       tool_calls
   in
-  if any_sequential then `Sequential else config.tool_execution
+  if any_not_parallel_safe then `Sequential else config.tool_execution
 
 (** Execute a single tool call, performing validation, hook invocation, and
     error handling. Emits [AE_tool_execution_start] and [AE_tool_execution_end]
@@ -247,7 +259,8 @@ let execute_one_tool ~config ~sw ~out_stream ~final_agent_msg
     let* tool =
       match
         List.find_opt
-          (fun (t : 'ctx Agent_types.tool) -> String.equal t.name tool_name)
+          (fun (t : 'ctx Agent_types.tool) ->
+            String.equal (Agent_types.Tool.name t) tool_name)
           config.tools
       with
       | Some t -> Ok t
@@ -255,7 +268,9 @@ let execute_one_tool ~config ~sw ~out_stream ~final_agent_msg
     in
     (* Step 2: validate args *)
     let* () =
-      Pera_provider.Json_schema.validate tool.schema tc.arguments
+      Pera_connector.Json_schema.validate
+        (Agent_types.Tool.schema tool)
+        tc.arguments
       |> Result.map_err (fun err ->
           fail_tool (Printf.sprintf "Schema validation failed: %s" err))
     in
@@ -285,7 +300,8 @@ let execute_one_tool ~config ~sw ~out_stream ~final_agent_msg
     let execute_result =
       match
         Eio.Cancel.sub (fun cancel ->
-            tool.execute ~ctx:config.tool_ctx ~args:tc.arguments ~sw ~cancel)
+            Agent_types.Tool.execute tool ~ctx:config.tool_ctx
+              ~args:tc.arguments ~sw ~cancel)
       with
       | Ok output ->
           Agent_types.tool_output_to_result_content ~tool_call_id
@@ -376,8 +392,8 @@ let execute_tool_calls ~config ~sw ~out_stream ~final_agent_msg tool_calls =
     [pending] is the list of [agent_message] values to inject before this
     iteration's LLM call. For the initial call these come from the outer loop;
     for subsequent calls they are steering messages. *)
-let rec run_inner ~config ~model_ref ~options_ref ~messages_ref ~pending ~sw
-    out_stream =
+let rec run_inner ~config ~model_ref ~options_ref ~current_thinking_budget
+    ~messages_ref ~pending ~sw out_stream =
   (* Hook helpers — defined once, called in the [Ok tool_results] branch below.
      Each captures [config], [model_ref], [messages_ref], and [options_ref] by
      closure so call sites stay concise. *)
@@ -406,7 +422,9 @@ let rec run_inner ~config ~model_ref ~options_ref ~messages_ref ~pending ~sw
             tool_ctx = config.tool_ctx;
           }
         in
-        Option.iter (apply_turn_update ~model_ref ~messages_ref) (f ctx)
+        Option.iter
+          (apply_turn_update ~model_ref ~messages_ref ~current_thinking_budget)
+          (f ctx)
   in
   let get_steering_messages () =
     match config.get_steering_messages with None -> [] | Some f -> f ()
@@ -422,29 +440,32 @@ let rec run_inner ~config ~model_ref ~options_ref ~messages_ref ~pending ~sw
   let tool_schemas =
     List.map
       (fun (tool : 'ctx Agent_types.tool) ->
-        Pera_provider.Provider.
+        Pera_connector.Connector.
           {
-            name = tool.name;
-            description = tool.description;
-            schema = tool.schema;
+            name = Agent_types.Tool.name tool;
+            description = Agent_types.Tool.description tool;
+            schema = Agent_types.Tool.schema tool;
           })
       config.tools
   in
   let provider_context =
     build_provider_context ~system:config.system
       ~transform_context:config.transform_context
-      ~convert_to_llm:config.convert_to_llm ~thinking:false ~tools:tool_schemas
-      !messages_ref
+      ~convert_to_llm:config.convert_to_llm ~tools:tool_schemas !messages_ref
   in
-  invoke_get_api_key config.get_api_key;
+  invoke_get_api_key config.get_api_key ~model:!model_ref;
+  let current_options =
+    let opts : Pera_connector.Connector.simple_stream_options = !options_ref in
+    { opts with thinking_budget_tokens = !current_thinking_budget }
+  in
   let provider_stream =
     config.stream_fn ~model:!model_ref ~context:provider_context
-      ~options:!options_ref ~sw
+      ~options:current_options ~sw
   in
   (* Step 4: consume the provider stream, emitting message lifecycle events *)
   let final_msg = consume_provider_stream ~provider_stream out_stream in
   let final_agent_msg =
-    Agent_types.Real (Pera_provider.Provider.AssistantMessage final_msg)
+    Agent_types.Real (Pera_connector.Connector.AssistantMessage final_msg)
   in
   (* Step 5: append the final assistant message to history *)
   messages_ref := !messages_ref @ [ final_agent_msg ];
@@ -473,7 +494,7 @@ let rec run_inner ~config ~model_ref ~options_ref ~messages_ref ~pending ~sw
                 List.map
                   (fun tr ->
                     Agent_types.Real
-                      (Pera_provider.Provider.ToolResultMessage tr))
+                      (Pera_connector.Connector.ToolResultMessage tr))
                   results
               in
               messages_ref := !messages_ref @ result_msgs;
@@ -485,7 +506,7 @@ let rec run_inner ~config ~model_ref ~options_ref ~messages_ref ~pending ~sw
                   terminal via Error so the caller takes the Terminate path. *)
               Error [])
       | Pera_types.Types.EndTurn | Pera_types.Types.MaxTokens
-      | Pera_types.Types.StopSequence | Pera_types.Types.Error
+      | Pera_types.Types.StopSequence | Pera_types.Types.Error _
       | Pera_types.Types.Aborted ->
           Ok []
     in
@@ -514,7 +535,7 @@ let rec run_inner ~config ~model_ref ~options_ref ~messages_ref ~pending ~sw
             match final_msg.stop_reason with
             | Pera_types.Types.ToolUse -> true
             | Pera_types.Types.EndTurn | Pera_types.Types.MaxTokens
-            | Pera_types.Types.StopSequence | Pera_types.Types.Error
+            | Pera_types.Types.StopSequence | Pera_types.Types.Error _
             | Pera_types.Types.Aborted ->
                 false
           in
@@ -523,8 +544,8 @@ let rec run_inner ~config ~model_ref ~options_ref ~messages_ref ~pending ~sw
             `Stop
           else
             (* Tool calls or steering messages: continue the inner loop *)
-            run_inner ~config ~model_ref ~options_ref ~messages_ref
-              ~pending:steering ~sw out_stream
+            run_inner ~config ~model_ref ~options_ref ~current_thinking_budget
+              ~messages_ref ~pending:steering ~sw out_stream
         end
   end
 
@@ -533,11 +554,11 @@ let rec run_inner ~config ~model_ref ~options_ref ~messages_ref ~pending ~sw
     Calls [run_inner] with [pending] as the initial messages. After the inner
     loop exits, checks [get_follow_up_messages]: if non-empty, restarts the
     inner loop; otherwise emits [AE_agent_end] and closes the stream. *)
-let rec run_outer ~config ~model_ref ~options_ref ~messages_ref ~pending ~sw
-    out_stream =
+let rec run_outer ~config ~model_ref ~options_ref ~current_thinking_budget
+    ~messages_ref ~pending ~sw out_stream =
   let outcome =
-    run_inner ~config ~model_ref ~options_ref ~messages_ref ~pending ~sw
-      out_stream
+    run_inner ~config ~model_ref ~options_ref ~current_thinking_budget
+      ~messages_ref ~pending ~sw out_stream
   in
   match outcome with
   | `Terminate ->
@@ -546,7 +567,7 @@ let rec run_outer ~config ~model_ref ~options_ref ~messages_ref ~pending ~sw
           let final_messages = !messages_ref in
           push_event out_stream
             (Agent_types.AE_agent_end { messages = final_messages });
-          Pera_provider.Event_stream.close out_stream final_messages)
+          Pera_connector.Event_stream.close out_stream final_messages)
   | `Stop ->
       let follow_ups =
         match config.get_follow_up_messages with None -> [] | Some f -> f ()
@@ -555,24 +576,25 @@ let rec run_outer ~config ~model_ref ~options_ref ~messages_ref ~pending ~sw
         let final_messages = !messages_ref in
         push_event out_stream
           (Agent_types.AE_agent_end { messages = final_messages });
-        Pera_provider.Event_stream.close out_stream final_messages
+        Pera_connector.Event_stream.close out_stream final_messages
       end
       else
-        run_outer ~config ~model_ref ~options_ref ~messages_ref
-          ~pending:follow_ups ~sw out_stream
+        run_outer ~config ~model_ref ~options_ref ~current_thinking_budget
+          ~messages_ref ~pending:follow_ups ~sw out_stream
 
 (** {1 Entry point} *)
 
 let run config ~messages ~sw =
-  let out_stream = Pera_provider.Event_stream.create ~capacity:32 in
+  let out_stream = Pera_connector.Event_stream.create ~capacity:32 in
   Eio.Fiber.fork ~sw (fun () ->
       let model_ref = ref config.model in
       let options_ref = ref config.options in
+      let current_thinking_budget = ref config.options.thinking_budget_tokens in
       let messages_ref = ref messages in
       push_event out_stream Agent_types.AE_agent_start;
       match
-        run_outer ~config ~model_ref ~options_ref ~messages_ref ~pending:[] ~sw
-          out_stream
+        run_outer ~config ~model_ref ~options_ref ~current_thinking_budget
+          ~messages_ref ~pending:[] ~sw out_stream
       with
       | () -> ()
       | exception exn ->
@@ -581,10 +603,11 @@ let run config ~messages ~sw =
               would then block forever.  Emit AE_agent_end and close the stream
               under Eio.Cancel.protect so these operations succeed even when
               the switch has been cancelled. *)
+          let err_msg = Printexc.to_string exn in
           Eio.Cancel.protect (fun () ->
               let final_messages = !messages_ref in
               push_event out_stream
                 (Agent_types.AE_agent_end { messages = final_messages });
-              Pera_provider.Event_stream.close_error out_stream
-                (Printexc.to_string exn)));
+              Pera_connector.Event_stream.close_internal_error out_stream
+                err_msg));
   out_stream

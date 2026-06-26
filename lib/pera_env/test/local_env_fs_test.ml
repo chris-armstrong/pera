@@ -156,6 +156,11 @@ let () =
               | Error e ->
                   Alcotest.failf "create_dir/file_info failed: %s" e.message);
         ] );
+      ( "cwd",
+        [
+          Alcotest.test_case "matches value passed to create" `Quick (fun () ->
+              Alcotest.(check string) "cwd" tmpdir E.cwd);
+        ] );
       ( "absolute_path",
         [
           Alcotest.test_case "resolves relative" `Quick (fun () ->

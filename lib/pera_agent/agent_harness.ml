@@ -1,7 +1,7 @@
 open Containers
 
 type t = {
-  wrapper : unit Pera_harness.Agent_wrapper.t;
+  wrapper : (module Pera_env.Execution_env.S) Pera_harness.Agent_wrapper.t;
   writer : Pera_harness.Session_writer.t;
   mutable session_info_written : bool;
 }
@@ -15,22 +15,14 @@ type config = {
   stream_fn : Pera_core.Agent_types.stream_fn;
   max_tokens : int;
   exec_env : (module Pera_env.Execution_env.S);
+  system_prompt : string;
+  thinking_budget_tokens : int option;
   compaction : compaction_config option;
 }
 
-let build_system_prompt tools =
-  let base =
-    "You are a helpful coding assistant. Work methodically, verify your \
-     understanding before acting, and prefer small targeted changes."
-  in
-  let descs =
-    List.map
-      (fun (t : unit Pera_core.Agent_types.tool) ->
-        Printf.sprintf "- %s: %s" t.name t.description)
-      tools
-  in
-  if List.is_empty descs then base
-  else base ^ "\n\nAvailable tools:\n" ^ String.concat "\n" descs
+let default_system_prompt =
+  "You are a helpful coding assistant. Work methodically, verify your \
+   understanding before acting, and prefer small targeted changes."
 
 let convert_to_llm messages =
   List.map Pera_core.Agent_types.to_provider_message messages
@@ -40,16 +32,26 @@ let session_subscriber writer event =
   let result =
     match event with
     | Pera_core.Agent_types.AE_message_end
-        { message = Real (Pera_provider.Provider.AssistantMessage am) } ->
+        { message = Real (Pera_connector.Connector.AssistantMessage am) } ->
+        (match am.Pera_types.Types.stop_reason with
+        | Pera_types.Types.Error stop_err ->
+            let msg =
+              Option.value ~default:"unknown error"
+                am.Pera_types.Types.provenance.error_message
+            in
+            Printf.eprintf "[harness] provider error (%s): %s\n%!"
+              (Pera_types.Types.show_stop_error stop_err)
+              msg
+        | _ -> ());
         Pera_harness.Session_writer.write_message writer
-          (Pera_provider.Provider.AssistantMessage am)
+          (Pera_connector.Connector.AssistantMessage am)
     | Pera_core.Agent_types.AE_message_end _ -> Ok ()
     | Pera_core.Agent_types.AE_turn_end { tool_results; _ } ->
         List.fold_left
           (fun acc tr ->
             let* () = acc in
             Pera_harness.Session_writer.write_message writer
-              (Pera_provider.Provider.ToolResultMessage tr))
+              (Pera_connector.Connector.ToolResultMessage tr))
           (Ok ()) tool_results
     | Pera_core.Agent_types.AE_agent_end _ ->
         Pera_harness.Session_writer.write_leaf writer
@@ -92,13 +94,19 @@ let create ~config ~env ~sw =
     Pera_harness.Session_writer.create ~path:config.session_path ~env
       ~model:config.model ~cwd:config.cwd
   in
-  let tools = Pera_tools.Tools.default config.exec_env in
+  let tools = Pera_tools.Tools.default in
   let pending_compacted : Pera_core.Agent_types.agent_message list option ref =
     ref None
   in
   let options =
-    Pera_provider.Provider.
-      { max_tokens = config.max_tokens; temperature = None }
+    Pera_connector.Connector.
+      {
+        max_tokens = config.max_tokens;
+        temperature = None;
+        cache_policy = Pera_types.Types.No_cache;
+        cache_ttl = Pera_types.Types.Five_minutes;
+        thinking_budget_tokens = config.thinking_budget_tokens;
+      }
   in
   let should_stop_hook cc (ctx : _ Pera_core.Agent_loop.should_stop_ctx) =
     let provider_msgs = convert_to_llm ctx.messages in
@@ -130,17 +138,17 @@ let create ~config ~env ~sw =
         pending_compacted := None;
         Some
           Pera_core.Agent_types.
-            { messages = Some msgs; model = None; thinking = None }
+            { messages = Some msgs; model = None; thinking = Inherit }
   in
   let loop_config =
     Pera_core.Agent_loop.
       {
         model = config.model;
-        system = build_system_prompt tools;
+        system = config.system_prompt;
         options;
         stream_fn = config.stream_fn;
         convert_to_llm;
-        tool_ctx = ();
+        tool_ctx = config.exec_env;
         tools;
         tool_execution = `Parallel;
         transform_context = None;
@@ -172,7 +180,7 @@ let send t text =
      | Error e ->
          Printf.eprintf "session_info write: %s\n%!" e.Pera_types.Types.message);
   let um =
-    Pera_provider.Provider.UserMessage
+    Pera_connector.Connector.UserMessage
       Pera_types.Types.{ role = "user"; content = [ UText text ] }
   in
   (match Pera_harness.Session_writer.write_message t.writer um with
@@ -185,3 +193,4 @@ let send t text =
   Pera_harness.Agent_wrapper.send t.wrapper ~messages
 
 let subscribe t f = Pera_harness.Agent_wrapper.subscribe t.wrapper f
+let last_error t = Pera_harness.Agent_wrapper.last_error t.wrapper

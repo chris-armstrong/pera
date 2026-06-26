@@ -10,12 +10,14 @@ depends: [
   "dune" {>= "3.16"}
   "ocaml" {>= "5.4"}
   "pera-types" {= version}
-  "pera-provider" {= version}
+  "pera-connector" {= version}
   "containers" {>= "3.0"}
   "yojson" {>= "2.0"}
   "eio" {>= "1.0"}
   "eio_main" {>= "1.0"}
   "eio_linux" {>= "1.0"}
+  "logs" {>= "0.7"}
+  "re" {>= "1.10"}
   "ppx_deriving" {>= "1.6"}
   "qcheck-core" {>= "0.21" & with-test}
   "qcheck-alcotest" {>= "0.21" & with-test}
