@@ -1446,6 +1446,217 @@ is unchanged.
 
 ---
 
+## Phase 2C — OAuth device flow (RFC 8628)
+
+Add native OAuth 2.0 Device Authorization Grant support so providers that
+require it (e.g. GitHub Copilot, GitHub Models) work without any user-side
+CLI dependency. The implementation lives entirely in `lib/pera_cli/` and
+uses the existing `cohttp-eio` / `yojson` stack.
+
+No new opam dependencies required. All HTTP is done with the same
+`Http_client` wrapper already used by the connector layer.
+
+---
+
+### Stage 2C.1 — `oauth_flow` type in `models_config`
+
+**Edit `lib/pera_cli/models_config.ml` and `.mli`:**
+
+Add the `oauth_flow` record before `provider_spec`:
+
+```ocaml
+type oauth_flow = {
+  device_auth_url : string;
+  token_url       : string;
+  client_id       : string;
+  scope           : string list; [@sexp.default []]
+}
+[@@deriving sexp, show, eq]
+```
+
+Add `oauth : oauth_flow option [@sexp.option]` to `provider_spec` (between
+`base_url_env` and `compat`).
+
+**Tests (`lib/pera_cli/test/models_config_test.ml` — extend):**
+
+```ocaml
+(* Test: provider_spec with oauth field round-trips through sexp *)
+(* Test: provider_spec without oauth field parses to oauth = None *)
+(* Test: scope defaults to [] when absent *)
+```
+
+**Verify:** `dune test` green.
+
+---
+
+### Stage 2C.2 — `oauth_token.ml` — token cache and device flow
+
+**Create `lib/pera_cli/oauth_token.mli`:**
+
+```ocaml
+type cached_token = {
+  access_token  : string;
+  refresh_token : string option;
+  expires_at    : float;  (** Unix timestamp *)
+}
+
+type resolve_error =
+  | Device_flow_cancelled
+  | Device_flow_expired
+  | Device_flow_http_error of string
+  | Token_refresh_failed   of string
+
+val token_path : xdg_state_home:string -> provider:string -> string
+(** [$xdg_state_home/pera/tokens/<provider>.sexp] *)
+
+val read_cache :
+  path:string -> (cached_token option, string) result
+(** Read and parse the token cache file. [Ok None] if the file does not exist. *)
+
+val write_cache :
+  path:string -> cached_token -> (unit, string) result
+(** Write the token cache file with mode 0600. Creates parent dirs if needed. *)
+
+val is_valid : cached_token -> margin_s:float -> bool
+(** [is_valid t ~margin_s] is [true] if [t.expires_at > Unix.gettimeofday () + margin_s]. *)
+
+val refresh :
+  env:Eio_unix.Stdenv.base ->
+  sw:Eio.Switch.t ->
+  flow:Models_config.oauth_flow ->
+  refresh_token:string ->
+  (cached_token, resolve_error) result
+(** POST [grant_type=refresh_token] to [flow.token_url]. Returns new tokens. *)
+
+val device_flow :
+  env:Eio_unix.Stdenv.base ->
+  sw:Eio.Switch.t ->
+  flow:Models_config.oauth_flow ->
+  print_prompt:(user_code:string -> verification_uri:string -> unit) ->
+  (cached_token, resolve_error) result
+(** Full RFC 8628 device flow. Calls [print_prompt] once with the user-facing
+    code and URL, then polls [flow.token_url] until authorised, expired, or
+    cancelled. Respects [slow_down] responses from GitHub. *)
+
+val resolve :
+  env:Eio_unix.Stdenv.base ->
+  sw:Eio.Switch.t ->
+  flow:Models_config.oauth_flow ->
+  cache_path:string ->
+  print_prompt:(user_code:string -> verification_uri:string -> unit) ->
+  (string, resolve_error) result
+(** High-level resolver. Returns a valid access token, following the full
+    resolution sequence: read cache → refresh if expired → device flow.
+    Persists the result to [cache_path] after each successful step. *)
+```
+
+**Implement `lib/pera_cli/oauth_token.ml`:**
+
+HTTP calls use `cohttp-eio` directly (same pattern as the connector layer;
+no `Http_client` abstraction since the auth layer sits below the connector).
+JSON responses parsed with `yojson`.
+
+Device flow polling loop:
+```ocaml
+let rec poll ~env ~sw ~token_url ~device_code ~interval ~deadline =
+  if Unix.gettimeofday () >= deadline then Error Device_flow_expired
+  else begin
+    Eio.Time.sleep (Eio.Stdenv.clock env) (float_of_int interval);
+    match post_token ~env ~sw token_url device_code with
+    | Ok token  -> Ok token
+    | Error `Slow_down    -> poll ... ~interval:(interval + 5) ...
+    | Error `Authorization_pending -> poll ... ~interval ...
+    | Error (`Http_error s) -> Error (Device_flow_http_error s)
+  end
+```
+
+Token expiry: GitHub returns `expires_in` (seconds). Store
+`Unix.gettimeofday () +. float_of_int expires_in` as `expires_at`.
+GitHub tokens expire after 8 hours; refresh tokens after 6 months.
+
+**Add `lib/pera_cli/dune` entries:**
+`yojson` is already in `pera_cli/dune` (check; add if absent).
+
+**Tests (`lib/pera_cli/test/oauth_token_test.ml`):**
+
+```ocaml
+(* Test: is_valid returns true when expires_at is in the future *)
+(* Test: is_valid returns false when expired within margin *)
+(* Test: write_cache creates file with mode 0600 *)
+(* Test: read_cache returns None for missing file *)
+(* Test: read_cache round-trips a written token *)
+(* Test: token_path constructs expected path *)
+(* Test: resolve uses cached token when valid — no HTTP calls *)
+(* Test: resolve calls refresh when expired + refresh_token present *)
+(* Test: resolve triggers device_flow when no cache *)
+```
+
+Use a mock HTTP client (function-injected, same pattern as `config_resolver`)
+for the HTTP-touching tests to avoid real network calls.
+
+**Verify:** `dune test` green.
+
+---
+
+### Stage 2C.3 — Wire OAuth into config resolver
+
+**Edit `lib/pera_cli/config_resolver.ml`:**
+
+Extend the `resolve_api_key` function (or equivalent, per Phase 2 output) to
+follow the three-step resolution order:
+
+```ocaml
+let resolve_api_key ~env ~sw ~xdg_state_home ~getenv_opt ~provider_spec ~provider_auth =
+  match provider_auth.Pera_config.api_key with
+  | Some src -> Ok (resolve_key_source src)  (* step 1: explicit user config *)
+  | None ->
+    let from_env = List.find_map
+      (fun v -> getenv_opt v)
+      provider_spec.Models_config.api_key_env
+    in
+    match from_env with
+    | Some key -> Ok key  (* step 2: env var *)
+    | None ->
+      match provider_spec.Models_config.oauth with
+      | None -> Error (no_auth_error provider_spec.name)
+      | Some flow ->   (* step 3: OAuth device flow *)
+        let cache_path = Oauth_token.token_path
+          ~xdg_state_home ~provider:provider_spec.name in
+        Oauth_token.resolve ~env ~sw ~flow ~cache_path
+          ~print_prompt:(fun ~user_code ~verification_uri ->
+            Printf.eprintf
+              "[pera] Open %s and enter code: %s\n%!" verification_uri user_code)
+        |> Result.map_error (fun e -> Oauth_token.error_to_string e)
+```
+
+**Tests (`lib/pera_cli/test/config_loader_test.ml` — extend):**
+
+```ocaml
+(* Test: api_key in config takes priority over env var and oauth *)
+(* Test: env var used when no api_key in config *)
+(* Test: oauth resolve called when no api_key and env var absent *)
+(* Test: error emitted when no api_key, no env var, no oauth *)
+```
+
+**Verify:** `dune test` green, `ocamlformat --check`, `semgrep` clean.
+
+---
+
+### Phase 2C review checklist
+
+- [ ] `dune build` — clean
+- [ ] `dune test` — all suites pass
+- [ ] `ocamlformat --check` — clean
+- [ ] `semgrep` — clean
+- [ ] No real network calls in tests (`oauth_token` HTTP is function-injected)
+- [ ] Token cache file created with mode 0600 (test verifies)
+- [ ] `resolve_api_key` follows the three-step priority order
+- [ ] `Device_flow_cancelled` / `Device_flow_expired` produce actionable error messages
+- [ ] `pera login <provider>` and `pera logout <provider>` noted as Phase 4 additions
+  (the OAuth flow triggers automatically; login/logout are convenience subcommands)
+
+---
+
 ## Phase 3 — pera-cli library
 
 Implement the reusable wiring that `Pera_cli.Make` provides: shell tool

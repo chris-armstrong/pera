@@ -68,6 +68,31 @@ config applies.
   `[pera] api_key may not appear in project config (.pera); use user config or the provider's api_key_env variable`.
 - `base_url` overrides inside `provider_auth` are accepted in both user and project config.
 
+### API key resolution order
+
+For each connector call, the key is resolved in priority order:
+
+1. `provider_auth.api_key` from user or project `config.sexp` — highest priority; explicit beats implicit.
+2. First env var in `provider_spec.api_key_env` that is set in the process environment.
+3. **OAuth device flow** (`provider_spec.oauth`), when defined:
+   a. Read `$XDG_STATE_HOME/pera/tokens/<provider>.sexp` (mode 0600).
+   b. If `access_token` present and `expires_at` > now − 60 s → use it.
+   c. Else if `refresh_token` present → POST `grant_type=refresh_token` to `token_url`; on success persist new tokens and use `access_token`.
+   d. Else → trigger device flow: POST to `device_auth_url`, print `user_code` and `verification_uri` on stderr, poll `token_url` at `interval` seconds until authorised or `expires_in` elapsed; persist tokens.
+4. Error: `[pera] no auth for provider "<name>"; set api_key in ~/.config/pera/config.sexp or run: pera login <name>`.
+
+**Token cache format** — `$XDG_STATE_HOME/pera/tokens/<provider>.sexp` (created with mode 0600):
+
+```sexp
+((access_token  "ghu_...")
+ (refresh_token "ghr_...")
+ (expires_at    "2026-07-15T09:30:00Z"))
+```
+
+`expires_at` is an RFC 3339 UTC timestamp. The 60-second early-expiry margin prevents clock-skew failures at the edge of token validity. `refresh_token` may be absent for providers that issue non-refreshable tokens (device flow re-runs when the access token expires).
+
+The token cache is provider-level, not model-level. `pera login <provider>` pre-triggers the device flow interactively before a session starts (useful to confirm auth before beginning a long run). The same flow triggers automatically on first use if no cached token exists.
+
 ---
 
 ## Models file
@@ -185,13 +210,32 @@ type model_spec = {
     (** USD pricing per million tokens. Absent = unknown/not applicable. *)
 } [@@deriving sexp]
 
+(** RFC 8628 Device Authorization Grant configuration.
+    Lives in models.sexp (public — client_id is not a secret).
+    Tokens are cached in $XDG_STATE_HOME/pera/tokens/<provider>.sexp.
+    See §API key resolution order for the full resolution sequence. *)
+type oauth_flow = {
+  device_auth_url : string;
+    (** RFC 8628 device_authorization_endpoint.
+        E.g. "https://github.com/login/device/code". *)
+  token_url       : string;
+    (** OAuth 2.0 token endpoint.
+        E.g. "https://github.com/login/oauth/access_token". *)
+  client_id       : string;
+    (** OAuth application client_id (public; not a secret).
+        E.g. "Iv1.b507a08c87ecfe98" for GitHub Copilot / GitHub Models. *)
+  scope           : string list; [@sexp.default []]
+    (** OAuth scopes to request. Empty list = provider default. *)
+} [@@deriving sexp]
+
 (** A provider entry in models.sexp.
 
     Field naming follows the models.dev convention:
       protocol — connector type discriminator ("anthropic" | "openai-completions")
       api      — base URL (same meaning as models.dev's "api" field)
 
-    See "Protocol lookup table" in §Models file for npm→protocol mapping. *)
+    See "Protocol lookup table" in §Models file for npm→protocol mapping.
+    See §API key resolution order for how api_key_env and oauth interact. *)
 type provider_spec = {
   name         : string;
     (** Provider identifier. Models addressed as <name>/<model_name>.
@@ -201,7 +245,7 @@ type provider_spec = {
   api_key_env  : string list; [@sexp.default []]
     (** Env var names to try in order when user config provides no explicit api_key.
         Empty list = no env var (e.g. local/ollama).
-        E.g. ["ANTHROPIC_API_KEY"] or ["PROVIDER_KEY"; "FALLBACK_KEY"]. *)
+        E.g. ["ANTHROPIC_API_KEY"] or ["GITHUB_TOKEN"; "GH_TOKEN"]. *)
   api          : string option; [@sexp.option]
     (** Base URL. Absent = connector's built-in default (e.g. Anthropic, OpenAI native).
         Required for openai-compatible third-party endpoints. *)
@@ -209,6 +253,10 @@ type provider_spec = {
     (** Env var whose value, if set at runtime, overrides api.
         Useful for local providers like Ollama where the URL varies per install.
         E.g. "OLLAMA_BASE_URL". *)
+  oauth        : oauth_flow option; [@sexp.option]
+    (** RFC 8628 device flow. When present and no API key is available from
+        user config or api_key_env, pera triggers the device flow automatically
+        and caches the resulting tokens. See §API key resolution order. *)
   compat       : compat_config option; [@sexp.option]
     (** openai-completions quirks. Only meaningful when protocol = "openai-completions". *)
   models       : model_spec list; [@sexp.default []]
@@ -421,6 +469,37 @@ type config = {
         (thinking ((budget_medium 8000) (budget_high 32000)))
         (cost ((input_per_mtok "0.6") (output_per_mtok "2.5")
                (cache_read_per_mtok "0.15")))))))
+   ((name github-copilot)
+    (protocol openai-completions)
+    (api "https://api.githubcopilot.com")
+    (api_key_env (GITHUB_TOKEN GH_TOKEN))
+    (oauth ((device_auth_url "https://github.com/login/device/code")
+            (token_url "https://github.com/login/oauth/access_token")
+            (client_id "Iv1.b507a08c87ecfe98")))
+    (models
+      (((name claude-sonnet-4.5)
+        (context_window 128000)
+        (max_tokens 16384))
+       ((name gpt-4o)
+        (context_window 128000)
+        (max_tokens 16384))
+       ((name gemini-2.5-pro)
+        (context_window 1000000)
+        (max_tokens 65536)))))
+   ((name github-models)
+    (protocol openai-completions)
+    (api "https://models.github.ai/inference")
+    (api_key_env (GITHUB_TOKEN GH_TOKEN))
+    (oauth ((device_auth_url "https://github.com/login/device/code")
+            (token_url "https://github.com/login/oauth/access_token")
+            (client_id "Iv1.b507a08c87ecfe98")))
+    (models
+      (((name openai/gpt-4o)
+        (context_window 128000)
+        (max_tokens 16384))
+       ((name meta/meta-llama-3.1-405b-instruct)
+        (context_window 128000)
+        (max_tokens 8192)))))
    ((name local)
     (protocol openai-completions)
     (api_key_env ())
@@ -592,7 +671,13 @@ Available in interactive (tty) mode only:
 | `/info` | Print current stats: tokens, cache read/write, model, turn count |
 | `/quit` | Exit cleanly |
 
-User-defined commands (from `commands` in config) extend this set.
+`pera login <provider>` is a **top-level subcommand** (not a slash command) that
+pre-triggers the OAuth device flow for a named provider and stores the resulting
+token before a session begins. It exits after the flow completes. Useful for
+confirming auth in CI or before a long run. `pera logout <provider>` deletes the
+cached token file, forcing re-authentication on the next use.
+
+User-defined commands (from `commands` in config) extend this slash-command set.
 Built-in names (`compact`, `info`, `quit`) are reserved and cannot be overridden.
 
 ---
