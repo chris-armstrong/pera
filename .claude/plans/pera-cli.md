@@ -676,6 +676,8 @@ pre-triggers the OAuth device flow for a named provider and stores the resulting
 token before a session begins. It exits after the flow completes. Useful for
 confirming auth in CI or before a long run. `pera logout <provider>` deletes the
 cached token file, forcing re-authentication on the next use.
+*(Implemented in Phase 6; currently only GitHub Copilot and GitHub Models require
+OAuth — all other "TOKEN"-named providers use manual PATs via `api_key_env`.)*
 
 User-defined commands (from `commands` in config) extend this slash-command set.
 Built-in names (`compact`, `info`, `quit`) are reserved and cannot be overridden.
