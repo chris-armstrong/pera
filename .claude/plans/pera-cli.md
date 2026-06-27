@@ -68,6 +68,31 @@ config applies.
   `[pera] api_key may not appear in project config (.pera); use user config or the provider's api_key_env variable`.
 - `base_url` overrides inside `provider_auth` are accepted in both user and project config.
 
+### API key resolution order
+
+For each connector call, the key is resolved in priority order:
+
+1. `provider_auth.api_key` from user or project `config.sexp` — highest priority; explicit beats implicit.
+2. First env var in `provider_spec.api_key_env` that is set in the process environment.
+3. **OAuth device flow** (`provider_spec.oauth`), when defined:
+   a. Read `$XDG_STATE_HOME/pera/tokens/<provider>.sexp` (mode 0600).
+   b. If `access_token` present and `expires_at` > now − 60 s → use it.
+   c. Else if `refresh_token` present → POST `grant_type=refresh_token` to `token_url`; on success persist new tokens and use `access_token`.
+   d. Else → trigger device flow: POST to `device_auth_url`, print `user_code` and `verification_uri` on stderr, poll `token_url` at `interval` seconds until authorised or `expires_in` elapsed; persist tokens.
+4. Error: `[pera] no auth for provider "<name>"; set api_key in ~/.config/pera/config.sexp or run: pera login <name>`.
+
+**Token cache format** — `$XDG_STATE_HOME/pera/tokens/<provider>.sexp` (created with mode 0600):
+
+```sexp
+((access_token  "ghu_...")
+ (refresh_token "ghr_...")
+ (expires_at    "2026-07-15T09:30:00Z"))
+```
+
+`expires_at` is an RFC 3339 UTC timestamp. The 60-second early-expiry margin prevents clock-skew failures at the edge of token validity. `refresh_token` may be absent for providers that issue non-refreshable tokens (device flow re-runs when the access token expires).
+
+The token cache is provider-level, not model-level. `pera login <provider>` pre-triggers the device flow interactively before a session starts (useful to confirm auth before beginning a long run). The same flow triggers automatically on first use if no cached token exists.
+
 ---
 
 ## Models file
@@ -88,10 +113,45 @@ personal preferences. It defines *capabilities*: what endpoints exist, what
 models they expose, and what those models can do. Auth lives exclusively in
 `config.sexp`.
 
+**Data sources for the packaged catalog.** Field values in
+`$PREFIX/share/pera/models.sexp` are sourced and cross-referenced from two
+public databases:
+
+- **[models.dev](https://models.dev)** (SST/Anomaly, MIT) — primary source.
+  Provides provider structure, env var names, base URLs, and per-MTok pricing.
+  Field naming in `provider_spec` follows models.dev conventions directly:
+  `protocol` maps from the `npm` package name; `api` is models.dev's `api`
+  field (the base URL). The provider key used in models.dev (e.g. `moonshotai`,
+  `opencode-go`) is the canonical provider name used in pera.
+- **[BerriAI/litellm](https://github.com/BerriAI/litellm)** `model_prices_and_context_window.json`
+  — cross-check for pricing accuracy. LiteLLM routes real API traffic so
+  corrections appear quickly. Anthropic native models are keyed by bare model
+  name (e.g. `claude-sonnet-4-6`, `litellm_provider: "anthropic"`).
+
+When models.dev and LiteLLM disagree on a value, prefer LiteLLM for pricing
+and context window sizes; prefer models.dev for env var names and base URLs.
+
+**Protocol lookup table** — maps models.dev `npm` package to pera `protocol`:
+
+| models.dev `npm` | pera `protocol` |
+|---|---|
+| `@ai-sdk/anthropic` | `"anthropic"` |
+| `@ai-sdk/openai` | `"openai-completions"` |
+| `@ai-sdk/openai-compatible` | `"openai-completions"` |
+| `@ai-sdk/groq` | `"openai-completions"` |
+| `@ai-sdk/togetherai` | `"openai-completions"` |
+| `@ai-sdk/mistral` | `"openai-completions"` |
+| `@ai-sdk/google`, `@ai-sdk/cohere`, etc. | not supported |
+
+Note: `@ai-sdk/anthropic` with a non-Anthropic `api` URL (e.g. kimi-for-coding
+at `https://api.kimi.com/coding/v1`) is valid — it uses the Anthropic wire
+protocol over a third-party endpoint.
+
 **Model addressing:** all model references are fully qualified as
 `<provider>/<model>` (e.g. `anthropic/claude-sonnet-4-6`,
-`moonshot/kimi-k2.6`). Short names are not resolved; using an unqualified name
-is a startup error with a suggestion of matching qualified names.
+`moonshotai/kimi-k2-0905-preview`). Short names are not resolved; using an
+unqualified name is a startup error with a suggestion of matching qualified
+names.
 
 ---
 
@@ -108,7 +168,9 @@ type thinking_spec = {
     (** thinking_budget_tokens used when effort = High. *)
 } [@@deriving sexp]
 
-(** openai-completions endpoint quirks. Absent fields use connector defaults. *)
+(** openai-completions endpoint quirks. Absent fields use connector defaults.
+    Only meaningful when provider_spec.protocol = "openai-completions";
+    ignored by the anthropic connector. *)
 type compat_config = {
   reasoning_field          : string option; [@sexp.option]
     (** JSON field carrying reasoning/thinking content. Default: "reasoning_content". *)
@@ -121,6 +183,19 @@ type compat_config = {
         via model selection (e.g. OpenAI o-series), no explicit field needed. *)
 } [@@deriving sexp]
 
+(** USD pricing for a model, per million tokens.
+    Stored as Decimal.t via custom converters (decimal_of_sexp / sexp_of_decimal)
+    that represent each value as a quoted string atom, e.g. (input_per_mtok "3.00").
+    Absent cost record = cost unknown/not applicable (e.g. local models).
+    Cache fields are optional — only providers that charge for cache operations
+    include them (currently only Anthropic has cache_write fees). *)
+type model_cost = {
+  input_per_mtok       : decimal;
+  output_per_mtok      : decimal;
+  cache_read_per_mtok  : decimal option; [@sexp.option]
+  cache_write_per_mtok : decimal option; [@sexp.option]
+} [@@deriving sexp]
+
 (** A model entry nested under a provider in models.sexp. *)
 type model_spec = {
   name           : string;
@@ -131,26 +206,59 @@ type model_spec = {
   thinking       : thinking_spec option; [@sexp.option]
     (** None = model does not support extended thinking.
         Startup error if effort > Low is requested for such a model. *)
+  cost           : model_cost option; [@sexp.option]
+    (** USD pricing per million tokens. Absent = unknown/not applicable. *)
 } [@@deriving sexp]
 
-(** A provider entry in models.sexp. *)
+(** RFC 8628 Device Authorization Grant configuration.
+    Lives in models.sexp (public — client_id is not a secret).
+    Tokens are cached in $XDG_STATE_HOME/pera/tokens/<provider>.sexp.
+    See §API key resolution order for the full resolution sequence. *)
+type oauth_flow = {
+  device_auth_url : string;
+    (** RFC 8628 device_authorization_endpoint.
+        E.g. "https://github.com/login/device/code". *)
+  token_url       : string;
+    (** OAuth 2.0 token endpoint.
+        E.g. "https://github.com/login/oauth/access_token". *)
+  client_id       : string;
+    (** OAuth application client_id (public; not a secret).
+        E.g. "Iv1.b507a08c87ecfe98" for GitHub Copilot / GitHub Models. *)
+  scope           : string list; [@sexp.default []]
+    (** OAuth scopes to request. Empty list = provider default. *)
+} [@@deriving sexp]
+
+(** A provider entry in models.sexp.
+
+    Field naming follows the models.dev convention:
+      protocol — connector type discriminator ("anthropic" | "openai-completions")
+      api      — base URL (same meaning as models.dev's "api" field)
+
+    See "Protocol lookup table" in §Models file for npm→protocol mapping.
+    See §API key resolution order for how api_key_env and oauth interact. *)
 type provider_spec = {
   name         : string;
-    (** Provider identifier. Models addressed as <name>/<model_name>. *)
-  api          : string;
+    (** Provider identifier. Models addressed as <name>/<model_name>.
+        Use the models.dev provider key as the canonical name (e.g. "moonshotai"). *)
+  protocol     : string;
     (** "anthropic" | "openai-completions". Selects the Connector implementation. *)
-  api_key_env  : string option; [@sexp.option]
-    (** Name of the env var to read the API key from when user config
-        provides no explicit api_key for this provider.
-        E.g. "ANTHROPIC_API_KEY", "MOONSHOT_API_KEY". *)
-  base_url     : string option; [@sexp.option]
-    (** Static endpoint. Absent = connector's built-in default for this api. *)
+  api_key_env  : string list; [@sexp.default []]
+    (** Env var names to try in order when user config provides no explicit api_key.
+        Empty list = no env var (e.g. local/ollama).
+        E.g. ["ANTHROPIC_API_KEY"] or ["GITHUB_TOKEN"; "GH_TOKEN"]. *)
+  api          : string option; [@sexp.option]
+    (** Base URL. Absent = connector's built-in default (e.g. Anthropic, OpenAI native).
+        Required for openai-compatible third-party endpoints. *)
   base_url_env : string option; [@sexp.option]
-    (** Env var whose value, if set, overrides base_url at runtime.
-        Useful for providers like local Ollama where the URL varies per install.
+    (** Env var whose value, if set at runtime, overrides api.
+        Useful for local providers like Ollama where the URL varies per install.
         E.g. "OLLAMA_BASE_URL". *)
+  oauth        : oauth_flow option; [@sexp.option]
+    (** RFC 8628 device flow. When present and no API key is available from
+        user config or api_key_env, pera triggers the device flow automatically
+        and caches the resulting tokens. See §API key resolution order. *)
   compat       : compat_config option; [@sexp.option]
-    (** openai-completions quirks. Ignored for api = "anthropic". *)
+    (** openai-completions quirks. Only meaningful when protocol = "openai-completions". *)
   models       : model_spec list; [@sexp.default []]
 } [@@deriving sexp]
 
@@ -203,7 +311,7 @@ type provider_auth = {
     (** Must match a provider_spec.name from models.sexp. *)
   api_key  : api_key_source option; [@sexp.option]
   base_url : string option; [@sexp.option]
-    (** Override the provider's base_url for this user/project. *)
+    (** Override the provider's api (base URL) for this user/project. *)
   models   : model_auth list; [@sexp.default []]
     (** Per-model effort overrides for this provider. *)
 } [@@deriving sexp]
@@ -308,50 +416,94 @@ type config = {
 
 ```sexp
 ; Packaged provider and model catalog — shipped with pera.
+; Provider names and base URLs from models.dev; pricing cross-checked with
+; BerriAI/litellm model_prices_and_context_window.json.
 ; Users may extend or override entries in $XDG_CONFIG_HOME/pera/models.sexp.
 ((providers
   (((name anthropic)
-    (api anthropic)
-    (api_key_env ANTHROPIC_API_KEY)
+    (protocol anthropic)
+    (api_key_env (ANTHROPIC_API_KEY))
     (models
       (((name claude-sonnet-4-6)
         (context_window 200000)
         (max_tokens 16000)
-        (thinking ((budget_medium 8000) (budget_high 32000))))
+        (thinking ((budget_medium 8000) (budget_high 32000)))
+        (cost ((input_per_mtok "3") (output_per_mtok "15")
+               (cache_read_per_mtok "0.30") (cache_write_per_mtok "3.75"))))
        ((name claude-haiku-4-5-20251001)
         (context_window 200000)
-        (max_tokens 8192)))))
+        (max_tokens 8192)
+        (cost ((input_per_mtok "1") (output_per_mtok "5")
+               (cache_read_per_mtok "0.10") (cache_write_per_mtok "1.25")))))))
    ((name openai)
-    (api openai-completions)
-    (api_key_env OPENAI_API_KEY)
-    (base_url "https://api.openai.com")
+    (protocol openai-completions)
+    (api_key_env (OPENAI_API_KEY))
+    (api "https://api.openai.com/v1")
     (compat
       ((max_tokens_field max_completion_tokens)
        (require_tool_result_name false)))
     (models
       (((name gpt-4o)
         (context_window 128000)
-        (max_tokens 16384))
-       ((name o3-mini)
+        (max_tokens 16384)
+        (cost ((input_per_mtok "2.50") (output_per_mtok "10.00")
+               (cache_read_per_mtok "1.25"))))
+       ((name o3)
         (context_window 200000)
-        (max_tokens 65536)))))
-   ((name moonshot)
-    (api openai-completions)
-    (api_key_env MOONSHOT_API_KEY)
-    (base_url "https://api.moonshot.ai")
+        (max_tokens 100000)
+        (cost ((input_per_mtok "2") (output_per_mtok "8")
+               (cache_read_per_mtok "0.50")))))))
+   ((name moonshotai)
+    (protocol openai-completions)
+    (api_key_env (MOONSHOT_API_KEY))
+    (api "https://api.moonshot.ai/v1")
     (compat
       ((reasoning_field reasoning_content)
        (max_tokens_field max_tokens)
        (require_tool_result_name false)
        (enable_thinking_field enable_thinking)))
     (models
-      (((name kimi-k2.6)
-        (context_window 128000)
+      (((name kimi-k2-0905-preview)
+        (context_window 262144)
         (max_tokens 32768)
-        (thinking ((budget_medium 8000) (budget_high 32000)))))))
+        (thinking ((budget_medium 8000) (budget_high 32000)))
+        (cost ((input_per_mtok "0.6") (output_per_mtok "2.5")
+               (cache_read_per_mtok "0.15")))))))
+   ((name github-copilot)
+    (protocol openai-completions)
+    (api "https://api.githubcopilot.com")
+    (api_key_env (GITHUB_TOKEN GH_TOKEN))
+    (oauth ((device_auth_url "https://github.com/login/device/code")
+            (token_url "https://github.com/login/oauth/access_token")
+            (client_id "Iv1.b507a08c87ecfe98")))
+    (models
+      (((name claude-sonnet-4.5)
+        (context_window 128000)
+        (max_tokens 16384))
+       ((name gpt-4o)
+        (context_window 128000)
+        (max_tokens 16384))
+       ((name gemini-2.5-pro)
+        (context_window 1000000)
+        (max_tokens 65536)))))
+   ((name github-models)
+    (protocol openai-completions)
+    (api "https://models.github.ai/inference")
+    (api_key_env (GITHUB_TOKEN GH_TOKEN))
+    (oauth ((device_auth_url "https://github.com/login/device/code")
+            (token_url "https://github.com/login/oauth/access_token")
+            (client_id "Iv1.b507a08c87ecfe98")))
+    (models
+      (((name openai/gpt-4o)
+        (context_window 128000)
+        (max_tokens 16384))
+       ((name meta/meta-llama-3.1-405b-instruct)
+        (context_window 128000)
+        (max_tokens 8192)))))
    ((name local)
-    (api openai-completions)
-    (base_url "http://localhost:11434")
+    (protocol openai-completions)
+    (api_key_env ())
+    (api "http://localhost:11434")
     (base_url_env OLLAMA_BASE_URL)
     (models
       (((name qwen2.5-coder:14b)
@@ -519,7 +671,24 @@ Available in interactive (tty) mode only:
 | `/info` | Print current stats: tokens, cache read/write, model, turn count |
 | `/quit` | Exit cleanly |
 
-User-defined commands (from `commands` in config) extend this set.
+`pera login <provider>` is a **top-level subcommand** (not a slash command) that
+pre-triggers the OAuth device flow for a named provider and stores the resulting
+token before a session begins. It exits after the flow completes. Useful for
+confirming auth in CI or before a long run. `pera logout <provider>` deletes the
+cached token file, forcing re-authentication on the next use.
+
+Tokens are cached at `$XDG_STATE_HOME/pera/tokens/<provider>.sexp` (defaulting
+to `~/.local/state/pera/tokens/` when `XDG_STATE_HOME` is unset). Files are
+written with mode **0600** (owner read/write only). This follows the XDG Base
+Directory Specification — `XDG_STATE_HOME` is the correct location for
+persistent per-user runtime state that is not configuration (it is not
+`XDG_CONFIG_HOME`) and not a cache that can be safely deleted (`XDG_CACHE_HOME`).
+The 0600 permission ensures other users on the same system cannot read the token.
+
+*(Implemented in Phase 6; currently only GitHub Copilot and GitHub Models require
+OAuth — all other "TOKEN"-named providers use manual PATs via `api_key_env`.)*
+
+User-defined commands (from `commands` in config) extend this slash-command set.
 Built-in names (`compact`, `info`, `quit`) are reserved and cannot be overridden.
 
 ---

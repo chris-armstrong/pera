@@ -1305,6 +1305,147 @@ already handles `Some`/`None` per field.)
 
 ---
 
+## Phase 2B — models.sexp schema alignment
+
+Align `Models_config` types with the models.dev/LiteLLM field conventions
+established in the spec update (see `pera-cli.md §Models file`):
+
+- `provider_spec.api` (protocol discriminator) → `provider_spec.protocol`
+- `provider_spec.base_url` (URL) → `provider_spec.api`
+- `provider_spec.api_key_env : string option` → `string list`
+- new `model_cost` type storing `Decimal.t` via custom sexp converters
+- new `cost : model_cost option` field on `model_spec`
+
+This phase touches `lib/pera_cli/` only. No changes to `pera_types`,
+`pera_connector`, or any other layer. `provider_auth.base_url` in
+`pera_config` (`config.sexp`) is a separate user-facing field and is
+**not renamed**.
+
+---
+
+### Stage 2B.1 — `model_cost` type and `Decimal.t` sexp converters
+
+**Edit `lib/pera_cli/models_config.ml`:**
+
+Add custom sexp converters immediately after the `open` lines, before any
+`[@@deriving sexp]` use:
+
+```ocaml
+let decimal_of_sexp s = Decimal.of_string (Sexplib.Conv.string_of_sexp s)
+let sexp_of_decimal d = Sexplib.Conv.sexp_of_string (Decimal.to_string d)
+```
+
+`ppx_sexp_conv` resolves `decimal_of_sexp` / `sexp_of_decimal` by name from
+the ambient scope — no `[@sexp.custom ...]` attribute needed.
+
+Add `model_cost` type before `model_spec`:
+
+```ocaml
+type model_cost = {
+  input_per_mtok       : decimal;
+  output_per_mtok      : decimal;
+  cache_read_per_mtok  : decimal option; [@sexp.option]
+  cache_write_per_mtok : decimal option; [@sexp.option]
+}
+[@@deriving sexp, show, eq]
+```
+
+Add `cost : model_cost option [@sexp.option]` as the last field of
+`model_spec`.
+
+**Edit `lib/pera_cli/models_config.mli`:**
+
+Add the `model_cost` type declaration (with field docs) and add `cost` to
+`model_spec`.
+
+**Edit `lib/pera_cli/dune`:**
+
+Add `decimal` to the `libraries` stanza of the `pera_cli` library (it is
+already a dep of `pera_types` and `pera_provider`; must be explicit here).
+
+**Tests (`lib/pera_cli/test/models_config_test.ml` — extend existing):**
+
+```ocaml
+(* Test: model_cost round-trips through sexp — of_sexp (to_sexp v) = v *)
+(* Test: "3.00" atom parses to Decimal.(of_string "3.00") *)
+(* Test: "0.30" atom parses correctly — no float rounding loss *)
+(* Test: cache fields absent in sexp parse to None *)
+(* Test: cost absent in model_spec sexp parses to None in model_spec.cost *)
+(* Test: model_spec with cost present round-trips *)
+```
+
+**Verify:** `dune test` green.
+
+---
+
+### Stage 2B.2 — Rename `api`→`protocol`, `base_url`→`api`, widen `api_key_env`
+
+**Edit `lib/pera_cli/models_config.ml`:**
+
+In `provider_spec`, apply three mechanical changes:
+
+1. Rename field `api` → `protocol` (string, no type change)
+2. Rename field `base_url` → `api` (string option, `[@sexp.option]` unchanged)
+3. Change `api_key_env : string option [@sexp.option]` →
+   `api_key_env : string list [@sexp.default []]`
+
+**Edit `lib/pera_cli/models_config.mli`:**
+
+Mirror the same renames and type changes in `provider_spec`.
+
+**Edit `lib/pera_cli/models_loader.ml`:**
+
+Update all field accesses to use the new names:
+
+- `p.api` (where it held the protocol string) → `p.protocol`
+- `p.base_url` → `p.api`
+- Any `Option.is_some p.api_key_env` / `Option.get p.api_key_env` patterns →
+  list operations (`p.api_key_env <> []`, `List.hd p.api_key_env`, etc.)
+
+`resolve_model` does not access these fields directly; the renaming only
+affects callers that inspect the returned `provider_spec`.
+
+**Edit `lib/pera_cli/test/models_config_test.ml`:**
+
+Update all sexp string fixtures and record literals:
+- `(api anthropic)` → `(protocol anthropic)`
+- `(base_url "...")` → `(api "...")`
+- `(api_key_env ANTHROPIC_API_KEY)` → `(api_key_env (ANTHROPIC_API_KEY))`
+- absent `api_key_env` → omit field (default `[]`) or `(api_key_env ())`
+
+**Edit `lib/pera_cli/test/models_loader_test.ml`:**
+
+Update provider/model fixtures the same way.
+
+**Edit `lib/pera_cli/test/config_loader_test.ml`:**
+
+Check for any references to `provider_spec.base_url` or `provider_spec.api`
+in fixtures; update if present. `provider_auth.base_url` (in `pera_config`)
+is unchanged.
+
+**Verify:** `dune test` green, `ocamlformat --check` clean, `semgrep` clean.
+
+---
+
+### Phase 2B review checklist
+
+- [ ] `dune build` — clean
+- [ ] `dune test` — all suites pass
+- [ ] `ocamlformat --check` — clean
+- [ ] `semgrep` — clean
+- [ ] `Decimal.t` fields use custom converters; no `float` in `model_cost`
+- [ ] `api_key_env` is `string list` throughout `pera_cli`; no `Option.get`
+  on old `string option` pattern
+- [ ] `provider_spec.protocol` is used everywhere `provider_spec.api`
+  (protocol discriminator) was used
+- [ ] `provider_spec.api` (URL) is used everywhere `provider_spec.base_url`
+  was used
+- [ ] `provider_auth.base_url` in `pera_config` is **unchanged**
+- [ ] No references to old field names (`base_url`, `provider_spec.api` as
+  discriminator) remain in `lib/pera_cli/`
+
+---
+
 ## Phase 3 — pera-cli library
 
 Implement the reusable wiring that `Pera_cli.Make` provides: shell tool
@@ -2055,6 +2196,236 @@ imports `Conversation_driver_helpers`.
 
 ---
 
+## Phase 6 — OAuth device flow (RFC 8628)
+
+Native OAuth 2.0 Device Authorization Grant for subscription providers.
+Currently the only providers in our connector suite that require OAuth (rather
+than a simple PAT) are **GitHub Copilot** and **GitHub Models** — both use the
+same GitHub device flow endpoint and client_id. Other "TOKEN"-named providers
+(HuggingFace, DigitalOcean, Friendli) use manual PATs and are already handled
+by `api_key_env`.
+
+Implementation lives entirely in `lib/pera_cli/`. No new opam dependencies:
+HTTP via existing `cohttp-eio`, JSON via `yojson`.
+
+---
+
+### Stage 6.1 — `oauth_flow` type in `models_config`
+
+**Edit `lib/pera_cli/models_config.ml` and `.mli`:**
+
+Add the `oauth_flow` record before `provider_spec`:
+
+```ocaml
+type oauth_flow = {
+  device_auth_url : string;
+  token_url       : string;
+  client_id       : string;
+  scope           : string list; [@sexp.default []]
+}
+[@@deriving sexp, show, eq]
+```
+
+Add `oauth : oauth_flow option [@sexp.option]` to `provider_spec` (between
+`base_url_env` and `compat`).
+
+`oauth_flow` has no custom sexp converters — ppx_sexp_conv handles all fields —
+so no `models_config_test` additions are required for this type.
+
+**Verify:** `dune build` clean.
+
+---
+
+### Stage 6.2 — `oauth_token.ml` — token cache and device flow
+
+**Create `lib/pera_cli/oauth_token.mli`:**
+
+```ocaml
+type cached_token = {
+  access_token  : string;
+  refresh_token : string option;
+  expires_at    : float;  (** Eio monotonic time — Eio.Time.now clock at expiry *)
+}
+
+type resolve_error =
+  | Device_flow_cancelled
+  | Device_flow_expired
+  | Device_flow_http_error of string
+  | Token_refresh_failed   of string
+
+val token_path : xdg_state_home:string -> provider:string -> string
+(** [$xdg_state_home/pera/tokens/<provider>.sexp] *)
+
+val read_cache :
+  fs:#Eio.Fs.dir ->
+  path:string ->
+  (cached_token option, string) result
+(** Read and parse the token cache file via Eio FS. [Ok None] if absent. *)
+
+val write_cache :
+  fs:#Eio.Fs.dir ->
+  path:string ->
+  cached_token ->
+  (unit, string) result
+(** Write the token cache file via Eio FS with mode 0600. Creates parent dirs. *)
+
+val is_valid : clock:#Eio.Time.clock -> cached_token -> margin_s:float -> bool
+(** [is_valid ~clock t ~margin_s] is [true] if
+    [t.expires_at > Eio.Time.now clock + margin_s]. *)
+
+val refresh :
+  env:Eio_unix.Stdenv.base ->
+  sw:Eio.Switch.t ->
+  flow:Models_config.oauth_flow ->
+  refresh_token:string ->
+  (cached_token, resolve_error) result
+(** POST [grant_type=refresh_token] to [flow.token_url]. Returns new tokens. *)
+
+val device_flow :
+  env:Eio_unix.Stdenv.base ->
+  sw:Eio.Switch.t ->
+  flow:Models_config.oauth_flow ->
+  print_prompt:(user_code:string -> verification_uri:string -> unit) ->
+  (cached_token, resolve_error) result
+(** Full RFC 8628 device flow. Calls [print_prompt] once with the user-facing
+    code and URL, then polls [flow.token_url] until authorised, expired, or
+    cancelled. Respects [slow_down] responses from GitHub. *)
+
+val resolve :
+  env:Eio_unix.Stdenv.base ->
+  sw:Eio.Switch.t ->
+  flow:Models_config.oauth_flow ->
+  cache_path:string ->
+  print_prompt:(user_code:string -> verification_uri:string -> unit) ->
+  (string, resolve_error) result
+(** High-level resolver. Returns a valid access token, following the full
+    resolution sequence: read cache → refresh if expired → device flow.
+    Persists the result to [cache_path] after each successful step. *)
+```
+
+**Implement `lib/pera_cli/oauth_token.ml`:**
+
+All I/O through Eio — `Eio.Fs` for the token cache, `Eio.Stdenv.clock env` for
+all timestamps. No `Unix` or `Sys` calls. HTTP via `cohttp-eio` (same pattern as
+the connector layer). JSON via `yojson`.
+
+Token expiry: GitHub returns `expires_in` (seconds). Store
+`Eio.Time.now (Eio.Stdenv.clock env) +. float_of_int expires_in` as `expires_at`.
+GitHub tokens expire after 8 hours; refresh tokens after 6 months.
+
+Device flow polling loop:
+```ocaml
+let rec poll ~env ~sw ~token_url ~device_code ~interval ~deadline =
+  let clock = Eio.Stdenv.clock env in
+  if Eio.Time.now clock >= deadline then Error Device_flow_expired
+  else begin
+    Eio.Time.sleep clock (float_of_int interval);
+    match post_token ~env ~sw token_url device_code with
+    | Ok token  -> Ok token
+    | Error `Slow_down             -> poll ... ~interval:(interval + 5) ...
+    | Error `Authorization_pending -> poll ... ~interval ...
+    | Error (`Http_error s)        -> Error (Device_flow_http_error s)
+  end
+```
+
+**Tests (`lib/pera_cli/test/oauth_token_test.ml`):**
+
+```ocaml
+(* Test: is_valid returns true when expires_at is in the future (mock clock) *)
+(* Test: is_valid returns false when expired within margin (mock clock) *)
+(* Test: write_cache / read_cache round-trip via Eio mock FS *)
+(* Test: read_cache returns None for missing file *)
+(* Test: token_path constructs expected path *)
+(* Test: resolve uses cached token when valid — no HTTP calls *)
+(* Test: resolve calls refresh when expired + refresh_token present *)
+(* Test: resolve triggers device_flow when no cache *)
+```
+
+Use mock clock (`Eio.Time.make_clock`) and mock FS for the FS/clock tests.
+Use a function-injected HTTP mock for the HTTP-touching tests.
+
+**Verify:** `dune test` green.
+
+---
+
+### Stage 6.3 — Wire OAuth into config resolver
+
+**Edit `lib/pera_cli/config_resolver.ml`:**
+
+Extend the `resolve_api_key` function (or equivalent, per Phase 2 output) to
+follow the three-step resolution order:
+
+```ocaml
+let resolve_api_key ~env ~sw ~xdg_state_home ~getenv_opt ~provider_spec ~provider_auth =
+  match provider_auth.Pera_config.api_key with
+  | Some src -> Ok (resolve_key_source src)  (* step 1: explicit user config *)
+  | None ->
+    let from_env = List.find_map
+      (fun v -> getenv_opt v)
+      provider_spec.Models_config.api_key_env
+    in
+    match from_env with
+    | Some key -> Ok key  (* step 2: env var *)
+    | None ->
+      match provider_spec.Models_config.oauth with
+      | None -> Error (no_auth_error provider_spec.name)
+      | Some flow ->   (* step 3: OAuth device flow *)
+        let cache_path = Oauth_token.token_path
+          ~xdg_state_home ~provider:provider_spec.name in
+        Oauth_token.resolve ~env ~sw ~flow ~cache_path
+          ~print_prompt:(fun ~user_code ~verification_uri ->
+            Printf.eprintf
+              "[pera] Open %s and enter code: %s\n%!" verification_uri user_code)
+        |> Result.map_error (fun e -> Oauth_token.error_to_string e)
+```
+
+**Tests (`lib/pera_cli/test/config_loader_test.ml` — extend):**
+
+```ocaml
+(* Test: api_key in config takes priority over env var and oauth *)
+(* Test: env var used when no api_key in config *)
+(* Test: oauth resolve called when no api_key and env var absent *)
+(* Test: error emitted when no api_key, no env var, no oauth *)
+```
+
+**Verify:** `dune test` green, `ocamlformat --check`, `semgrep` clean.
+
+---
+
+### Stage 6.4 — `pera login` / `pera logout` subcommands
+
+**Edit `bin/pera/main.ml`:**
+
+Add two subcommands using Cmdliner:
+
+```
+pera login <provider>   — trigger OAuth device flow, store token; exit
+pera logout <provider>  — delete cached token file; exit
+```
+
+`login` reuses `Oauth_token.resolve` with `print_prompt` writing to stdout.
+`logout` calls `Sys.remove` on the token path, silently succeeds if not
+found.
+
+**Tests:** smoke test in `bin/pera/` (manual/interactive — not automated).
+
+---
+
+### Phase 6 review checklist
+
+- [ ] `dune build` — clean
+- [ ] `dune test` — all suites pass
+- [ ] `ocamlformat --check` — clean
+- [ ] `semgrep` — clean
+- [ ] No real network calls in tests (`oauth_token` HTTP is function-injected)
+- [ ] Token cache file created with mode 0600 (test verifies)
+- [ ] `resolve_api_key` follows the three-step priority order
+- [ ] `Device_flow_cancelled` / `Device_flow_expired` produce actionable error messages
+- [ ] `pera login github-copilot` triggers device flow end-to-end (manual smoke test)
+- [ ] `pera logout github-copilot` removes the cached token (manual smoke test)
+
+---
+
 ## Summary of phases
 
 | Phase | Description | New packages | Key deliverables |
@@ -2065,8 +2436,9 @@ imports `Conversation_driver_helpers`.
 | 3 | pera-cli library | — | Shell tool builder, event renderer, input parsing, Make functor (run + run_with) |
 | 4 | pera binary | `pera` executable | bin/pera/main.ml, packaged models.sexp + loader search, smoke test |
 | 5 | Driver cleanup | — | Migrated critical scenarios, deleted obsolete drivers |
+| 6 | OAuth device flow | — | oauth_token.ml, token cache, resolver wiring, pera login/logout |
 
-Total stages: 25 (6 + 5 + 5 + 4 + 3 + 5 plus 5 phase reviews).
+Total stages: 29 (6 + 5 + 5 + 4 + 3 + 5 + 4 plus 6 phase reviews).
 Each stage is scoped to fit within a single focused LLM session.
 
 ---
