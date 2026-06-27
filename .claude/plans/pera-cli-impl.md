@@ -1305,6 +1305,147 @@ already handles `Some`/`None` per field.)
 
 ---
 
+## Phase 2B — models.sexp schema alignment
+
+Align `Models_config` types with the models.dev/LiteLLM field conventions
+established in the spec update (see `pera-cli.md §Models file`):
+
+- `provider_spec.api` (protocol discriminator) → `provider_spec.protocol`
+- `provider_spec.base_url` (URL) → `provider_spec.api`
+- `provider_spec.api_key_env : string option` → `string list`
+- new `model_cost` type storing `Decimal.t` via custom sexp converters
+- new `cost : model_cost option` field on `model_spec`
+
+This phase touches `lib/pera_cli/` only. No changes to `pera_types`,
+`pera_connector`, or any other layer. `provider_auth.base_url` in
+`pera_config` (`config.sexp`) is a separate user-facing field and is
+**not renamed**.
+
+---
+
+### Stage 2B.1 — `model_cost` type and `Decimal.t` sexp converters
+
+**Edit `lib/pera_cli/models_config.ml`:**
+
+Add custom sexp converters immediately after the `open` lines, before any
+`[@@deriving sexp]` use:
+
+```ocaml
+let decimal_of_sexp s = Decimal.of_string (Sexplib.Conv.string_of_sexp s)
+let sexp_of_decimal d = Sexplib.Conv.sexp_of_string (Decimal.to_string d)
+```
+
+`ppx_sexp_conv` resolves `decimal_of_sexp` / `sexp_of_decimal` by name from
+the ambient scope — no `[@sexp.custom ...]` attribute needed.
+
+Add `model_cost` type before `model_spec`:
+
+```ocaml
+type model_cost = {
+  input_per_mtok       : decimal;
+  output_per_mtok      : decimal;
+  cache_read_per_mtok  : decimal option; [@sexp.option]
+  cache_write_per_mtok : decimal option; [@sexp.option]
+}
+[@@deriving sexp, show, eq]
+```
+
+Add `cost : model_cost option [@sexp.option]` as the last field of
+`model_spec`.
+
+**Edit `lib/pera_cli/models_config.mli`:**
+
+Add the `model_cost` type declaration (with field docs) and add `cost` to
+`model_spec`.
+
+**Edit `lib/pera_cli/dune`:**
+
+Add `decimal` to the `libraries` stanza of the `pera_cli` library (it is
+already a dep of `pera_types` and `pera_provider`; must be explicit here).
+
+**Tests (`lib/pera_cli/test/models_config_test.ml` — extend existing):**
+
+```ocaml
+(* Test: model_cost round-trips through sexp — of_sexp (to_sexp v) = v *)
+(* Test: "3.00" atom parses to Decimal.(of_string "3.00") *)
+(* Test: "0.30" atom parses correctly — no float rounding loss *)
+(* Test: cache fields absent in sexp parse to None *)
+(* Test: cost absent in model_spec sexp parses to None in model_spec.cost *)
+(* Test: model_spec with cost present round-trips *)
+```
+
+**Verify:** `dune test` green.
+
+---
+
+### Stage 2B.2 — Rename `api`→`protocol`, `base_url`→`api`, widen `api_key_env`
+
+**Edit `lib/pera_cli/models_config.ml`:**
+
+In `provider_spec`, apply three mechanical changes:
+
+1. Rename field `api` → `protocol` (string, no type change)
+2. Rename field `base_url` → `api` (string option, `[@sexp.option]` unchanged)
+3. Change `api_key_env : string option [@sexp.option]` →
+   `api_key_env : string list [@sexp.default []]`
+
+**Edit `lib/pera_cli/models_config.mli`:**
+
+Mirror the same renames and type changes in `provider_spec`.
+
+**Edit `lib/pera_cli/models_loader.ml`:**
+
+Update all field accesses to use the new names:
+
+- `p.api` (where it held the protocol string) → `p.protocol`
+- `p.base_url` → `p.api`
+- Any `Option.is_some p.api_key_env` / `Option.get p.api_key_env` patterns →
+  list operations (`p.api_key_env <> []`, `List.hd p.api_key_env`, etc.)
+
+`resolve_model` does not access these fields directly; the renaming only
+affects callers that inspect the returned `provider_spec`.
+
+**Edit `lib/pera_cli/test/models_config_test.ml`:**
+
+Update all sexp string fixtures and record literals:
+- `(api anthropic)` → `(protocol anthropic)`
+- `(base_url "...")` → `(api "...")`
+- `(api_key_env ANTHROPIC_API_KEY)` → `(api_key_env (ANTHROPIC_API_KEY))`
+- absent `api_key_env` → omit field (default `[]`) or `(api_key_env ())`
+
+**Edit `lib/pera_cli/test/models_loader_test.ml`:**
+
+Update provider/model fixtures the same way.
+
+**Edit `lib/pera_cli/test/config_loader_test.ml`:**
+
+Check for any references to `provider_spec.base_url` or `provider_spec.api`
+in fixtures; update if present. `provider_auth.base_url` (in `pera_config`)
+is unchanged.
+
+**Verify:** `dune test` green, `ocamlformat --check` clean, `semgrep` clean.
+
+---
+
+### Phase 2B review checklist
+
+- [ ] `dune build` — clean
+- [ ] `dune test` — all suites pass
+- [ ] `ocamlformat --check` — clean
+- [ ] `semgrep` — clean
+- [ ] `Decimal.t` fields use custom converters; no `float` in `model_cost`
+- [ ] `api_key_env` is `string list` throughout `pera_cli`; no `Option.get`
+  on old `string option` pattern
+- [ ] `provider_spec.protocol` is used everywhere `provider_spec.api`
+  (protocol discriminator) was used
+- [ ] `provider_spec.api` (URL) is used everywhere `provider_spec.base_url`
+  was used
+- [ ] `provider_auth.base_url` in `pera_config` is **unchanged**
+- [ ] No references to old field names (`base_url`, `provider_spec.api` as
+  discriminator) remain in `lib/pera_cli/`
+
+---
+
 ## Phase 3 — pera-cli library
 
 Implement the reusable wiring that `Pera_cli.Make` provides: shell tool
