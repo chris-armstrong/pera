@@ -1,25 +1,19 @@
 open Containers
 
-let fixed_time =
-  Unix.
-    {
-      tm_year = 124;
-      tm_mon = 5;
-      tm_mday = 26;
-      tm_hour = 10;
-      tm_min = 30;
-      tm_sec = 0;
-      tm_wday = 3;
-      tm_yday = 177;
-      tm_isdst = false;
-    }
+(* 2024-06-26 10:30:00 UTC as a Unix timestamp *)
+let fixed_timestamp = 1719397800.0
+
+let fixed_clock () =
+  let c = Eio_mock.Clock.make () in
+  Eio_mock.Clock.set_time c fixed_timestamp;
+  c
 
 let fixed_random buf = Bytes.fill buf 0 (Bytes.length buf) '\x00'
 
 let test_filename_pattern () =
   let name =
     Pera_cli.Session_path.generate_filename ~secure_random:fixed_random
-      ~wall_time:(fun () -> fixed_time)
+      ~clock:(fixed_clock ())
   in
   let re =
     Re.(
@@ -40,7 +34,7 @@ let test_filename_pattern () =
 let test_filename_date_content () =
   let name =
     Pera_cli.Session_path.generate_filename ~secure_random:fixed_random
-      ~wall_time:(fun () -> fixed_time)
+      ~clock:(fixed_clock ())
   in
   Alcotest.(check bool)
     "starts with expected date prefix" true
@@ -50,15 +44,15 @@ let test_resolve_with_override () =
   let path =
     Pera_cli.Session_path.resolve
       ~session_override:(Some "/tmp/my-session.jsonl") ~session_dir:"/sessions"
-      ~secure_random:fixed_random ~wall_time:(fun () -> fixed_time)
+      ~secure_random:fixed_random ~clock:(fixed_clock ())
   in
   Alcotest.(check string) "returns override path" "/tmp/my-session.jsonl" path
 
 let test_resolve_without_override () =
   let path =
     Pera_cli.Session_path.resolve ~session_override:None
-      ~session_dir:"/sessions" ~secure_random:fixed_random ~wall_time:(fun () ->
-        fixed_time)
+      ~session_dir:"/sessions" ~secure_random:fixed_random
+      ~clock:(fixed_clock ())
   in
   Alcotest.(check bool)
     "starts with session_dir" true

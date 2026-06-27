@@ -36,12 +36,10 @@ let effort_conv =
               (`Msg
                  (Printf.sprintf "unknown effort %S (expected: low|medium|high)"
                     s))),
-      fun fmt e ->
-        Format.pp_print_string fmt
-          (match e with
-          | Pera_config.Low -> "low"
-          | Pera_config.Medium -> "medium"
-          | Pera_config.High -> "high") )
+      Fmt.of_to_string (function
+        | Pera_config.Low -> "low"
+        | Pera_config.Medium -> "medium"
+        | Pera_config.High -> "high") )
 
 let cache_policy_conv =
   Cmdliner.Arg.conv
@@ -57,12 +55,10 @@ let cache_policy_conv =
                     "unknown cache policy %S (expected: \
                      no_cache|conversation|system_and_tools)"
                     s))),
-      fun fmt p ->
-        Format.pp_print_string fmt
-          (match p with
-          | Pera_config.No_cache -> "no_cache"
-          | Pera_config.Conversation -> "conversation"
-          | Pera_config.System_and_tools -> "system_and_tools") )
+      Fmt.of_to_string (function
+        | Pera_config.No_cache -> "no_cache"
+        | Pera_config.Conversation -> "conversation"
+        | Pera_config.System_and_tools -> "system_and_tools") )
 
 let cache_ttl_conv =
   Cmdliner.Arg.conv
@@ -75,41 +71,32 @@ let cache_ttl_conv =
               (`Msg
                  (Printf.sprintf
                     "unknown cache TTL %S (expected: five_minutes|one_hour)" s))),
-      fun fmt t ->
-        Format.pp_print_string fmt
-          (match t with
-          | Pera_config.Five_minutes -> "five_minutes"
-          | Pera_config.One_hour -> "one_hour") )
+      Fmt.of_to_string (function
+        | Pera_config.Five_minutes -> "five_minutes"
+        | Pera_config.One_hour -> "one_hour") )
 
 let parse ~argv =
   let open Cmdliner in
+  let opt_string i = Arg.(value & opt (some string) None & i) in
   let model =
-    Arg.(
-      value
-      & opt (some string) None
-      & info [ "model" ] ~docv:"PROVIDER/MODEL"
-          ~doc:
-            "Fully-qualified model identifier (e.g. \
-             anthropic/claude-sonnet-4-6).")
+    opt_string
+      (Arg.info [ "model" ] ~docv:"PROVIDER/MODEL"
+         ~doc:
+           "Fully-qualified model identifier (e.g. \
+            anthropic/claude-sonnet-4-6).")
   in
   let api_key =
-    Arg.(
-      value
-      & opt (some string) None
-      & info [ "api-key" ] ~docv:"KEY" ~doc:"API key string.")
+    opt_string (Arg.info [ "api-key" ] ~docv:"KEY" ~doc:"API key string.")
   in
   let api_key_file =
-    Arg.(
-      value
-      & opt (some string) None
-      & info [ "api-key-file" ] ~docv:"PATH" ~doc:"File containing the API key.")
+    opt_string
+      (Arg.info [ "api-key-file" ] ~docv:"PATH"
+         ~doc:"File containing the API key.")
   in
   let api_key_command =
-    Arg.(
-      value
-      & opt (some string) None
-      & info [ "api-key-command" ] ~docv:"CMD"
-          ~doc:"Command whose stdout is the API key.")
+    opt_string
+      (Arg.info [ "api-key-command" ] ~docv:"CMD"
+         ~doc:"Command whose stdout is the API key.")
   in
   let effort =
     Arg.(
@@ -139,34 +126,26 @@ let parse ~argv =
           ~doc:"Cache TTL: five_minutes|one_hour.")
   in
   let session =
-    Arg.(
-      value
-      & opt (some string) None
-      & info [ "session" ] ~docv:"PATH" ~doc:"Explicit session file path.")
+    opt_string
+      (Arg.info [ "session" ] ~docv:"PATH" ~doc:"Explicit session file path.")
   in
   let session_dir =
-    Arg.(
-      value
-      & opt (some string) None
-      & info [ "session-dir" ] ~docv:"DIR" ~doc:"Session directory.")
+    opt_string
+      (Arg.info [ "session-dir" ] ~docv:"DIR" ~doc:"Session directory.")
   in
   let cwd =
-    Arg.(
-      value
-      & opt (some string) None
-      & info [ "cwd" ] ~docv:"DIR" ~doc:"Working directory for tools.")
+    opt_string
+      (Arg.info [ "cwd" ] ~docv:"DIR" ~doc:"Working directory for tools.")
   in
   let system =
-    Arg.(
-      value
-      & opt (some string) None
-      & info [ "system" ] ~docv:"PROMPT" ~doc:"Literal system prompt override.")
+    opt_string
+      (Arg.info [ "system" ] ~docv:"PROMPT"
+         ~doc:"Literal system prompt override.")
   in
   let system_file =
-    Arg.(
-      value
-      & opt (some string) None
-      & info [ "system-file" ] ~docv:"PATH" ~doc:"Load system prompt from file.")
+    opt_string
+      (Arg.info [ "system-file" ] ~docv:"PATH"
+         ~doc:"Load system prompt from file.")
   in
   let no_compact =
     Arg.(

@@ -18,7 +18,7 @@
 
 (test
  (name session_path_test)
- (libraries pera_cli alcotest containers re))
+ (libraries pera_cli alcotest containers re eio.mock))
 
 (test
  (name effort_resolver_test)

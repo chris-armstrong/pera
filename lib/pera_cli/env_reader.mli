@@ -17,8 +17,8 @@ val read_api_key_override :
 *)
 
 val read_partial_config :
-  getenv_opt:(string -> string option) -> Pera_config.config
+  getenv_opt:(string -> string option) -> (Pera_config.config, string) result
 (** Build a partial [Pera_config.config] from [PERA_*] env vars. Only fields
     with a corresponding env var set are populated; the rest are [None] / [[]].
-    Unrecognised values for typed vars (effort, cache policy, etc.) are silently
-    skipped — the field is left as [None]. *)
+    Returns [Error msg] if a typed var (effort, cache policy, etc.) has an
+    unrecognised value; [msg] quotes the bad value and the variable name. *)

@@ -142,6 +142,9 @@ let resolve_system_prompt ~parsed_args =
 
 let resolve inputs =
   let open Result.Syntax in
+  let* env_partial =
+    Env_reader.read_partial_config ~getenv_opt:inputs.getenv_opt
+  in
   let merged =
     List.fold_left
       (fun base overlay -> Config_loader.merge ~base ~overlay)
@@ -149,7 +152,7 @@ let resolve inputs =
       [
         Option.get_or ~default:empty_config inputs.user_config;
         Option.get_or ~default:empty_config inputs.project_config;
-        Env_reader.read_partial_config ~getenv_opt:inputs.getenv_opt;
+        env_partial;
         Cli_args.to_partial_config inputs.parsed_args;
       ]
   in

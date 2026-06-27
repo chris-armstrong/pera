@@ -48,40 +48,59 @@ let test_api_key_multiple_errors () =
   | Ok _ -> Alcotest.fail "expected Error for multiple API key vars"
 
 let test_partial_config_effort () =
-  let cfg =
+  match
     Pera_cli.Env_reader.read_partial_config
       ~getenv_opt:(env_of [ ("PERA_EFFORT", "medium") ])
-  in
-  Alcotest.(check (option string)) "no model" None cfg.default_model;
-  match cfg.effort with
-  | Some Pera_cli.Pera_config.Medium -> ()
-  | _ -> Alcotest.fail "expected Medium effort"
+  with
+  | Ok cfg -> (
+      Alcotest.(check (option string)) "no model" None cfg.default_model;
+      match cfg.effort with
+      | Some Pera_cli.Pera_config.Medium -> ()
+      | _ -> Alcotest.fail "expected Medium effort")
+  | Error e -> Alcotest.failf "unexpected error: %s" e
+
+let test_partial_config_bad_effort () =
+  match
+    Pera_cli.Env_reader.read_partial_config
+      ~getenv_opt:(env_of [ ("PERA_EFFORT", "ultra") ])
+  with
+  | Error e ->
+      Alcotest.(check bool)
+        "error quotes bad value" true
+        (String.mem ~sub:"\"ultra\"" e)
+  | Ok _ -> Alcotest.fail "expected Error for unrecognised effort value"
 
 let test_partial_config_cache_policy () =
-  let cfg =
+  match
     Pera_cli.Env_reader.read_partial_config
       ~getenv_opt:(env_of [ ("PERA_CACHE_POLICY", "conversation") ])
-  in
-  match cfg.cache with
-  | Some { policy = Some Pera_cli.Pera_config.Conversation; _ } -> ()
-  | _ -> Alcotest.fail "expected Conversation cache policy"
+  with
+  | Ok cfg -> (
+      match cfg.cache with
+      | Some { policy = Some Pera_cli.Pera_config.Conversation; _ } -> ()
+      | _ -> Alcotest.fail "expected Conversation cache policy")
+  | Error e -> Alcotest.failf "unexpected error: %s" e
 
 let test_partial_config_no_compact () =
-  let cfg =
+  match
     Pera_cli.Env_reader.read_partial_config
       ~getenv_opt:(env_of [ ("PERA_NO_COMPACT", "1") ])
-  in
-  match cfg.compaction with
-  | Some { enabled = Some false; _ } -> ()
-  | _ -> Alcotest.fail "expected compaction disabled"
+  with
+  | Ok cfg -> (
+      match cfg.compaction with
+      | Some { enabled = Some false; _ } -> ()
+      | _ -> Alcotest.fail "expected compaction disabled")
+  | Error e -> Alcotest.failf "unexpected error: %s" e
 
 let test_partial_config_empty () =
-  let cfg = Pera_cli.Env_reader.read_partial_config ~getenv_opt:(env_of []) in
-  Alcotest.(check (option string)) "no model" None cfg.default_model;
-  Alcotest.(check (option string))
-    "no effort" None
-    (Option.map Pera_cli.Pera_config.show_effort cfg.effort);
-  Alcotest.(check (option int)) "no max_tokens" None cfg.max_tokens
+  match Pera_cli.Env_reader.read_partial_config ~getenv_opt:(env_of []) with
+  | Ok cfg ->
+      Alcotest.(check (option string)) "no model" None cfg.default_model;
+      Alcotest.(check (option string))
+        "no effort" None
+        (Option.map Pera_cli.Pera_config.show_effort cfg.effort);
+      Alcotest.(check (option int)) "no max_tokens" None cfg.max_tokens
+  | Error e -> Alcotest.failf "unexpected error: %s" e
 
 let suite =
   [
@@ -91,6 +110,7 @@ let suite =
     ("no API key vars → AK_none", `Quick, test_api_key_none);
     ("multiple API key vars → Error", `Quick, test_api_key_multiple_errors);
     ("PERA_EFFORT → effort field", `Quick, test_partial_config_effort);
+    ("PERA_EFFORT bad value → Error", `Quick, test_partial_config_bad_effort);
     ( "PERA_CACHE_POLICY → cache.policy",
       `Quick,
       test_partial_config_cache_policy );
