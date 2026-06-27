@@ -676,6 +676,15 @@ pre-triggers the OAuth device flow for a named provider and stores the resulting
 token before a session begins. It exits after the flow completes. Useful for
 confirming auth in CI or before a long run. `pera logout <provider>` deletes the
 cached token file, forcing re-authentication on the next use.
+
+Tokens are cached at `$XDG_STATE_HOME/pera/tokens/<provider>.sexp` (defaulting
+to `~/.local/state/pera/tokens/` when `XDG_STATE_HOME` is unset). Files are
+written with mode **0600** (owner read/write only). This follows the XDG Base
+Directory Specification — `XDG_STATE_HOME` is the correct location for
+persistent per-user runtime state that is not configuration (it is not
+`XDG_CONFIG_HOME`) and not a cache that can be safely deleted (`XDG_CACHE_HOME`).
+The 0600 permission ensures other users on the same system cannot read the token.
+
 *(Implemented in Phase 6; currently only GitHub Copilot and GitHub Models require
 OAuth — all other "TOKEN"-named providers use manual PATs via `api_key_env`.)*
 

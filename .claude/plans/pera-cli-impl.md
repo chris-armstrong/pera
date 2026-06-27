@@ -2229,15 +2229,10 @@ type oauth_flow = {
 Add `oauth : oauth_flow option [@sexp.option]` to `provider_spec` (between
 `base_url_env` and `compat`).
 
-**Tests (`lib/pera_cli/test/models_config_test.ml` — extend):**
+`oauth_flow` has no custom sexp converters — ppx_sexp_conv handles all fields —
+so no `models_config_test` additions are required for this type.
 
-```ocaml
-(* Test: provider_spec with oauth field round-trips through sexp *)
-(* Test: provider_spec without oauth field parses to oauth = None *)
-(* Test: scope defaults to [] when absent *)
-```
-
-**Verify:** `dune test` green.
+**Verify:** `dune build` clean.
 
 ---
 
@@ -2249,7 +2244,7 @@ Add `oauth : oauth_flow option [@sexp.option]` to `provider_spec` (between
 type cached_token = {
   access_token  : string;
   refresh_token : string option;
-  expires_at    : float;  (** Unix timestamp *)
+  expires_at    : float;  (** Eio monotonic time — Eio.Time.now clock at expiry *)
 }
 
 type resolve_error =
@@ -2262,15 +2257,21 @@ val token_path : xdg_state_home:string -> provider:string -> string
 (** [$xdg_state_home/pera/tokens/<provider>.sexp] *)
 
 val read_cache :
-  path:string -> (cached_token option, string) result
-(** Read and parse the token cache file. [Ok None] if the file does not exist. *)
+  fs:#Eio.Fs.dir ->
+  path:string ->
+  (cached_token option, string) result
+(** Read and parse the token cache file via Eio FS. [Ok None] if absent. *)
 
 val write_cache :
-  path:string -> cached_token -> (unit, string) result
-(** Write the token cache file with mode 0600. Creates parent dirs if needed. *)
+  fs:#Eio.Fs.dir ->
+  path:string ->
+  cached_token ->
+  (unit, string) result
+(** Write the token cache file via Eio FS with mode 0600. Creates parent dirs. *)
 
-val is_valid : cached_token -> margin_s:float -> bool
-(** [is_valid t ~margin_s] is [true] if [t.expires_at > Unix.gettimeofday () + margin_s]. *)
+val is_valid : clock:#Eio.Time.clock -> cached_token -> margin_s:float -> bool
+(** [is_valid ~clock t ~margin_s] is [true] if
+    [t.expires_at > Eio.Time.now clock + margin_s]. *)
 
 val refresh :
   env:Eio_unix.Stdenv.base ->
@@ -2304,16 +2305,21 @@ val resolve :
 
 **Implement `lib/pera_cli/oauth_token.ml`:**
 
-HTTP calls use `cohttp-eio` directly (same pattern as the connector layer;
-no `Http_client` abstraction since the auth layer sits below the connector).
-JSON responses parsed with `yojson`.
+All I/O through Eio — `Eio.Fs` for the token cache, `Eio.Stdenv.clock env` for
+all timestamps. No `Unix` or `Sys` calls. HTTP via `cohttp-eio` (same pattern as
+the connector layer). JSON via `yojson`.
+
+Token expiry: GitHub returns `expires_in` (seconds). Store
+`Eio.Time.now (Eio.Stdenv.clock env) +. float_of_int expires_in` as `expires_at`.
+GitHub tokens expire after 8 hours; refresh tokens after 6 months.
 
 Device flow polling loop:
 ```ocaml
 let rec poll ~env ~sw ~token_url ~device_code ~interval ~deadline =
-  if Unix.gettimeofday () >= deadline then Error Device_flow_expired
+  let clock = Eio.Stdenv.clock env in
+  if Eio.Time.now clock >= deadline then Error Device_flow_expired
   else begin
-    Eio.Time.sleep (Eio.Stdenv.clock env) (float_of_int interval);
+    Eio.Time.sleep clock (float_of_int interval);
     match post_token ~env ~sw token_url device_code with
     | Ok token  -> Ok token
     | Error `Slow_down             -> poll ... ~interval:(interval + 5) ...
@@ -2322,26 +2328,21 @@ let rec poll ~env ~sw ~token_url ~device_code ~interval ~deadline =
   end
 ```
 
-Token expiry: GitHub returns `expires_in` (seconds). Store
-`Unix.gettimeofday () +. float_of_int expires_in` as `expires_at`.
-GitHub tokens expire after 8 hours; refresh tokens after 6 months.
-
 **Tests (`lib/pera_cli/test/oauth_token_test.ml`):**
 
 ```ocaml
-(* Test: is_valid returns true when expires_at is in the future *)
-(* Test: is_valid returns false when expired within margin *)
-(* Test: write_cache creates file with mode 0600 *)
+(* Test: is_valid returns true when expires_at is in the future (mock clock) *)
+(* Test: is_valid returns false when expired within margin (mock clock) *)
+(* Test: write_cache / read_cache round-trip via Eio mock FS *)
 (* Test: read_cache returns None for missing file *)
-(* Test: read_cache round-trips a written token *)
 (* Test: token_path constructs expected path *)
 (* Test: resolve uses cached token when valid — no HTTP calls *)
 (* Test: resolve calls refresh when expired + refresh_token present *)
 (* Test: resolve triggers device_flow when no cache *)
 ```
 
-Use a mock HTTP client (function-injected, same pattern as `config_resolver`)
-for the HTTP-touching tests to avoid real network calls.
+Use mock clock (`Eio.Time.make_clock`) and mock FS for the FS/clock tests.
+Use a function-injected HTTP mock for the HTTP-touching tests.
 
 **Verify:** `dune test` green.
 
