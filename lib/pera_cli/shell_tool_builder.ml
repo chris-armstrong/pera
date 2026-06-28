@@ -2,11 +2,11 @@ open Containers
 
 type build_error = Unknown_placeholder of string
 
+let placeholder_re =
+  Re.(compile (seq [ char '{'; group (rep1 (compl [ char '}' ])); char '}' ]))
+
 let find_placeholders template =
-  let re =
-    Re.(compile (seq [ char '{'; group (rep1 (compl [ char '}' ])); char '}' ]))
-  in
-  Re.all re template |> List.map (fun g -> Re.Group.get g 1)
+  Re.all placeholder_re template |> List.map (fun g -> Re.Group.get g 1)
 
 let validate template declared_names =
   let placeholders = find_placeholders template in
@@ -60,10 +60,7 @@ let extract_arg (arg : Pera_config.shell_arg) (args : Yojson.Safe.t) =
   | _ -> Error "expected JSON object for tool args"
 
 let substitute template arg_values =
-  let re =
-    Re.(compile (seq [ char '{'; group (rep1 (compl [ char '}' ])); char '}' ]))
-  in
-  Re.replace re template ~f:(fun g ->
+  Re.replace placeholder_re template ~f:(fun g ->
       let name = Re.Group.get g 1 in
       match List.find_opt (fun (n, _) -> String.equal n name) arg_values with
       | Some (_, v) -> Filename.quote v

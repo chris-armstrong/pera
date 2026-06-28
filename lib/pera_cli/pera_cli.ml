@@ -163,6 +163,7 @@ module Make (E : Env) = struct
             in
             if not (List.is_empty rc.Config_resolver.mcp_servers) then
               Printf.eprintf "[pera] MCP servers not yet supported\n%!";
+            (* TODO Phase 4: pass _all_tools into harness_config once the field exists *)
             let _all_tools = base_tools @ shell_tools in
             let system_prompt =
               Option.get_or
