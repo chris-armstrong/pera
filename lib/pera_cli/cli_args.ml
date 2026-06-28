@@ -17,11 +17,9 @@ type parsed_args = {
   no_compact : bool;
   compact_threshold : int option;
   compact_tail : int option;
-  plain : bool;
   show_thinking : bool;
   quiet : bool;
   json : bool;
-  verbose : bool;
 }
 
 let effort_conv =
@@ -165,9 +163,6 @@ let parse ~argv =
       & info [ "compact-tail" ] ~docv:"N"
           ~doc:"Number of trailing turns to keep verbatim after compaction.")
   in
-  let plain =
-    Arg.(value & flag & info [ "plain" ] ~doc:"Strip markdown from output.")
-  in
   let show_thinking =
     Arg.(value & flag & info [ "show-thinking" ] ~doc:"Show thinking blocks.")
   in
@@ -179,13 +174,9 @@ let parse ~argv =
     Arg.(
       value & flag & info [ "json" ] ~doc:"Emit newline-delimited JSON events.")
   in
-  let verbose =
-    Arg.(value & flag & info [ "verbose" ] ~doc:"Show verbose tool output.")
-  in
   let build_args model api_key api_key_file api_key_command effort max_tokens
       cache_policy cache_ttl session session_dir cwd system system_file
-      no_compact compact_threshold compact_tail plain show_thinking quiet json
-      verbose =
+      no_compact compact_threshold compact_tail show_thinking quiet json =
     let () =
       let count =
         List.length
@@ -226,11 +217,9 @@ let parse ~argv =
       no_compact;
       compact_threshold;
       compact_tail;
-      plain;
       show_thinking;
       quiet;
       json;
-      verbose;
     }
   in
   let term =
@@ -238,7 +227,7 @@ let parse ~argv =
       const build_args $ model $ api_key $ api_key_file $ api_key_command
       $ effort $ max_tokens $ cache_policy $ cache_ttl $ session $ session_dir
       $ cwd $ system $ system_file $ no_compact $ compact_threshold
-      $ compact_tail $ plain $ show_thinking $ quiet $ json $ verbose)
+      $ compact_tail $ show_thinking $ quiet $ json)
   in
   let info = Cmdliner.Cmd.info "pera" ~version:"dev" ~doc:"Pera coding agent" in
   let cmd = Cmdliner.Cmd.v info term in
@@ -273,13 +262,12 @@ let to_partial_config (a : parsed_args) =
             }
   in
   let output =
-    match (a.plain, a.show_thinking, a.quiet) with
-    | false, false, false -> None
+    match (a.show_thinking, a.quiet) with
+    | false, false -> None
     | _ ->
         Some
           Pera_config.
             {
-              plain = (if a.plain then Some true else None);
               show_thinking = (if a.show_thinking then Some true else None);
               quiet = (if a.quiet then Some true else None);
             }

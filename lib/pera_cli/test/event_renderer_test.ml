@@ -1,7 +1,7 @@
 open Containers
 
 let default_output =
-  Pera_cli.Pera_config.{ plain = None; show_thinking = None; quiet = None }
+  Pera_cli.Pera_config.{ show_thinking = None; quiet = None }
 
 let make_text_delta text =
   Pera_core.Agent_types.AE_message_update
@@ -147,7 +147,7 @@ let test_thinking_suppressed () =
 let test_thinking_shown () =
   let output =
     Pera_cli.Pera_config.
-      { plain = None; show_thinking = Some true; quiet = None }
+      { show_thinking = Some true; quiet = None }
   in
   let r = Pera_cli.Event_renderer.create ~output ~json:false in
   let lines =
@@ -158,7 +158,7 @@ let test_thinking_shown () =
 let test_tool_start_quiet () =
   let output =
     Pera_cli.Pera_config.
-      { plain = None; show_thinking = None; quiet = Some true }
+      { show_thinking = None; quiet = Some true }
   in
   let r = Pera_cli.Event_renderer.create ~output ~json:false in
   let event =
@@ -211,6 +211,22 @@ let test_stats () =
   Alcotest.(check bool) "contains input" true (String.mem ~sub:"In: 100" s);
   Alcotest.(check bool) "contains output" true (String.mem ~sub:"Out: 50" s)
 
+let test_stats_turn_counter () =
+  let r = Pera_cli.Event_renderer.create ~output:default_output ~json:false in
+  let turn_end =
+    Pera_core.Agent_types.AE_turn_end
+      {
+        message =
+          Pera_core.Agent_types.Synthetic
+            (Pera_core.Agent_types.Compaction_summary { summary = "" });
+        tool_results = [];
+      }
+  in
+  let _ = Pera_cli.Event_renderer.render r turn_end in
+  let _ = Pera_cli.Event_renderer.render r turn_end in
+  let s = Pera_cli.Event_renderer.stats r in
+  Alcotest.(check bool) "turn counter" true (String.mem ~sub:"Turns: 2" s)
+
 let () =
   Alcotest.run "event_renderer"
     [
@@ -224,5 +240,9 @@ let () =
           Alcotest.test_case "tool start visible" `Quick test_tool_start_visible;
           Alcotest.test_case "json mode" `Quick test_json_mode;
         ] );
-      ("stats", [ Alcotest.test_case "accumulates" `Quick test_stats ]);
+      ( "stats",
+        [
+          Alcotest.test_case "accumulates" `Quick test_stats;
+          Alcotest.test_case "turn counter" `Quick test_stats_turn_counter;
+        ] );
     ]

@@ -43,18 +43,34 @@ let extract_arg (arg : Pera_config.shell_arg) (args : Yojson.Safe.t) =
               | `String s -> Ok s
               | _ ->
                   Error (Printf.sprintf "expected string for arg %S" arg.name))
-          | Int _ -> (
-              match v with
-              | `Int i -> Ok (Int.to_string i)
-              | `String s -> (
-                  match Int.of_string s with
-                  | Some i -> Ok (Int.to_string i)
-                  | None ->
-                      Error
-                        (Printf.sprintf "expected integer for arg %S, got %S"
-                           arg.name s))
-              | _ ->
-                  Error (Printf.sprintf "expected integer for arg %S" arg.name))
+          | Int { min; max; _ } -> (
+              let parse_int v_json =
+                match v_json with
+                | `Int i -> Ok i
+                | `String s -> (
+                    match Int.of_string s with
+                    | Some i -> Ok i
+                    | None ->
+                        Error
+                          (Printf.sprintf "expected integer for arg %S, got %S"
+                             arg.name s))
+                | _ ->
+                    Error (Printf.sprintf "expected integer for arg %S" arg.name)
+              in
+              match parse_int v with
+              | Error _ as e -> e
+              | Ok i ->
+                  let range_ok =
+                    Option.map_or ~default:true (fun lo -> i >= lo) min
+                    && Option.map_or ~default:true (fun hi -> i <= hi) max
+                  in
+                  if range_ok then Ok (Int.to_string i)
+                  else
+                    Error
+                      (Printf.sprintf "arg %S value %d out of range [%s, %s]"
+                         arg.name i
+                         (Option.map_or ~default:"-∞" Int.to_string min)
+                         (Option.map_or ~default:"+∞" Int.to_string max)))
           )
       | None -> Error (Printf.sprintf "missing required arg %S" arg.name))
   | _ -> Error "expected JSON object for tool args"

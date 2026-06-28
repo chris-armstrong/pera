@@ -1090,11 +1090,9 @@ type parsed_args = {
   no_compact        : bool;
   compact_threshold : int option;
   compact_tail      : int option;
-  plain             : bool;
   show_thinking     : bool;
   quiet             : bool;
   json              : bool;
-  verbose           : bool;
 }
 
 val parse : argv:string array -> parsed_args
@@ -1147,7 +1145,7 @@ Similarly define `cache_policy_conv` and `cache_ttl_conv`.
 (* Test 2: effort_conv rejects unknown strings *)
 (* Test 3: cache_policy_conv parses all three values *)
 (* Test 4: to_partial_config maps no_compact to compaction.enabled=false *)
-(* Test 5: to_partial_config maps plain/show_thinking/quiet to output fields *)
+(* Test 5: to_partial_config maps show_thinking/quiet to output fields *)
 ```
 
 **Verify:** `dune test` green.
@@ -1180,7 +1178,6 @@ type resolved_config = {
   commands               : Pera_config.command_def list;
   mcp_servers            : Pera_config.mcp_server_def list;
   json_output            : bool;
-  verbose                : bool;
 }
 
 type resolve_inputs = {
@@ -1251,8 +1248,7 @@ let built_in_defaults : Pera_config.config = {
   cache = Some { policy = Some No_cache; ttl = Some Five_minutes };
   session = None; compaction = Some { threshold = Some 70; tail = Some 4;
     enabled = Some true };
-  output = Some { plain = Some false; show_thinking = Some false;
-    quiet = Some false };
+  output = Some { show_thinking = Some false; quiet = Some false };
   commands = []; tools = []; mcp_servers = [] }
 ```
 
@@ -1697,13 +1693,10 @@ val render :
   Pera_core.Agent_types.agent_event ->
   string list
 (** Render the event to zero or more output lines.
-    Plain-text mode (output.plain = true): strip all markdown.
     JSON mode (json = true): emit one NDJSON line per event instead of
     human-readable text. NDJSON lines are JSON objects with a "type" field.
-    Both modes are mutually exclusive; json takes priority.
     Thinking blocks: only rendered when output.show_thinking = true.
-    Quiet mode: only emit the final assistant text (suppress tool events).
-    Tool events (verbose = false): suppress tool args; only tool name. *)
+    Quiet mode: only emit the final assistant text (suppress tool events). *)
 
 val stats : t -> string
 (** Format the accumulated stats for /info:
@@ -1732,14 +1725,14 @@ On `AE_message_end { message = Real (Connector.AssistantMessage am) }`:
 - Add `am.usage.*` to the running totals.
 - Update `model_name` from `am.provenance.model`.
 
-Rendering per event (plain text, non-JSON mode):
+Rendering per event (non-JSON mode):
 - `AE_message_update { event = AME_text_delta { text } }` → emit `text`.
 - `AE_message_update { event = AME_thinking_delta { text } }` → if
-  `show_thinking`, emit `text` wrapped in `[thinking] ...`.
+  `show_thinking`, emit `text`.
 - `AE_tool_execution_start { tool_name }` → if not quiet, emit
   `"\n[tool: <name>]"`.
-- `AE_tool_execution_end { tool_name; is_error }` → if not quiet and verbose,
-  emit result summary.
+- `AE_tool_execution_end { tool_name; is_error }` → if not quiet, emit
+  `"\n[tool: <name> — done]"` or `"\n[tool: <name> — error]"`.
 - `AE_agent_end _` → emit `"\n"`.
 - All other events → `[]`.
 

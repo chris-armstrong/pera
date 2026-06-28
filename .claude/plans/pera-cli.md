@@ -333,7 +333,6 @@ type compaction_config = {
 } [@@deriving sexp]
 
 type output_config = {
-  plain         : bool option; [@sexp.option]
   show_thinking : bool option; [@sexp.option]
   quiet         : bool option; [@sexp.option]
 } [@@deriving sexp]
@@ -533,8 +532,7 @@ type config = {
     (tail 4)
     (enabled true)))
  (output
-   ((plain false)
-    (show_thinking false))))
+   ((show_thinking false))))
 ```
 
 ### User config — macOS Keychain example
@@ -747,11 +745,9 @@ the active model — useful for quick testing without editing config.
 | `--no-compact` | `compaction.enabled = false` | — | |
 | `--compact-threshold` | `compaction.threshold` | 70 | |
 | `--compact-tail` | `compaction.tail` | 4 | |
-| `--plain` | `output.plain` | false | |
 | `--show-thinking` | `output.show_thinking` | false | |
 | `--quiet` | `output.quiet` | false | |
 | `--json` | — | — | Newline-delimited JSON events |
-| `--verbose` | — | — | Tool args, cache warnings, compaction |
 
 **Deferred to M7:** `--compact-model` / `compaction.model`.
 **Deferred (batch mode):** `--max-turns`.

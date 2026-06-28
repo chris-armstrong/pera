@@ -94,13 +94,10 @@ module Make (E : Env) = struct
       match read_line () with
       | exception End_of_file -> ()
       | line -> (
-          let trimmed = String.trim line in
-          if String.is_empty trimmed then loop ()
-          else
-            match Input_loop.parse_line ~commands trimmed with
-            | Send text ->
-                if not (String.is_empty text) then send text;
-                loop ()
+          match Input_loop.parse_line ~commands line with
+          | Send text ->
+              if not (String.is_empty text) then send text;
+              loop ()
             | Compact ->
                 compact_fn ();
                 loop ()

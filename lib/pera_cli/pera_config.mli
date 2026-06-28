@@ -54,7 +54,6 @@ type compaction_config = {
 (** Compaction configuration. *)
 
 type output_config = {
-  plain : bool option; [@sexp.option]
   show_thinking : bool option; [@sexp.option]
   quiet : bool option; [@sexp.option]
 }

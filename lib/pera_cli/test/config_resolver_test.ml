@@ -52,11 +52,9 @@ let empty_args : Pera_cli.Cli_args.parsed_args =
     no_compact = false;
     compact_threshold = None;
     compact_tail = None;
-    plain = false;
     show_thinking = false;
     quiet = false;
     json = false;
-    verbose = false;
   }
 
 let make_inputs ?(parsed_args = empty_args) ?(user_config = None)
