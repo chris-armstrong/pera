@@ -25,15 +25,14 @@ type model_auth = {
 type provider_auth = {
   name : string;  (** Must match a [Models_config.provider_spec.name]. *)
   api_key : api_key_source option; [@sexp.option]
-  base_url : string option; [@sexp.option]
-      (** Override the provider's base URL for this user/project. *)
+  api : string option; [@sexp.option]
+      (** Override the provider's [api] (base URL) for this user/project. *)
   models : model_auth list; [@sexp.default []]
       (** Per-model effort overrides for this provider. *)
 }
 [@@deriving sexp, show, eq]
 (** Auth and personal overrides for a named provider. User config: [api_key]
-    accepted. Project config: [api_key] rejected (loud error); [base_url]
-    allowed. *)
+    accepted. Project config: [api_key] rejected (loud error); [api] allowed. *)
 
 type cache_config = {
   policy : cache_policy option; [@sexp.option]

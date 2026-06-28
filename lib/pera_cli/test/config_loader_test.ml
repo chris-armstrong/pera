@@ -88,13 +88,13 @@ let test_rejects_api_key () =
       Alcotest.fail "expected Api_key_in_project_config, got Parse_error");
   Sys.remove test_file
 
-(* Test 5: load_project_config rejects api_key even when base_url is present *)
-let test_rejects_api_key_with_base_url () =
+(* Test 5: load_project_config rejects api_key even when api is present *)
+let test_rejects_api_key_with_api () =
   let tmpdir = Filename.get_temp_dir_name () in
-  let test_file = Filename.concat tmpdir "pera_test_base_url_reject.pera" in
+  let test_file = Filename.concat tmpdir "pera_test_api_reject.pera" in
   let sexp_str =
     {|((default_model "anthropic/claude-sonnet-4-6")
-       (providers (((name anthropic) (base_url "https://example.com")
+       (providers (((name anthropic) (api "https://example.com")
                     (api_key (key "test-key"))))))|}
   in
   let oc = open_out test_file in
@@ -108,13 +108,13 @@ let test_rejects_api_key_with_base_url () =
       Alcotest.fail "expected Api_key_in_project_config, got Parse_error");
   Sys.remove test_file
 
-(* Test 6: load_project_config allows base_url override *)
-let test_allows_base_url_override () =
+(* Test 6: load_project_config allows api override *)
+let test_allows_api_override () =
   let tmpdir = Filename.get_temp_dir_name () in
-  let test_file = Filename.concat tmpdir "pera_test_base_url.pera" in
+  let test_file = Filename.concat tmpdir "pera_test_api.pera" in
   let sexp_str =
     {|((default_model "anthropic/claude-sonnet-4-6")
-       (providers (((name anthropic) (base_url "https://example.com")))))|}
+       (providers (((name anthropic) (api "https://example.com")))))|}
   in
   let oc = open_out test_file in
   output_string oc sexp_str;
@@ -126,7 +126,7 @@ let test_allows_base_url_override () =
       | [ p ] ->
           Alcotest.(check string) "provider name" "anthropic" p.name;
           Alcotest.(check (option string))
-            "base_url" (Some "https://example.com") p.base_url;
+            "api" (Some "https://example.com") p.api;
           Alcotest.(check (option api_key_source_testable))
             "no api_key" None p.api_key
       | _ -> Alcotest.fail "expected exactly one provider")
@@ -184,12 +184,10 @@ let suite =
       test_merge_keeps_base );
     ("merge replaces list fields entirely", `Quick, test_merge_replaces_list);
     ("load_project_config rejects api_key", `Quick, test_rejects_api_key);
-    ( "load_project_config rejects api_key even with base_url",
+    ( "load_project_config rejects api_key even with api",
       `Quick,
-      test_rejects_api_key_with_base_url );
-    ( "load_project_config allows base_url override",
-      `Quick,
-      test_allows_base_url_override );
+      test_rejects_api_key_with_api );
+    ("load_project_config allows api override", `Quick, test_allows_api_override);
     ( "load_project_config allows empty providers",
       `Quick,
       test_allows_empty_providers );

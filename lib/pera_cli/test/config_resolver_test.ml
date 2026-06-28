@@ -27,7 +27,7 @@ let anthropic_provider =
       protocol = "anthropic";
       api_key_env = [ "ANTHROPIC_API_KEY" ];
       api = None;
-      base_url_env = None;
+      api_env = None;
       compat = None;
       models = [ anthropic_model; thinking_model ];
     }

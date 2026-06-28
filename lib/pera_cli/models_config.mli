@@ -20,14 +20,12 @@ type compat_config = {
     optional; [None] means the provider uses defaults. *)
 
 type decimal = Decimal.t
-(** Alias so [ppx_sexp_conv] resolves [decimal_of_sexp] / [sexp_of_decimal]
-    by name from the ambient scope. *)
+(** Alias so [ppx_sexp_conv] resolves [decimal_of_sexp] / [sexp_of_decimal] by
+    name from the ambient scope. *)
 
 type model_cost = {
-  input_per_mtok : decimal;
-      (** USD cost per million input tokens. *)
-  output_per_mtok : decimal;
-      (** USD cost per million output tokens. *)
+  input_per_mtok : decimal;  (** USD cost per million input tokens. *)
+  output_per_mtok : decimal;  (** USD cost per million output tokens. *)
   cache_read_per_mtok : decimal option;
       (** USD cost per million cache-read tokens. [None] if the provider does
           not charge for cache reads. *)
@@ -36,11 +34,10 @@ type model_cost = {
           not charge for cache writes. *)
 }
 [@@deriving sexp, show, eq]
-(** USD pricing for a model, per million tokens.
-    Stored as [Decimal.t] via custom converters ([decimal_of_sexp] /
-    [sexp_of_decimal]) that represent each value as a quoted string atom,
-    e.g. [(input_per_mtok "3.00")]. Absent cost record = cost unknown/not
-    applicable (e.g. local models). *)
+(** USD pricing for a model, per million tokens. Stored as [Decimal.t] via
+    custom converters ([decimal_of_sexp] / [sexp_of_decimal]) that represent
+    each value as a quoted string atom, e.g. [(input_per_mtok "3.00")]. Absent
+    cost record = cost unknown/not applicable (e.g. local models). *)
 
 type model_spec = {
   name : string;
@@ -56,15 +53,15 @@ type model_spec = {
     - [max_tokens]: maximum output tokens.
     - [thinking]: optional thinking budget spec. [None] means no thinking
       support.
-    - [cost]: optional USD pricing per million tokens. [None] means unknown
-      or not applicable. *)
+    - [cost]: optional USD pricing per million tokens. [None] means unknown or
+      not applicable. *)
 
 type provider_spec = {
   name : string;
   protocol : string;
   api_key_env : string list;
   api : string option;
-  base_url_env : string option;
+  api_env : string option;
   compat : compat_config option;
   models : model_spec list;
 }
@@ -74,7 +71,7 @@ type provider_spec = {
     - [protocol]: connector type ("anthropic" | "openai-completions").
     - [api_key_env]: env var names to try in order for the API key.
     - [api]: base URL override. [None] = connector's built-in default.
-    - [base_url_env]: env var whose value overrides [api] at runtime.
+    - [api_env]: env var whose value, if set at runtime, overrides [api].
     - [compat]: optional compatibility config.
     - [models]: list of model specs. *)
 
