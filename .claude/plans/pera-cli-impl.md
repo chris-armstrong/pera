@@ -1446,6 +1446,153 @@ is unchanged.
 
 ---
 
+## Phase 2C — URL field naming alignment
+
+The base URL of a provider is one concept. After Phase 2B it is spelled
+`provider_spec.api` in `models.sexp`, but two adjacent fields still use the
+old `base_url` spelling:
+
+- `provider_spec.base_url_env` — the env var whose value overrides
+  `provider_spec.api` at runtime.
+- `provider_auth.base_url` — the user/project override of the base URL in
+  `config.sexp`.
+
+Users supply their own `models.sexp`, so they see `provider_spec.api` as the
+name for "the base URL." The same concept in their `config.sexp` override and
+in the env-var override should carry the same name, otherwise a user editing
+both files has to hold a `base_url`↔`api` translation in their head. Rename
+both to align with `api`:
+
+- `provider_spec.base_url_env` → `provider_spec.api_env` (mirrors
+  `api_key_env` — the env var for the `api` URL).
+- `provider_auth.base_url` → `provider_auth.api` (the user override of the
+  provider's `api`).
+
+This phase touches `lib/pera_cli/` only. No changes to `pera_types`,
+`pera_connector`, or any other layer.
+
+### Stage 2C.1 — Rename `base_url_env` → `api_env`
+
+**Edit `lib/pera_cli/models_config.ml`:**
+
+In `provider_spec`, rename the field:
+```ocaml
+base_url_env : string option; [@sexp.option]
+```
+→
+```ocaml
+api_env : string option; [@sexp.option]
+```
+No type change (`string option`, `[@sexp.option]` unchanged). The sexp key
+changes from `(base_url_env ...)` to `(api_env ...)`.
+
+**Edit `lib/pera_cli/models_config.mli`:**
+
+Mirror the rename in `provider_spec`. Update the doc comment's field name
+reference only (the prose meaning — "Env var whose value, if set at runtime,
+overrides `api`" — is unchanged).
+
+**Edit `lib/pera_cli/test/models_config_test.ml`:**
+
+- Update every `base_url_env = …` record literal to `api_env = …`.
+- Add: `(api_env OLLAMA_BASE_URL)` parses to `Some "OLLAMA_BASE_URL"`.
+- Add: absent `api_env` parses to `None`.
+
+**Edit `lib/pera_cli/test/models_loader_test.ml` and
+`lib/pera_cli/test/config_resolver_test.ml`:**
+
+Update every `base_url_env = …` record literal to `api_env = …`.
+
+**Audit `lib/pera_cli/config_resolver.ml`:** no field access to
+`base_url_env` exists today (the URL override is wired in Phase 3's
+`Pera_cli.Make`), so no edit is expected here. Confirm via grep.
+
+**Downstream doc consistency — `.claude/plans/pera-cli.md`:**
+
+Confirm §Models file uses `api_env` for the `provider_spec` field and the
+Ollama example (already applied in the plan amendment; verify no `base_url_env`
+remains).
+
+**Downstream doc consistency — this plan:**
+
+Confirm Stage 6.1 inserts `oauth` into `provider_spec` "between `api_env`
+and `compat`" (already applied in the plan amendment).
+
+**Verify:** `dune build && dune test` green, `ocamlformat --check` clean,
+`semgrep` clean. `grep -rn "base_url_env" lib/pera_cli/` returns empty.
+
+### Stage 2C.2 — Rename `provider_auth.base_url` → `provider_auth.api`
+
+**Edit `lib/pera_cli/pera_config.ml`:**
+
+In `provider_auth`, rename the field:
+```ocaml
+base_url : string option; [@sexp.option]
+```
+→
+```ocaml
+api      : string option; [@sexp.option]
+```
+No type change (`string option`, `[@sexp.option]` unchanged). The sexp key
+changes from `(base_url ...)` to `(api ...)`. Note this is the same sexp key
+as `provider_spec.api` — which is intentional: both record "the base URL of
+this provider" (one the catalogued default, one the user override).
+
+**Edit `lib/pera_cli/pera_config.mli`:**
+
+Mirror the rename in `provider_auth`. Update the doc comment from "Override
+the provider's base URL" to "Override the provider's `api` (base URL)" and
+the module doc from "`base_url` allowed" to "`api` allowed".
+
+**Edit `lib/pera_cli/test/config_loader_test.ml`:**
+
+- Update every `base_url = …` record literal to `api = …` and every
+  `p.base_url` field access to `p.api`.
+- Update sexp fixtures: `(base_url "https://example.com")` →
+  `(api "https://example.com")`.
+- Rename the test functions/comments that mention `base_url`
+  (`test_rejects_api_key_with_base_url`, `test_allows_base_url_override`,
+  and their `Alcotest` test names) to use `api`.
+
+**Edit `lib/pera_cli/test/pera_config_test.ml`:**
+
+Update any `provider_auth` record literal or sexp fixture that sets
+`base_url` to use `api`.
+
+**Audit `lib/pera_cli/config_resolver.ml` and `lib/pera_cli/config_loader.ml`:**
+no field access to `provider_auth.base_url` exists today (the URL override is
+wired in Phase 3's `Pera_cli.Make`), so no edit is expected here. Confirm via
+grep.
+
+**Downstream doc consistency — `.claude/plans/pera-cli.md`:**
+
+Confirm §Config file uses `api` for every former `provider_auth.base_url`
+reference — the `provider_auth` OCaml type field, its doc comment, the module
+doc ("`api_key` rejected; `api` allowed"), the security note ("`api` overrides
+inside `provider_auth` are accepted in both user and project config"), and the
+project-config example comment ("api overrides are permitted") (already
+applied in the plan amendment; verify no `base_url` remains).
+
+**Verify:** `dune build && dune test` green, `ocamlformat --check` clean,
+`semgrep` clean. `grep -rn "base_url" lib/pera_cli/ .claude/plans/pera-cli.md`
+returns empty (the `--base-url` CLI flag reference in §Models file is a CLI
+flag name being removed, not a config field, and is out of scope).
+
+### Phase 2C review checklist
+
+- [ ] `dune build` — clean
+- [ ] `dune test` — all suites pass
+- [ ] `ocamlformat --check` — clean
+- [ ] `semgrep` — clean
+- [ ] `provider_spec.api_env` is used everywhere `provider_spec.base_url_env`
+  was used
+- [ ] `provider_auth.api` is used everywhere `provider_auth.base_url` was
+  used; the sexp key `(api ...)` is shared with `provider_spec.api` by design
+- [ ] No references to `base_url_env` or `provider_auth.base_url` remain in
+  `lib/pera_cli/` or in `.claude/plans/pera-cli.md`
+
+---
+
 ## Phase 3 — pera-cli library
 
 Implement the reusable wiring that `Pera_cli.Make` provides: shell tool
@@ -2227,7 +2374,7 @@ type oauth_flow = {
 ```
 
 Add `oauth : oauth_flow option [@sexp.option]` to `provider_spec` (between
-`base_url_env` and `compat`).
+`api_env` and `compat`).
 
 `oauth_flow` has no custom sexp converters — ppx_sexp_conv handles all fields —
 so no `models_config_test` additions are required for this type.

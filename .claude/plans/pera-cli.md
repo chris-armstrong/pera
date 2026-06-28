@@ -66,7 +66,7 @@ config applies.
 - `api_key` (inside a `provider_auth` entry) is **only accepted in the user config**.
   The parser rejects it in a project config and emits a loud error:
   `[pera] api_key may not appear in project config (.pera); use user config or the provider's api_key_env variable`.
-- `base_url` overrides inside `provider_auth` are accepted in both user and project config.
+- `api` overrides inside `provider_auth` are accepted in both user and project config.
 
 ### API key resolution order
 
@@ -249,7 +249,7 @@ type provider_spec = {
   api          : string option; [@sexp.option]
     (** Base URL. Absent = connector's built-in default (e.g. Anthropic, OpenAI native).
         Required for openai-compatible third-party endpoints. *)
-  base_url_env : string option; [@sexp.option]
+  api_env      : string option; [@sexp.option]
     (** Env var whose value, if set at runtime, overrides api.
         Useful for local providers like Ollama where the URL varies per install.
         E.g. "OLLAMA_BASE_URL". *)
@@ -305,12 +305,12 @@ type model_auth = {
 
 (** Auth and personal overrides for a named provider.
     User config: api_key accepted.
-    Project config: api_key rejected (loud error); base_url allowed. *)
+    Project config: api_key rejected (loud error); api allowed. *)
 type provider_auth = {
   name     : string;
     (** Must match a provider_spec.name from models.sexp. *)
   api_key  : api_key_source option; [@sexp.option]
-  base_url : string option; [@sexp.option]
+  api      : string option; [@sexp.option]
     (** Override the provider's api (base URL) for this user/project. *)
   models   : model_auth list; [@sexp.default []]
     (** Per-model effort overrides for this provider. *)
@@ -386,7 +386,7 @@ type mcp_server_def = {
 type config = {
   providers     : provider_auth list; [@sexp.default []]
     (** Auth and overrides for named providers. Keys only in user config.
-        Project config may contain base_url overrides but not api_key. *)
+        Project config may contain api overrides but not api_key. *)
   default_model : string option; [@sexp.option]
     (** Fully-qualified model to use when --model is not given.
         Format: "<provider>/<model>", e.g. "anthropic/claude-sonnet-4-6". *)
@@ -504,7 +504,7 @@ type config = {
     (protocol openai-completions)
     (api_key_env ())
     (api "http://localhost:11434")
-    (base_url_env OLLAMA_BASE_URL)
+    (api_env OLLAMA_BASE_URL)
     (models
       (((name qwen2.5-coder:14b)
         (context_window 32768)
@@ -557,7 +557,7 @@ type config = {
 
 ```sexp
 ; Project config — committed to the repo.
-; api_key is not allowed here; base_url overrides are permitted.
+; api_key is not allowed here; api overrides are permitted.
 ((default_model "anthropic/claude-sonnet-4-6")
  (cache
    ((policy Conversation)))
