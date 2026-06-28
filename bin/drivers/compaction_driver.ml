@@ -18,12 +18,12 @@ open Session_jsonl_helpers
 let haiku_model : Types.model =
   {
     id = "claude-haiku-4-5-20251001";
-    api = "anthropic";
+    protocol = "anthropic";
     context_window = 200_000;
   }
 
 let faux_provenance : Types.provenance =
-  { api = "faux"; provider = "faux"; model = "faux"; error_message = None }
+  { protocol = "faux"; provider = "faux"; model = "faux"; error_message = None }
 
 let faux_usage : Types.usage =
   {

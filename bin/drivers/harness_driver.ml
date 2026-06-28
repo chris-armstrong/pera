@@ -17,10 +17,10 @@ open Session_jsonl_helpers
 (* ── Faux script helpers ──────────────────────────────────────────────────── *)
 
 let faux_model : Types.model =
-  { id = "faux-model"; api = "faux"; context_window = 200_000 }
+  { id = "faux-model"; protocol = "faux"; context_window = 200_000 }
 
 let faux_provenance : Types.provenance =
-  { api = "faux"; provider = "faux"; model = "faux"; error_message = None }
+  { protocol = "faux"; provider = "faux"; model = "faux"; error_message = None }
 
 let faux_usage : Types.usage =
   {

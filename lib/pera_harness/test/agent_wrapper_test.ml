@@ -5,7 +5,7 @@ open Pera_core_test_util
 (* ── Inlined helpers (from agent_loop_helpers, not in public library) ────── *)
 
 let test_model =
-  Pera_types.Types.{ id = "test-model"; api = "faux"; context_window = 200_000 }
+  Pera_types.Types.{ id = "test-model"; protocol = "faux"; context_window = 200_000 }
 
 let test_options =
   Pera_connector.Connector.
@@ -27,7 +27,7 @@ let make_assistant_message ?(stop_reason = Pera_types.Types.EndTurn) content =
       stop_reason;
       provenance =
         {
-          api = "faux";
+          protocol = "faux";
           provider = "faux";
           model = "faux";
           error_message = None;

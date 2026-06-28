@@ -233,7 +233,7 @@ let make_partial ?(content = []) ?(stop_reason = Types.EndTurn)
     stop_reason;
     provenance =
       {
-        Types.api = "anthropic";
+        Types.protocol = "anthropic";
         provider = "Anthropic";
         model = "";
         error_message = None;

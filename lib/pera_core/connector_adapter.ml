@@ -35,7 +35,7 @@ let create ~registry ~api_keys ~env ~sw =
 
 let stream_fn adapter =
  fun ~model ~context ~options ~sw ->
-  let api_name = model.Pera_types.Types.api in
+  let api_name = model.Pera_types.Types.protocol in
   match List.find_opt (fun e -> String.equal e.api_name api_name) adapter with
   | Some entry -> entry.fn ~model ~context ~options ~sw
   | None -> error_stream ~sw api_name

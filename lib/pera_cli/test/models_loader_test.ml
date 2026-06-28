@@ -4,16 +4,17 @@ let make_provider ~name ~models =
   Pera_cli.Models_config.
     {
       name;
-      api = name ^ "-api";
-      api_key_env = None;
-      base_url = None;
+      protocol = name ^ "-api";
+      api_key_env = [];
+      api = None;
       base_url_env = None;
       compat = None;
       models;
     }
 
 let make_model ~name ~context_window ~max_tokens =
-  Pera_cli.Models_config.{ name; context_window; max_tokens; thinking = None }
+  Pera_cli.Models_config.
+    { name; context_window; max_tokens; thinking = None; cost = None }
 
 (* Test 1: merge preserves unmodified provider *)
 let test_merge_preserves_unmodified () =

@@ -112,7 +112,7 @@ let usage_to_json (u : Pera_types.Types.usage) =
 let provenance_to_json (p : Pera_types.Types.provenance) =
   let base =
     [
-      ("api", `String p.api);
+      ("api", `String p.protocol);
       ("provider", `String p.provider);
       ("model", `String p.model);
     ]
@@ -166,7 +166,7 @@ let entry_to_json = function
         `Assoc
           [
             ("id", `String e.model.id);
-            ("api", `String e.model.api);
+            ("api", `String e.model.protocol);
             ("context_window", `Int e.model.context_window);
           ]
       in
@@ -203,7 +203,7 @@ let entry_to_json = function
         `Assoc
           [
             ("id", `String e.model.id);
-            ("api", `String e.model.api);
+            ("api", `String e.model.protocol);
             ("context_window", `Int e.model.context_window);
           ]
       in

@@ -64,7 +64,7 @@ let empty_assistant_message =
     {
       content = [];
       stop_reason = EndTurn;
-      provenance = { api = ""; provider = ""; model = ""; error_message = None };
+      provenance = { protocol = ""; provider = ""; model = ""; error_message = None };
       usage =
         {
           input_tokens = 0;
@@ -131,7 +131,7 @@ let build_provider_context ~system ~transform_context ~convert_to_llm ~tools
     correct name. *)
 let invoke_get_api_key get_api_key ~model =
   Option.iter
-    (fun f -> ignore (f ~provider:model.Pera_types.Types.api))
+    (fun f -> ignore (f ~provider:model.Pera_types.Types.protocol))
     get_api_key
 
 (** {1 Provider stream consumption} *)

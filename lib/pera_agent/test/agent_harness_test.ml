@@ -5,7 +5,7 @@ open Yojson.Safe.Util
 (* ── Helpers ─────────────────────────────────────────────────────────────── *)
 
 let test_model =
-  Pera_types.Types.{ id = "test-model"; api = "faux"; context_window = 200_000 }
+  Pera_types.Types.{ id = "test-model"; protocol = "faux"; context_window = 200_000 }
 
 let make_temp_dir = Harness_test_util.make_temp_dir
 
@@ -17,7 +17,7 @@ let make_text_turn_script text =
         stop_reason = EndTurn;
         provenance =
           {
-            api = "faux";
+            protocol = "faux";
             provider = "faux";
             model = "faux";
             error_message = None;
@@ -441,7 +441,7 @@ let make_am content =
       stop_reason = EndTurn;
       provenance =
         {
-          api = "faux";
+          protocol = "faux";
           provider = "faux";
           model = "faux";
           error_message = None;

@@ -1,11 +1,11 @@
-(** Connector registry — maps model.api strings to (module Connector.S) values.
+(** Connector registry — maps model.protocol strings to (module Connector.S) values.
 
     An immutable, pure-functional registry built explicitly at startup. No
-    global state. Provides lookup by model.api and helpers to register and
+    global state. Provides lookup by model.protocol and helpers to register and
     enumerate named connectors. *)
 
 type t
-(** An immutable registry mapping connector names (model.api strings) to
+(** An immutable registry mapping connector names (model.protocol strings) to
     connector modules. *)
 
 val empty : t

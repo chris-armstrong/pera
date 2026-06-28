@@ -82,7 +82,7 @@ let stop_reason_string = function
 
 let run_default_scenario ~model_id ~prompt_text ~max_tokens =
   let model =
-    Types.{ id = model_id; api = "anthropic"; context_window = 200_000 }
+    Types.{ id = model_id; protocol = "anthropic"; context_window = 200_000 }
   in
   let user_msg =
     Types.{ role = "user"; content = [ Types.UText prompt_text ] }
@@ -135,7 +135,7 @@ let run_default_scenario ~model_id ~prompt_text ~max_tokens =
 let run_thinking_scenario () =
   let model =
     Types.
-      { id = "claude-sonnet-4-5"; api = "anthropic"; context_window = 200_000 }
+      { id = "claude-sonnet-4-5"; protocol = "anthropic"; context_window = 200_000 }
   in
   let user_msg =
     Types.
@@ -256,7 +256,7 @@ let run_openai_completions_scenario ~model_id ~prompt_text ~max_tokens
           Types.
             {
               id = model_id;
-              api = "openai-completions";
+              protocol = "openai-completions";
               context_window = 128_000;
             }
         in

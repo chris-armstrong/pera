@@ -18,7 +18,7 @@ let make_assistant_message ?(stop_reason = Types.EndTurn) text =
       stop_reason;
       provenance =
         {
-          api = "faux";
+          protocol = "faux";
           provider = "faux";
           model = "faux";
           error_message = None;
@@ -47,7 +47,7 @@ let make_tool_use_message tool_calls =
       stop_reason = ToolUse;
       provenance =
         {
-          api = "faux";
+          protocol = "faux";
           provider = "faux";
           model = "faux";
           error_message = None;
@@ -70,7 +70,7 @@ let default_convert_to_llm msgs = List.map Agent_types.to_provider_message msgs
 
 (** Default model for loop calls. *)
 let test_model =
-  Types.{ id = "faux-model"; api = "faux"; context_window = 200_000 }
+  Types.{ id = "faux-model"; protocol = "faux"; context_window = 200_000 }
 
 (** Default options for loop calls. *)
 let test_options =
@@ -930,7 +930,7 @@ let scenario_prepare_next_turn_update sw =
                   Types.
                     {
                       id = "prepared-model";
-                      api = "faux";
+                      protocol = "faux";
                       context_window = 200_000;
                     };
               thinking = Inherit;
@@ -977,7 +977,7 @@ let scenario_thinking_blocks sw =
         stop_reason = EndTurn;
         provenance =
           {
-            api = "faux";
+            protocol = "faux";
             provider = "faux";
             model = "faux";
             error_message = None;
