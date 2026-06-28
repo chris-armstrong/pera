@@ -7,7 +7,7 @@ let make_provider ~name ~models =
       protocol = name ^ "-api";
       api_key_env = [];
       api = None;
-      base_url_env = None;
+      api_env = None;
       compat = None;
       models;
     }

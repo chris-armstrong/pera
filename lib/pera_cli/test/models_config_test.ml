@@ -29,7 +29,7 @@ let test_round_trip () =
             protocol = "test-api";
             api_key_env = [];
             api = None;
-            base_url_env = None;
+            api_env = None;
             compat = None;
             models =
               [
@@ -122,8 +122,8 @@ let test_model_cost_round_trip () =
 (* Test 6: "3.00" atom parses to Decimal.(of_string "3.00") *)
 let test_decimal_parsing () =
   let sexp_str = {|((input_per_mtok "3.00") (output_per_mtok "15.00"))|} in
-  let cost = Pera_cli.Models_config.model_cost_of_sexp
-      (Sexplib.Sexp.of_string sexp_str)
+  let cost =
+    Pera_cli.Models_config.model_cost_of_sexp (Sexplib.Sexp.of_string sexp_str)
   in
   Alcotest.(check string)
     "decimal value" "3.00"
@@ -132,8 +132,8 @@ let test_decimal_parsing () =
 (* Test 7: "0.30" atom parses correctly — no float rounding loss *)
 let test_decimal_no_rounding () =
   let sexp_str = {|((input_per_mtok "0.30") (output_per_mtok "15.00"))|} in
-  let cost = Pera_cli.Models_config.model_cost_of_sexp
-      (Sexplib.Sexp.of_string sexp_str)
+  let cost =
+    Pera_cli.Models_config.model_cost_of_sexp (Sexplib.Sexp.of_string sexp_str)
   in
   Alcotest.(check string)
     "decimal value" "0.30"
@@ -141,18 +141,18 @@ let test_decimal_no_rounding () =
 
 (* Test 8: cache fields absent in sexp parse to None *)
 let test_cost_cache_defaults () =
-  let sexp_str =
-    {|((input_per_mtok "3.00") (output_per_mtok "15.00"))|}
-  in
-  let cost = Pera_cli.Models_config.model_cost_of_sexp
-      (Sexplib.Sexp.of_string sexp_str)
+  let sexp_str = {|((input_per_mtok "3.00") (output_per_mtok "15.00"))|} in
+  let cost =
+    Pera_cli.Models_config.model_cost_of_sexp (Sexplib.Sexp.of_string sexp_str)
   in
   Alcotest.(check (option string))
     "cache_read absent" None
-    (Option.map Decimal.to_string cost.Pera_cli.Models_config.cache_read_per_mtok);
+    (Option.map Decimal.to_string
+       cost.Pera_cli.Models_config.cache_read_per_mtok);
   Alcotest.(check (option string))
     "cache_write absent" None
-    (Option.map Decimal.to_string cost.Pera_cli.Models_config.cache_write_per_mtok)
+    (Option.map Decimal.to_string
+       cost.Pera_cli.Models_config.cache_write_per_mtok)
 
 (* Test 9: cost absent in model_spec sexp parses to None *)
 let test_model_cost_absent () =
@@ -170,9 +170,7 @@ let test_model_cost_absent () =
       | [ m ] ->
           Alcotest.(check (option string))
             "cost absent" None
-            (Option.map
-               (fun _ -> "present")
-               m.Pera_cli.Models_config.cost)
+            (Option.map (fun _ -> "present") m.Pera_cli.Models_config.cost)
       | _ -> Alcotest.fail "expected exactly one model")
   | _ -> Alcotest.fail "expected exactly one provider"
 
@@ -216,7 +214,8 @@ let test_api_key_env_list () =
   match mf.providers with
   | [ p ] ->
       Alcotest.(check (list string))
-        "api_key_env list" [ "GITHUB_TOKEN"; "GH_TOKEN" ]
+        "api_key_env list"
+        [ "GITHUB_TOKEN"; "GH_TOKEN" ]
         p.Pera_cli.Models_config.api_key_env
   | _ -> Alcotest.fail "expected exactly one provider"
 
@@ -237,6 +236,37 @@ let test_api_field () =
         "api base URL" (Some "http://localhost:11434/v1") p.api
   | _ -> Alcotest.fail "expected exactly one provider"
 
+(* Test 13: api_env parses to Some "OLLAMA_BASE_URL" *)
+let test_api_env_parsing () =
+  let sexp_str =
+    {|((providers (((name ollama) (protocol openai-completions)
+      (api_env OLLAMA_BASE_URL)
+      (models (((name llama3) (context_window 8192)
+                (max_tokens 4096))))))))|}
+  in
+  let mf =
+    Pera_cli.Models_config.models_file_of_sexp (Sexplib.Sexp.of_string sexp_str)
+  in
+  match mf.providers with
+  | [ p ] ->
+      Alcotest.(check (option string))
+        "api_env" (Some "OLLAMA_BASE_URL") p.api_env
+  | _ -> Alcotest.fail "expected exactly one provider"
+
+(* Test 14: absent api_env parses to None *)
+let test_api_env_absent () =
+  let sexp_str =
+    {|((providers (((name anthropic) (protocol anthropic)
+      (models (((name claude-sonnet-4-6) (context_window 200000)
+                (max_tokens 16000))))))))|}
+  in
+  let mf =
+    Pera_cli.Models_config.models_file_of_sexp (Sexplib.Sexp.of_string sexp_str)
+  in
+  match mf.providers with
+  | [ p ] -> Alcotest.(check (option string)) "api_env absent" None p.api_env
+  | _ -> Alcotest.fail "expected exactly one provider"
+
 let suite =
   [
     ("parse minimal models sexp", `Quick, test_parse_minimal);
@@ -251,6 +281,8 @@ let suite =
     ("model with cost round-trip", `Quick, test_model_with_cost_round_trip);
     ("api_key_env as string list", `Quick, test_api_key_env_list);
     ("api field (base URL)", `Quick, test_api_field);
+    ("api_env parsing", `Quick, test_api_env_parsing);
+    ("api_env absent", `Quick, test_api_env_absent);
   ]
 
 let () = Alcotest.run "models_config" [ ("models_config", suite) ]

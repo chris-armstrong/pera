@@ -17,7 +17,7 @@ type model_auth = { name : string; effort : effort option [@sexp.option] }
 type provider_auth = {
   name : string;
   api_key : api_key_source option; [@sexp.option]
-  base_url : string option; [@sexp.option]
+  api : string option; [@sexp.option]
   models : model_auth list; [@sexp.default []]
 }
 [@@deriving sexp, show, eq]

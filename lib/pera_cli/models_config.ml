@@ -44,7 +44,7 @@ type provider_spec = {
   protocol : string;
   api_key_env : string list; [@sexp.default []]
   api : string option; [@sexp.option]
-  base_url_env : string option; [@sexp.option]
+  api_env : string option; [@sexp.option]
   compat : compat_config option; [@sexp.option]
   models : model_spec list; [@sexp.default []]
 }
