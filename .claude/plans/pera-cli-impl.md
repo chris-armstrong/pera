@@ -1832,36 +1832,35 @@ val expand_template : template:string -> args:string -> string
 **Create `lib/pera_cli/pera_cli.mli`:**
 
 ```ocaml
-(** The execution/process environment the CLI runs against.
+(** The environment the CLI runs against — two distinct concerns in one module.
 
-    [ctx] is pinned to [(module Pera_env.Execution_env.S)] so that
-    [Agent_harness.config.exec_env] accepts it directly. Substituting a
-    different execution environment means providing a different module
-    satisfying [Execution_env.S] (e.g. a sandboxed or mock env) — the harness
-    is parameterised along that axis and works unchanged. A [ctx] type that is
-    *not* an [Execution_env.S] module is not supported by [Agent_harness] and
-    therefore not by this functor; pinning the type makes that a boundary
-    error rather than a buried mismatch. *)
+    Agent execution context (create / tools / has_shell): describes where the
+    agent's tools run. This may be a local process, sandbox, container, or a
+    remote system. The CLI must never use this to perform its own work (config
+    loading, API key commands, path lookup). Use Eio.Stdenv / Unix / Sys for
+    those instead — see the "Execution env vs host" design note in pera-cli.md.
+
+    Host process accessors (getenv_opt / home / secure_random / wall_time /
+    stdin_isatty): functions of the real host process, declared here only so
+    tests can inject stubs. In production these must be Sys.getenv_opt, HOME /
+    getpwuid, OS entropy, Unix.localtime, and a real isatty check respectively.
+    Never proxy these to a sandboxed or remote source. *)
 module type Env = sig
   type ctx = (module Pera_env.Execution_env.S)
 
+  (* Agent execution context — may be sandboxed or remote *)
   val create :
     env:Eio_unix.Stdenv.base ->
     sw:Eio.Switch.t ->
     cwd:string ->
     ctx
-
   val tools : ctx -> (module Pera_env.Execution_env.S) Pera_core.Agent_types.tool list
-
   val has_shell : bool
 
-  (** Process-environment accessors, usable before [ctx] exists (config
-      resolution happens before env creation). Injecting these makes
-      [Env_reader] / [Config_resolver] / [Session_path] testable without
-      [Unix.putenv] or real TTYs. *)
+  (* Host process accessors — always the real host, injected for testability *)
   val getenv_opt : string -> string option
   val home : unit -> string
-  val secure_random : env:Eio_unix.Stdenv.base -> string -> unit
+  val secure_random : env:Eio_unix.Stdenv.base -> bytes -> unit
   val wall_time : unit -> Unix.tm
   val stdin_isatty : env:Eio_unix.Stdenv.base -> bool
 end
