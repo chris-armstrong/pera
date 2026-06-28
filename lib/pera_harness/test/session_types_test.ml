@@ -25,7 +25,7 @@ let make_usage ?(cost_usd = None) () =
 let make_provenance () =
   Pera_types.Types.
     {
-      api = "anthropic";
+      protocol = "anthropic";
       provider = "anthropic";
       model = "test-model";
       error_message = None;
@@ -50,7 +50,7 @@ let fake_ts = 1700000000.0
 
 let fake_model =
   Pera_types.Types.
-    { id = "claude-3-5"; api = "anthropic"; context_window = 200_000 }
+    { id = "claude-3-5"; protocol = "anthropic"; context_window = 200_000 }
 
 (* ── session_info tests ─────────────────────────────────────────────────── *)
 
@@ -78,7 +78,7 @@ let test_session_info_serialises_required_fields () =
     "model.id" "claude-3-5"
     (get_str (member "model" json) "id");
   Alcotest.(check string)
-    "model.api" "anthropic"
+    "model.protocol" "anthropic"
     (get_str (member "model" json) "api");
   Alcotest.(check int)
     "model.context_window" 200_000

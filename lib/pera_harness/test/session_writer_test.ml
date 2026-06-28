@@ -13,7 +13,7 @@ let has_key json key =
 
 let fake_model =
   Pera_types.Types.
-    { id = "test-model"; api = "anthropic"; context_window = 200_000 }
+    { id = "test-model"; protocol = "anthropic"; context_window = 200_000 }
 
 let fake_user_message =
   Pera_connector.Connector.UserMessage
@@ -174,7 +174,7 @@ let test_multiple_appends_accumulate_lines env () =
   Result.get_exn
     (Session_writer.write_model_change t
        Pera_types.Types.
-         { id = "new-model"; api = "anthropic"; context_window = 200_000 });
+         { id = "new-model"; protocol = "anthropic"; context_window = 200_000 });
   let lines = read_jsonl_lines env path in
   Alcotest.(check int) "four lines" 4 (List.length lines);
   List.iteri

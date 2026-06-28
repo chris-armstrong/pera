@@ -41,7 +41,7 @@ let test_estimate_counts_tool_call_arguments () =
           stop_reason = ToolUse;
           provenance =
             {
-              api = "anthropic";
+              protocol = "anthropic";
               provider = "Anthropic";
               model = "claude";
               error_message = None;

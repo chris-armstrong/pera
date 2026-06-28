@@ -1,7 +1,7 @@
 open Containers
 
 (** Internal representation: an association list mapping connector API name
-    (model.api string) to the first-class module. OCaml first-class modules
+    (model.protocol string) to the first-class module. OCaml first-class modules
     cannot be stored in a Map (they are not comparable), so we use an
     association list. The list is short (2-3 connectors). *)
 

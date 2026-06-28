@@ -23,7 +23,7 @@ open Session_jsonl_helpers
 let default_model : Types.model =
   {
     id = "claude-haiku-4-5-20251001";
-    api = "anthropic";
+    protocol = "anthropic";
     context_window = 200_000;
   }
 
@@ -31,7 +31,7 @@ let model_of_argv () =
   if Array.length Sys.argv > 1 then
     (* TODO: accept --context-window from the CLI; 200K is wrong for 1M Claude
        variants and for non-Anthropic models passed via this driver. *)
-    Types.{ id = Sys.argv.(1); api = "anthropic"; context_window = 200_000 }
+    Types.{ id = Sys.argv.(1); protocol = "anthropic"; context_window = 200_000 }
   else default_model
 
 (* ── Session content helpers ──────────────────────────────────────────────── *)

@@ -33,7 +33,7 @@ val create :
 
 val stream_fn : t -> Agent_types.stream_fn
 (** [stream_fn adapter] returns an {!Agent_types.stream_fn} that dispatches by
-    [model.api] to the pre-built closure.
+    [model.protocol] to the pre-built closure.
 
-    Unknown [model.api] values produce an {!Pera_connector.Event_stream.t} that
+    Unknown [model.protocol] values produce an {!Pera_connector.Event_stream.t} that
     immediately closes with an error message containing the unknown API name. *)

@@ -34,7 +34,7 @@ type state = {
 
 let default_provenance =
   {
-    Types.api = "openai-completions";
+    Types.protocol = "openai-completions";
     provider = "OpenAI";
     model = "";
     error_message = None;

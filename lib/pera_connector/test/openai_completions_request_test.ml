@@ -46,7 +46,7 @@ let test_assistant_text_message_renders_correctly () =
           stop_reason = Types.EndTurn;
           provenance =
             {
-              Types.api = "openai-completions";
+              Types.protocol = "openai-completions";
               provider = "OpenAI";
               model = "gpt-4";
               error_message = None;
@@ -145,7 +145,7 @@ let test_build_request_body_includes_system_as_first_message () =
   in
   let options = make_options () in
   let model =
-    { Types.id = "gpt-4"; api = "openai-completions"; context_window = 8_192 }
+    { Types.id = "gpt-4"; protocol = "openai-completions"; context_window = 8_192 }
   in
   (* Act *)
   let body =
@@ -178,7 +178,7 @@ let test_build_request_body_includes_tools_as_functions_array () =
   let context = { (make_context []) with Connector.tools = [ tool ] } in
   let options = make_options () in
   let model =
-    { Types.id = "gpt-4"; api = "openai-completions"; context_window = 8_192 }
+    { Types.id = "gpt-4"; protocol = "openai-completions"; context_window = 8_192 }
   in
   (* Act *)
   let body =
@@ -202,7 +202,7 @@ let test_max_tokens_field_uses_max_completion_tokens_by_default () =
   let context = make_context [] in
   let options = make_options () in
   let model =
-    { Types.id = "gpt-4"; api = "openai-completions"; context_window = 8_192 }
+    { Types.id = "gpt-4"; protocol = "openai-completions"; context_window = 8_192 }
   in
   (* Act *)
   let body =
@@ -225,7 +225,7 @@ let test_max_tokens_field_switches_per_compat () =
   let context = make_context [] in
   let options = make_options () in
   let model =
-    { Types.id = "gpt-4"; api = "openai-completions"; context_window = 8_192 }
+    { Types.id = "gpt-4"; protocol = "openai-completions"; context_window = 8_192 }
   in
   (* Act *)
   let body =
@@ -271,7 +271,7 @@ let test_default_compat_omits_enable_thinking_when_thinking_enabled () =
     { (make_options ()) with Connector.thinking_budget_tokens = Some 1024 }
   in
   let model =
-    { Types.id = "o3"; api = "openai-completions"; context_window = 200_000 }
+    { Types.id = "o3"; protocol = "openai-completions"; context_window = 200_000 }
   in
   let body =
     Openai_completions_request.build_request_body ~model ~context ~options
@@ -288,7 +288,7 @@ let test_compat_with_enable_thinking_field_emits_it () =
     { (make_options ()) with Connector.thinking_budget_tokens = Some 1024 }
   in
   let model =
-    { Types.id = "kimi"; api = "openai-completions"; context_window = 128_000 }
+    { Types.id = "kimi"; protocol = "openai-completions"; context_window = 128_000 }
   in
   let compat =
     { Openai_completions_request.opencode_zen_compat with

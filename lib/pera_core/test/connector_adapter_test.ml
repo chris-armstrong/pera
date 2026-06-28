@@ -74,7 +74,7 @@ let test_stream_fn_resolves_registered_provider () =
   let model =
     {
       Pera_types.Types.id = "test-model";
-      api = "faux";
+      protocol = "faux";
       context_window = 200_000;
     }
   in
@@ -121,7 +121,7 @@ let test_stream_fn_unknown_api_returns_error_stream () =
   let model =
     {
       Pera_types.Types.id = "nonexistent-model";
-      api = "nonexistent-api";
+      protocol = "nonexistent-api";
       context_window = 200_000;
     }
   in
@@ -164,11 +164,11 @@ let test_stream_fn_preserves_provider_semantics () =
   in
   let stream_fn = Connector_adapter.stream_fn adapter in
   (* Build a loop config using the adapter's stream_fn.
-     The model.api must match the registered name 'faux'. *)
+     The model.protocol must match the registered name 'faux'. *)
   let model =
     {
       Pera_types.Types.id = "test-model";
-      api = "faux";
+      protocol = "faux";
       context_window = 200_000;
     }
   in

@@ -196,7 +196,7 @@ let test_prepare_next_turn_swaps_model () =
   Faux_provider.reset_recorded ();
   let new_model =
     Pera_types.Types.
-      { id = "swapped-model"; api = "faux"; context_window = 200_000 }
+      { id = "swapped-model"; protocol = "faux"; context_window = 200_000 }
   in
   (* Record models seen by our custom stream_fn wrapper *)
   let recorded_models : Pera_types.Types.model list ref = ref [] in

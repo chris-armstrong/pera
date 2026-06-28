@@ -44,14 +44,14 @@ let select_model registry argv =
         Types.
           {
             id = "claude-haiku-4-5-20251001";
-            api = "anthropic";
+            protocol = "anthropic";
             context_window = 200_000;
           }
     | "openai-completions" ->
         Types.
           {
             id = "kimi-k2.6";
-            api = "openai-completions";
+            protocol = "openai-completions";
             context_window = 128_000;
           }
     | _ ->
@@ -65,20 +65,20 @@ let select_model registry argv =
         Types.
           {
             id = "claude-haiku-4-5-20251001";
-            api = "anthropic";
+            protocol = "anthropic";
             context_window = 200_000;
           }
     | ("openai-completions", _) :: _ ->
         Types.
           {
             id = "kimi-k2.6";
-            api = "openai-completions";
+            protocol = "openai-completions";
             context_window = 128_000;
           }
     | (name, _) :: _ ->
         (* Fallback: use whatever was registered first.
            TODO: 200K is a guess for the unknown provider; surface a CLI flag. *)
-        Types.{ id = "unknown"; api = name; context_window = 200_000 }
+        Types.{ id = "unknown"; protocol = name; context_window = 200_000 }
     | [] ->
         (* Should not reach here — we checked for empty registry before. *)
         print_endline "skipped: no API keys";
@@ -93,7 +93,7 @@ let () =
   let argv = Sys.argv in
   let model = select_model registry argv in
   let scenario_name = if Array.length argv > 2 then Some argv.(2) else None in
-  Printf.printf "provider: %s\n%!" model.Types.api;
+  Printf.printf "provider: %s\n%!" model.Types.protocol;
   Printf.printf "model:    %s\n%!" model.Types.id;
   Eio_main.run @@ fun env ->
   Eio.Switch.run @@ fun sw ->

@@ -38,7 +38,7 @@ type state = {
 
 let default_provenance =
   {
-    Types.api = "anthropic";
+    Types.protocol = "anthropic";
     provider = "Anthropic";
     model = "";
     error_message = None;

@@ -354,7 +354,7 @@ let test_tool_results_between_other_messages_do_not_over_merge () =
         stop_reason = Types.ToolUse;
         provenance =
           {
-            Types.api = "anthropic";
+            Types.protocol = "anthropic";
             provider = "Anthropic";
             model = "test-model";
             error_message = None;
