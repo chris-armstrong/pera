@@ -7,6 +7,7 @@ let anthropic_model =
       context_window = 200000;
       max_tokens = 16000;
       thinking = None;
+      cost = None;
     }
 
 let thinking_model =
@@ -16,15 +17,16 @@ let thinking_model =
       context_window = 200000;
       max_tokens = 16000;
       thinking = Some { budget_medium = 8000; budget_high = 32000 };
+      cost = None;
     }
 
 let anthropic_provider =
   Pera_cli.Models_config.
     {
       name = "anthropic";
-      api = "anthropic";
-      api_key_env = Some "ANTHROPIC_API_KEY";
-      base_url = None;
+      protocol = "anthropic";
+      api_key_env = [ "ANTHROPIC_API_KEY" ];
+      api = None;
       base_url_env = None;
       compat = None;
       models = [ anthropic_model; thinking_model ];

@@ -107,11 +107,15 @@ let resolve_api_key_source ~parsed_args ~merged ~provider_spec ~getenv_opt =
           with
           | Some src -> Some src
           | None -> (
-              match provider_spec.Models_config.api_key_env with
-              | Some env_var -> (
-                  match getenv_opt env_var with
-                  | Some k -> Some (Pera_config.Key k)
-                  | None -> None)
+              match
+                List.find_map
+                  (fun env_var ->
+                     match getenv_opt env_var with
+                     | Some k -> Some (Pera_config.Key k)
+                     | None -> None)
+                  provider_spec.Models_config.api_key_env
+              with
+              | Some key -> Some key
               | None -> None)))
 
 let resolve_compaction ~merged ~model_spec =
@@ -207,7 +211,7 @@ let resolve inputs =
     Pera_types.Types.
       {
         id = model_spec.Models_config.name;
-        api = provider_spec.Models_config.api;
+        protocol = provider_spec.Models_config.protocol;
         context_window = model_spec.Models_config.context_window;
       }
   in

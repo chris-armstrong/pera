@@ -20,6 +20,7 @@
   fpath
   re
   cstruct
+  decimal
   eio
   eio_main
   eio_linux)
