@@ -88,7 +88,9 @@ module Make (E : Env) = struct
       =
     let stdin_src = Eio.Stdenv.stdin env in
     let read_line () =
-      Eio.Buf_read.parse_exn ~max_size:65536 Eio.Buf_read.line stdin_src
+      match Eio.Buf_read.parse ~max_size:65536 Eio.Buf_read.line stdin_src with
+      | Ok s -> s
+      | Error _ -> raise End_of_file
     in
     let rec loop () =
       match read_line () with
@@ -227,9 +229,10 @@ module Make (E : Env) = struct
       let packaged_path =
         let candidates =
           let bin_dir = Fpath.parent (Fpath.v Sys.executable_name) in
+          let bin_str = Fpath.to_string bin_dir in
           [
-            Fpath.(bin_dir / "../share/pera-cli/models.sexp");
-            Fpath.(bin_dir / "../../share/pera/models.sexp");
+            Fpath.(normalize (v (bin_str ^ "/../share/pera-cli/models.sexp")));
+            Fpath.(normalize (v (bin_str ^ "/../../share/pera/models.sexp")));
             Fpath.(
               v (Xdg.data_dir (Xdg.create ~env:Sys.getenv_opt ()))
               / "pera-cli" / "models.sexp");
