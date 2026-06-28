@@ -37,29 +37,62 @@ module Make (E : Env) = struct
         exit 1
 
   let run_key_command ~env ~sw argv =
-    let module E = (val E.create ~env ~sw ~cwd:(Sys.getcwd ())) in
+    let proc_mgr = Eio.Stdenv.process_mgr env in
+    let clock = Eio.Stdenv.clock env in
     let cmd = String.concat " " (List.map Filename.quote argv) in
-    Eio.Cancel.sub (fun cancel ->
-        match
-          E.Sh.exec ~command:cmd
-            ?cwd:(None : string option)
-            ?env:(None : (string * string) list option)
-            ?timeout:(Some 30.0 : float option)
-            ?on_stdout:(None : (string -> unit) option)
-            ?on_stderr:(None : (string -> unit) option)
-            ~sw ~cancel
-        with
-        | Ok result ->
-            if Int.equal result.Pera_env.Execution_env.exit_code 0 then
-              String.trim result.Pera_env.Execution_env.stdout
-            else
-              let msg = result.Pera_env.Execution_env.stderr in
-              Printf.eprintf "[pera] API key command failed: %s\n%!" msg;
+    let run_once () =
+      Eio.Switch.run (fun sub_sw ->
+          let _ = sw in
+          let stdout_buf = Buffer.create 256 in
+          let stderr_buf = Buffer.create 256 in
+          let stdout_src, stdout_sink =
+            Eio.Process.pipe ~sw:sub_sw proc_mgr
+          in
+          let stderr_src, stderr_sink =
+            Eio.Process.pipe ~sw:sub_sw proc_mgr
+          in
+          let proc =
+            Eio.Process.spawn ~sw:sub_sw proc_mgr ~stdout:stdout_sink
+              ~stderr:stderr_sink [ "/bin/sh"; "-c"; cmd ]
+          in
+          Eio.Resource.close stdout_sink;
+          Eio.Resource.close stderr_sink;
+          let exit_code = ref None in
+          let read_all src buf =
+            let tmp = Cstruct.create 4096 in
+            let rec loop () =
+              match Eio.Flow.single_read src tmp with
+              | n when n > 0 ->
+                  Buffer.add_string buf
+                    (Cstruct.to_string (Cstruct.sub tmp 0 n));
+                  loop ()
+              | _ -> ()
+            in
+            try loop () with End_of_file -> ()
+          in
+          Eio.Fiber.all
+            [
+              (fun () -> read_all stdout_src stdout_buf);
+              (fun () -> read_all stderr_src stderr_buf);
+              (fun () ->
+                (match Eio.Process.await proc with
+                | `Exited code -> exit_code := Some code
+                | `Signaled _ -> exit_code := Some 1));
+            ];
+          match !exit_code with
+          | Some 0 -> String.trim (Buffer.contents stdout_buf)
+          | Some _ ->
+              Printf.eprintf "[pera] API key command failed: %s\n%!"
+                (Buffer.contents stderr_buf);
               exit 1
-        | Error e ->
-            Printf.eprintf "[pera] API key command error: %s\n%!"
-              e.Pera_types.Types.message;
-            exit 1)
+          | None ->
+              Printf.eprintf "[pera] API key command did not complete\n%!";
+              exit 1)
+    in
+    try Eio.Time.with_timeout_exn clock 30.0 run_once
+    with Eio.Time.Timeout ->
+      Printf.eprintf "[pera] API key command timed out after 30s\n%!";
+      exit 1
 
   let materialise_api_key ~env ~sw = function
     | Pera_config.Key k -> k
@@ -84,11 +117,14 @@ module Make (E : Env) = struct
     in
     Pera_core.Connector_adapter.stream_fn adapter
 
+  let stdin_line_limit = 1 lsl 20 (* 1 MiB — avoids hard paste limits *)
+
   let run_interactive ~commands ~stdin_isatty ~send ~info_stats ~compact_fn ~env
       =
     let stdin_src = Eio.Stdenv.stdin env in
     let read_line () =
-      Eio.Buf_read.parse_exn ~max_size:65536 Eio.Buf_read.line stdin_src
+      Eio.Buf_read.parse_exn ~max_size:stdin_line_limit Eio.Buf_read.line
+        stdin_src
     in
     let rec loop () =
       match read_line () with
@@ -226,13 +262,11 @@ module Make (E : Env) = struct
         let candidates =
           let bin_dir = Fpath.parent (Fpath.v Sys.executable_name) in
           [
-            Fpath.(bin_dir / "../share/pera-cli/models.sexp");
+            Fpath.(bin_dir / "../share/pera/models.sexp");
             Fpath.(bin_dir / "../../share/pera/models.sexp");
             Fpath.(
               v (Xdg.data_dir (Xdg.create ~env:Sys.getenv_opt ()))
-              / "pera-cli" / "models.sexp");
-            Fpath.v "/usr/local/share/pera-cli/models.sexp";
-            Fpath.v "/usr/share/pera-cli/models.sexp";
+              / "pera" / "models.sexp");
           ]
           |> List.map Fpath.to_string
         in
