@@ -20,7 +20,11 @@ type t =
     }
   | String of { description : string option }
   | Number of { description : string option }
-  | Integer of { description : string option }
+  | Integer of {
+      description : string option;
+      minimum : int option;
+      maximum : int option;
+    }
   | Boolean of { description : string option }
   | Array of { items : t; description : string option }
   | Enum of { values : string list; description : string option }
@@ -40,7 +44,7 @@ val object_ :
 
 val string : ?description:string -> unit -> t
 val number : ?description:string -> unit -> t
-val integer : ?description:string -> unit -> t
+val integer : ?description:string -> ?minimum:int -> ?maximum:int -> unit -> t
 val boolean : ?description:string -> unit -> t
 
 val array : ?description:string -> items:t -> unit -> t

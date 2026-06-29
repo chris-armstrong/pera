@@ -19,7 +19,6 @@ type resolved_config = {
   commands : Pera_config.command_def list;
   mcp_servers : Pera_config.mcp_server_def list;
   json_output : bool;
-  verbose : bool;
 }
 
 type resolve_inputs = {
@@ -47,8 +46,7 @@ let built_in_defaults : Pera_config.config =
     compaction =
       Some { enabled = Some true; threshold = Some 70; tail = Some 4 };
     output =
-      Some
-        { plain = Some false; show_thinking = Some false; quiet = Some false };
+      Some { show_thinking = Some false; quiet = Some false };
     commands = [];
     tools = [];
     mcp_servers = [];
@@ -135,7 +133,7 @@ let resolve_compaction ~merged ~model_spec =
 
 let resolve_output ~merged =
   Option.get_or
-    ~default:Pera_config.{ plain = None; show_thinking = None; quiet = None }
+    ~default:Pera_config.{ show_thinking = None; quiet = None }
     merged.Pera_config.output
 
 let resolve_system_prompt ~parsed_args =
@@ -236,5 +234,4 @@ let resolve inputs =
       commands = merged.Pera_config.commands;
       mcp_servers = merged.Pera_config.mcp_servers;
       json_output = inputs.parsed_args.Cli_args.json;
-      verbose = inputs.parsed_args.Cli_args.verbose;
     }

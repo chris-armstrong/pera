@@ -77,11 +77,9 @@ let test_parsed_args () : Pera_cli.Cli_args.parsed_args =
     no_compact = false;
     compact_threshold = None;
     compact_tail = None;
-    plain = false;
     show_thinking = false;
     quiet = false;
     json = false;
-    verbose = false;
   }
 
 (** Build a [Config_resolver.resolve_inputs] from the test fixtures. *)
@@ -107,7 +105,6 @@ module Smoke_env : Pera_cli.Env = struct
   let getenv_opt = test_getenv_opt
   let home () = "/tmp/pera_smoke_home"
   let secure_random ~env:_ = fixed_random
-  let stdin_isatty ~env:_ = false
 end
 
 module Smoke_cli = Pera_cli.Make (Smoke_env)

@@ -46,8 +46,7 @@ let make_args ?(model = None) ?(api_key = None) ?(api_key_file = None)
     ?(cache_policy = None) ?(cache_ttl = None) ?(session = None)
     ?(session_dir = None) ?(cwd = None) ?(system = None) ?(system_file = None)
     ?(no_compact = false) ?(compact_threshold = None) ?(compact_tail = None)
-    ?(plain = false) ?(show_thinking = false) ?(quiet = false) ?(json = false)
-    ?(verbose = false) () =
+    ?(show_thinking = false) ?(quiet = false) ?(json = false) () =
   Pera_cli.Cli_args.
     {
       model;
@@ -66,11 +65,9 @@ let make_args ?(model = None) ?(api_key = None) ?(api_key_file = None)
       no_compact;
       compact_threshold;
       compact_tail;
-      plain;
       show_thinking;
       quiet;
       json;
-      verbose;
     }
 
 let test_to_partial_no_compact () =
@@ -79,13 +76,6 @@ let test_to_partial_no_compact () =
   match cfg.compaction with
   | Some { enabled = Some false; _ } -> ()
   | _ -> Alcotest.fail "expected compaction.enabled=false"
-
-let test_to_partial_plain () =
-  let args = make_args ~plain:true () in
-  let cfg = Pera_cli.Cli_args.to_partial_config args in
-  match cfg.output with
-  | Some { plain = Some true; _ } -> ()
-  | _ -> Alcotest.fail "expected output.plain=true"
 
 let test_to_partial_show_thinking () =
   let args = make_args ~show_thinking:true () in
@@ -122,7 +112,6 @@ let suite =
     ("cache_policy_conv: all values", `Quick, test_cache_policy_conv);
     ("cache_ttl_conv: all values", `Quick, test_cache_ttl_conv);
     ("to_partial_config: no_compact", `Quick, test_to_partial_no_compact);
-    ("to_partial_config: plain", `Quick, test_to_partial_plain);
     ("to_partial_config: show_thinking", `Quick, test_to_partial_show_thinking);
     ("to_partial_config: quiet", `Quick, test_to_partial_quiet);
     ("to_partial_config: model", `Quick, test_to_partial_model);

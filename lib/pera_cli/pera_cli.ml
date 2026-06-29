@@ -16,7 +16,6 @@ module type Env = sig
   val getenv_opt : string -> string option
   val home : unit -> string
   val secure_random : env:Eio_unix.Stdenv.base -> bytes -> unit
-  val stdin_isatty : env:Eio_unix.Stdenv.base -> bool
 end
 
 module Make (Cli_env : Env) = struct
@@ -53,30 +52,61 @@ module Make (Cli_env : Env) = struct
         Printf.eprintf "[pera] failed to read system file %S: %s\n%!" path msg;
         exit 1
 
-  let run_key_command ~env ~sw argv =
-    let module E = (val Cli_env.create ~env ~sw ~cwd:(Sys.getcwd ())) in
-    let cmd = String.concat " " (List.map Filename.quote argv) in
-    Eio.Cancel.sub (fun cancel ->
-        match
-          E.Sh.exec ~command:cmd
-            ?cwd:(None : string option)
-            ?env:(None : (string * string) list option)
-            ?timeout:(Some 30.0 : float option)
-            ?on_stdout:(None : (string -> unit) option)
-            ?on_stderr:(None : (string -> unit) option)
-            ~sw ~cancel
-        with
-        | Ok result ->
-            if Int.equal result.Pera_env.Execution_env.exit_code 0 then
-              String.trim result.Pera_env.Execution_env.stdout
-            else
-              let msg = result.Pera_env.Execution_env.stderr in
-              Printf.eprintf "[pera] API key command failed: %s\n%!" msg;
+  let run_key_command ~env ~sw:_ argv =
+    let proc_mgr = Eio.Stdenv.process_mgr env in
+    let clock = Eio.Stdenv.clock env in
+    let run_once () =
+      Eio.Switch.run (fun sub_sw ->
+          let stdout_buf = Buffer.create 256 in
+          let stderr_buf = Buffer.create 256 in
+          let stdout_src, stdout_sink =
+            Eio.Process.pipe ~sw:sub_sw proc_mgr
+          in
+          let stderr_src, stderr_sink =
+            Eio.Process.pipe ~sw:sub_sw proc_mgr
+          in
+          let proc =
+            Eio.Process.spawn ~sw:sub_sw proc_mgr ~stdout:stdout_sink
+              ~stderr:stderr_sink argv
+          in
+          Eio.Resource.close stdout_sink;
+          Eio.Resource.close stderr_sink;
+          let exit_code = ref None in
+          let read_all src buf =
+            let tmp = Cstruct.create 4096 in
+            let rec loop () =
+              match Eio.Flow.single_read src tmp with
+              | n when n > 0 ->
+                  Buffer.add_string buf
+                    (Cstruct.to_string (Cstruct.sub tmp 0 n));
+                  loop ()
+              | _ -> ()
+            in
+            try loop () with End_of_file -> ()
+          in
+          Eio.Fiber.all
+            [
+              (fun () -> read_all stdout_src stdout_buf);
+              (fun () -> read_all stderr_src stderr_buf);
+              (fun () ->
+                (match Eio.Process.await proc with
+                | `Exited code -> exit_code := Some code
+                | `Signaled _ -> exit_code := Some 1));
+            ];
+          match !exit_code with
+          | Some 0 -> String.trim (Buffer.contents stdout_buf)
+          | Some _ ->
+              Printf.eprintf "[pera] API key command failed: %s\n%!"
+                (Buffer.contents stderr_buf);
               exit 1
-        | Error e ->
-            Printf.eprintf "[pera] API key command error: %s\n%!"
-              e.Pera_types.Types.message;
-            exit 1)
+          | None ->
+              Printf.eprintf "[pera] API key command did not complete\n%!";
+              exit 1)
+    in
+    try Eio.Time.with_timeout_exn clock 30.0 run_once
+    with Eio.Time.Timeout ->
+      Printf.eprintf "[pera] API key command timed out after 30s\n%!";
+      exit 1
 
   let materialise_api_key ~env ~sw = function
     | Pera_config.Key k -> k
@@ -101,25 +131,27 @@ module Make (Cli_env : Env) = struct
     in
     Pera_core.Connector_adapter.stream_fn adapter
 
+  let stdin_line_limit = 1 lsl 20 (* 1 MiB — avoids hard paste limits *)
+
   let run_interactive ~commands ~stdin_isatty ~send ~info_stats ~compact_fn ~env
       =
     let stdin_src = Eio.Stdenv.stdin env in
     let read_line () =
-      match Eio.Buf_read.parse ~max_size:65536 Eio.Buf_read.line stdin_src with
-      | Ok s -> s
-      | Error _ -> raise End_of_file
+      match
+        Eio.Buf_read.parse_exn ~max_size:stdin_line_limit Eio.Buf_read.line
+          stdin_src
+      with
+      | s -> s
+      | exception Failure _ -> raise End_of_file
     in
     let rec tty_loop () =
       match read_line () with
       | exception End_of_file -> ()
       | line -> (
-          let trimmed = String.trim line in
-          if String.is_empty trimmed then tty_loop ()
-          else
-            match Input_loop.parse_line ~commands trimmed with
-            | Send text ->
-                if not (String.is_empty text) then send text;
-                tty_loop ()
+          match Input_loop.parse_line ~commands line with
+          | Send text ->
+              if not (String.is_empty text) then send text;
+              tty_loop ()
             | Compact ->
                 compact_fn ();
                 tty_loop ()
@@ -240,7 +272,7 @@ module Make (Cli_env : Env) = struct
                     lines)
             in
             run_interactive ~commands:rc.Config_resolver.commands
-              ~stdin_isatty:(Cli_env.stdin_isatty ~env)
+              ~stdin_isatty:(Unix.isatty Unix.stdin)
               ~send:(Pera_agent.Agent_harness.send harness)
               ~info_stats:(fun () -> Event_renderer.stats renderer)
               ~compact_fn:(fun () ->

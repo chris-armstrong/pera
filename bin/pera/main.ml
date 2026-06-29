@@ -13,8 +13,6 @@ module Cli = Pera_cli.Make (struct
     Eio.Flow.read_exact src cs;
     let got = Cstruct.to_string cs in
     Bytes.blit_string got 0 s 0 16
-
-  let stdin_isatty ~env:_ = Unix.isatty Unix.stdin
 end)
 
 let () = Cli.run ()

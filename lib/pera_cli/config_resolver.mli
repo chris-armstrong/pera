@@ -32,7 +32,6 @@ type resolved_config = {
   commands : Pera_config.command_def list;
   mcp_servers : Pera_config.mcp_server_def list;
   json_output : bool;
-  verbose : bool;
 }
 
 type resolve_inputs = {

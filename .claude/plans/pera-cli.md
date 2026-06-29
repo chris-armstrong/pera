@@ -333,7 +333,6 @@ type compaction_config = {
 } [@@deriving sexp]
 
 type output_config = {
-  plain         : bool option; [@sexp.option]
   show_thinking : bool option; [@sexp.option]
   quiet         : bool option; [@sexp.option]
 } [@@deriving sexp]
@@ -544,8 +543,7 @@ stopping at the first that exists:
     (tail 4)
     (enabled true)))
  (output
-   ((plain false)
-    (show_thinking false))))
+   ((show_thinking false))))
 ```
 
 ### User config — macOS Keychain example
@@ -758,11 +756,9 @@ the active model — useful for quick testing without editing config.
 | `--no-compact` | `compaction.enabled = false` | — | |
 | `--compact-threshold` | `compaction.threshold` | 70 | |
 | `--compact-tail` | `compaction.tail` | 4 | |
-| `--plain` | `output.plain` | false | |
 | `--show-thinking` | `output.show_thinking` | false | |
 | `--quiet` | `output.quiet` | false | |
 | `--json` | — | — | Newline-delimited JSON events |
-| `--verbose` | — | — | Tool args, cache warnings, compaction |
 
 **Deferred to M7:** `--compact-model` / `compaction.model`.
 **Deferred (batch mode):** `--max-turns`.
@@ -927,6 +923,111 @@ tool set differ.
   external processes; they do not go through `Execution_env.S`.
 - `exec_env` is NOT a config field — it is a compile-time choice encoded in
   which binary the user builds and runs.
+
+---
+
+## Design note: execution environment vs pera-cli host process
+
+The `Env` module type passed to `Pera_cli.Make` bundles two conceptually
+distinct things:
+
+**Agent execution context** (`create` / `tools` / `has_shell`) — describes
+where agent tool calls run. The execution environment may be a local sandbox,
+a Docker container, a remote host accessed via SSH, or a cloud API. From pera's
+perspective it is a black box: it can execute files/shell commands on *the
+agent's* behalf, but it need not share filesystem, environment variables, or
+process identity with the machine running pera itself.
+
+**Host process accessors** (`getenv_opt` / `home` / `secure_random` /
+`wall_time`) — functions of the *real host process* where the pera binary is
+running. They are declared in `Env` only for testability (so tests can stub
+`Sys.getenv_opt` without `Unix.putenv`). In production they must always be
+bound to real host-process primitives.
+
+**Rule: never use the execution context for CLI-level work.** Concretely:
+
+- API key commands (`api_key_command`) must be spawned via
+  `Eio.Stdenv.process_mgr env`, not via `(val ctx).Sh.exec`. The execution
+  environment might be in a container with no access to `~/.config/op` or the
+  host keychain.
+- Config file paths (`~/.config/pera/config.sexp`, `models.sexp`, `.pera`)
+  must be resolved using the host filesystem (`Eio.Stdenv.fs env`), not via the
+  execution env's filesystem operations.
+- Environment variables for pera itself (`PERA_API_KEY`, `PERA_MODEL`, etc.)
+  must be read via `E.getenv_opt` (which in production is `Sys.getenv_opt`),
+  never via executing a subshell in the agent context.
+
+**Correct split in `pera_cli.ml`:**
+
+```ocaml
+(* CLI host work — use Eio.Stdenv / Sys / Unix directly *)
+let api_key = materialise_api_key ~env ~sw src   (* spawns via Eio.Stdenv.process_mgr *)
+let xdg = Xdg.create ~env:Sys.getenv_opt ()     (* reads host env vars *)
+
+(* Agent execution work — use the ctx from E.create *)
+let ctx = E.create ~env ~sw ~cwd in
+let base_tools = E.tools ctx in
+let harness_config = { ...; exec_env = ctx; ... }
+```
+
+A future Env implementation backed by a remote API must still bind `getenv_opt`
+to `Sys.getenv_opt` so that pera reads its own config from the local machine.
+
+---
+
+## Data file search: cross-platform conventions
+
+### `models.sexp` search order
+
+The packaged `models.sexp` is located at startup using a short candidate list:
+
+1. `<bin_dir>/../share/pera/models.sexp` — covers any prefix-based install
+   (APT/RPM/Homebrew/opam/MacPorts/Nix). The binary is at `$PREFIX/bin/pera`
+   and data is at `$PREFIX/share/pera/`; the `..` traversal works regardless of
+   prefix. This is the canonical path for all package-manager installs.
+
+2. `$XDG_DATA_HOME/pera/models.sexp` (default `~/.local/share/pera/` on Linux)
+   — covers user-space installs that aren't on a standard prefix (e.g. an
+   extracted tarball placed in `~/.local/`).
+
+System-wide paths like `/usr/local/share/pera/` are intentionally not
+hardcoded: candidate 1 already covers them via the bin-relative traversal, and
+hardcoding OS paths breaks cross-platform portability.
+
+### Platform conventions and what the `xdg` library provides
+
+The `xdg` OCaml library (`opam install xdg`) is already cross-platform:
+
+| Platform | `Xdg.config_dir` | `Xdg.data_dir` | `Xdg.state_dir` |
+|---|---|---|---|
+| Linux / BSD | `$XDG_CONFIG_HOME` or `~/.config` | `$XDG_DATA_HOME` or `~/.local/share` | `$XDG_STATE_HOME` or `~/.local/state` |
+| macOS | `~/Library/Application Support` | `~/Library/Application Support` | `~/Library/Application Support` |
+| Windows | `%APPDATA%` | `%APPDATA%` | `%APPDATA%` |
+
+pera uses:
+- `Xdg.config_dir / "pera"` for `config.sexp` and user `models.sexp`
+- `Xdg.data_dir / "pera"` as a third search candidate for packaged `models.sexp`
+- `Xdg.state_dir / "pera" / "sessions"` for session files (default)
+
+### Packaging notes
+
+**Flatpak**: XDG env vars are automatically redirected to
+`~/.var/app/<app-id>/{config,data,…}/`; the `xdg` library sees the remapped
+dirs transparently. The bin-relative candidate still works because `$PREFIX` is
+the Flatpak install root.
+
+**Snap**: does not uniformly remap XDG vars. Snap packages typically set
+`$SNAP_USER_DATA` and `$SNAP_COMMON` manually. If pera is ever packaged as a
+Snap, a wrapper script should set `XDG_CONFIG_HOME=$SNAP_USER_DATA/.config` and
+`XDG_DATA_HOME=$SNAP_USER_DATA/.local/share` before launching the binary.
+
+**AppImage / binary release**: bundle `models.sexp` alongside the binary at
+`<appimage-mount>/usr/share/pera/models.sexp`; the bin-relative path then
+resolves correctly.
+
+**`$XDG_DATA_DIRS`** (the colon-separated list of system data dirs, defaulting
+to `/usr/local/share:/usr/share` on Linux) is not searched by the `xdg` OCaml
+library and is not used by pera. The bin-relative candidate replaces it.
 
 ---
 

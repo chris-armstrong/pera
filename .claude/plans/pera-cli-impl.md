@@ -1090,11 +1090,9 @@ type parsed_args = {
   no_compact        : bool;
   compact_threshold : int option;
   compact_tail      : int option;
-  plain             : bool;
   show_thinking     : bool;
   quiet             : bool;
   json              : bool;
-  verbose           : bool;
 }
 
 val parse : argv:string array -> parsed_args
@@ -1147,7 +1145,7 @@ Similarly define `cache_policy_conv` and `cache_ttl_conv`.
 (* Test 2: effort_conv rejects unknown strings *)
 (* Test 3: cache_policy_conv parses all three values *)
 (* Test 4: to_partial_config maps no_compact to compaction.enabled=false *)
-(* Test 5: to_partial_config maps plain/show_thinking/quiet to output fields *)
+(* Test 5: to_partial_config maps show_thinking/quiet to output fields *)
 ```
 
 **Verify:** `dune test` green.
@@ -1180,7 +1178,6 @@ type resolved_config = {
   commands               : Pera_config.command_def list;
   mcp_servers            : Pera_config.mcp_server_def list;
   json_output            : bool;
-  verbose                : bool;
 }
 
 type resolve_inputs = {
@@ -1251,8 +1248,7 @@ let built_in_defaults : Pera_config.config = {
   cache = Some { policy = Some No_cache; ttl = Some Five_minutes };
   session = None; compaction = Some { threshold = Some 70; tail = Some 4;
     enabled = Some true };
-  output = Some { plain = Some false; show_thinking = Some false;
-    quiet = Some false };
+  output = Some { show_thinking = Some false; quiet = Some false };
   commands = []; tools = []; mcp_servers = [] }
 ```
 
@@ -1697,13 +1693,10 @@ val render :
   Pera_core.Agent_types.agent_event ->
   string list
 (** Render the event to zero or more output lines.
-    Plain-text mode (output.plain = true): strip all markdown.
     JSON mode (json = true): emit one NDJSON line per event instead of
     human-readable text. NDJSON lines are JSON objects with a "type" field.
-    Both modes are mutually exclusive; json takes priority.
     Thinking blocks: only rendered when output.show_thinking = true.
-    Quiet mode: only emit the final assistant text (suppress tool events).
-    Tool events (verbose = false): suppress tool args; only tool name. *)
+    Quiet mode: only emit the final assistant text (suppress tool events). *)
 
 val stats : t -> string
 (** Format the accumulated stats for /info:
@@ -1732,14 +1725,14 @@ On `AE_message_end { message = Real (Connector.AssistantMessage am) }`:
 - Add `am.usage.*` to the running totals.
 - Update `model_name` from `am.provenance.model`.
 
-Rendering per event (plain text, non-JSON mode):
+Rendering per event (non-JSON mode):
 - `AE_message_update { event = AME_text_delta { text } }` → emit `text`.
 - `AE_message_update { event = AME_thinking_delta { text } }` → if
-  `show_thinking`, emit `text` wrapped in `[thinking] ...`.
+  `show_thinking`, emit `text`.
 - `AE_tool_execution_start { tool_name }` → if not quiet, emit
   `"\n[tool: <name>]"`.
-- `AE_tool_execution_end { tool_name; is_error }` → if not quiet and verbose,
-  emit result summary.
+- `AE_tool_execution_end { tool_name; is_error }` → if not quiet, emit
+  `"\n[tool: <name> — done]"` or `"\n[tool: <name> — error]"`.
 - `AE_agent_end _` → emit `"\n"`.
 - All other events → `[]`.
 
@@ -1839,38 +1832,38 @@ val expand_template : template:string -> args:string -> string
 **Create `lib/pera_cli/pera_cli.mli`:**
 
 ```ocaml
-(** The execution/process environment the CLI runs against.
+(** The environment the CLI runs against — two distinct concerns in one module.
 
-    [ctx] is pinned to [(module Pera_env.Execution_env.S)] so that
-    [Agent_harness.config.exec_env] accepts it directly. Substituting a
-    different execution environment means providing a different module
-    satisfying [Execution_env.S] (e.g. a sandboxed or mock env) — the harness
-    is parameterised along that axis and works unchanged. A [ctx] type that is
-    *not* an [Execution_env.S] module is not supported by [Agent_harness] and
-    therefore not by this functor; pinning the type makes that a boundary
-    error rather than a buried mismatch. *)
+    Agent execution context (create / tools / has_shell): describes where the
+    agent's tools run. This may be a local process, sandbox, container, or a
+    remote system. The CLI must never use this to perform its own work (config
+    loading, API key commands, path lookup). Use Eio.Stdenv / Unix / Sys for
+    those instead — see the "Execution env vs host" design note in pera-cli.md.
+
+    Host process accessors (getenv_opt / home / secure_random / wall_time):
+    functions of the real host process, declared here only so tests can inject
+    stubs. In production these must be Sys.getenv_opt, HOME / getpwuid, OS
+    entropy, Unix.localtime respectively. Never proxy these to a sandboxed or
+    remote source. stdin_isatty is NOT in Env — it is called inline as
+    Unix.isatty Unix.stdin, which is a pure host syscall Eio provides no
+    alternative for. *)
 module type Env = sig
   type ctx = (module Pera_env.Execution_env.S)
 
+  (* Agent execution context — may be sandboxed or remote *)
   val create :
     env:Eio_unix.Stdenv.base ->
     sw:Eio.Switch.t ->
     cwd:string ->
     ctx
-
   val tools : ctx -> (module Pera_env.Execution_env.S) Pera_core.Agent_types.tool list
-
   val has_shell : bool
 
-  (** Process-environment accessors, usable before [ctx] exists (config
-      resolution happens before env creation). Injecting these makes
-      [Env_reader] / [Config_resolver] / [Session_path] testable without
-      [Unix.putenv] or real TTYs. *)
+  (* Host process accessors — always the real host, injected for testability *)
   val getenv_opt : string -> string option
   val home : unit -> string
-  val secure_random : env:Eio_unix.Stdenv.base -> string -> unit
+  val secure_random : env:Eio_unix.Stdenv.base -> bytes -> unit
   val wall_time : unit -> Unix.tm
-  val stdin_isatty : env:Eio_unix.Stdenv.base -> bool
 end
 
 module Make (E : Env) : sig
@@ -1970,7 +1963,7 @@ module Make (E : Env) = struct
           List.iter (fun line -> print_string line; flush stdout) lines) in
         (* Interactive loop — lives here, not in Input_loop. *)
         run_interactive ~commands:rc.commands
-          ~stdin_isaty:(E.stdin_isatty ~env)
+          ~stdin_isatty:(Unix.isatty Unix.stdin)
           ~send:(Pera_agent.Agent_harness.send harness)
           ~info_stats:(fun () -> Event_renderer.stats renderer)
           ~compact_fn:(fun () -> Printf.eprintf "[pera] /compact not yet wired\n%!")
@@ -2096,10 +2089,6 @@ module Cli = Pera_cli.Pera_cli.Make (struct
     String.blit got 0 s 0 16
 
   let wall_time () = Unix.localtime (Unix.gettimeofday ())
-
-  (* Eio has no isatty primitive. Use Unix.isatty on fd 0 directly
-     (acceptable: not file IO, and Eio provides no alternative). *)
-  let stdin_isatty ~env:_ = Unix.isatty Unix.stdin
 end)
 
 let () = Cli.run ()
