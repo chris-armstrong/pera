@@ -1,4 +1,0 @@
-(install
- (package pera-cli)
- (section share)
- (files models.sexp))
