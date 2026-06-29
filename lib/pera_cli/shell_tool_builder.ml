@@ -18,8 +18,8 @@ let validate template declared_names =
 let arg_schema (arg : Pera_config.shell_arg) =
   match arg.arg_type with
   | String { description } -> Pera_connector.Json_schema.string ~description ()
-  | Int { description; min = _; max = _ } ->
-      Pera_connector.Json_schema.integer ~description ()
+  | Int { description; min; max } ->
+      Pera_connector.Json_schema.integer ~description ?minimum:min ?maximum:max ()
 
 let build_schema (def : Pera_config.shell_tool_def) =
   let properties =

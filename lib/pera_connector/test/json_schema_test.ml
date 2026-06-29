@@ -302,6 +302,37 @@ let test_validate_rejects_float_string_to_integer () =
     "string '42.1' rejected by integer schema" true
     (is_error (Json_schema.validate schema (`String "42.1")))
 
+let test_integer_minimum_accepts_in_range () =
+  let schema = Json_schema.integer ~minimum:0 ~maximum:10 () in
+  Alcotest.check result_testable "5 within [0,10]" (Ok ())
+    (Json_schema.validate schema (`Int 5))
+
+let test_integer_minimum_rejects_below () =
+  let schema = Json_schema.integer ~minimum:0 () in
+  Alcotest.(check bool)
+    "−1 below minimum 0" true
+    (is_error (Json_schema.validate schema (`Int (-1))))
+
+let test_integer_maximum_rejects_above () =
+  let schema = Json_schema.integer ~maximum:10 () in
+  Alcotest.(check bool)
+    "11 above maximum 10" true
+    (is_error (Json_schema.validate schema (`Int 11)))
+
+let test_integer_bounds_accept_boundary () =
+  let schema = Json_schema.integer ~minimum:1 ~maximum:5 () in
+  Alcotest.check result_testable "1 at minimum boundary" (Ok ())
+    (Json_schema.validate schema (`Int 1));
+  Alcotest.check result_testable "5 at maximum boundary" (Ok ())
+    (Json_schema.validate schema (`Int 5))
+
+let test_to_json_emits_minimum_maximum () =
+  let schema = Json_schema.integer ~description:"count" ~minimum:0 ~maximum:100 () in
+  let json = Json_schema.to_json schema in
+  let s = Yojson.Safe.to_string json in
+  Alcotest.(check bool) "emits minimum" true (String.find ~sub:"\"minimum\":0" s >= 0);
+  Alcotest.(check bool) "emits maximum" true (String.find ~sub:"\"maximum\":100" s >= 0)
+
 (* ── test suite ─────────────────────────────────────────────────────────── *)
 
 let () =
@@ -362,5 +393,18 @@ let () =
             test_validate_rejects_string_null_to_null;
           Alcotest.test_case "rejects_float_string_to_integer" `Quick
             test_validate_rejects_float_string_to_integer;
+        ] );
+      ( "integer_bounds",
+        [
+          Alcotest.test_case "accepts_in_range" `Quick
+            test_integer_minimum_accepts_in_range;
+          Alcotest.test_case "rejects_below_minimum" `Quick
+            test_integer_minimum_rejects_below;
+          Alcotest.test_case "rejects_above_maximum" `Quick
+            test_integer_maximum_rejects_above;
+          Alcotest.test_case "accepts_boundary_values" `Quick
+            test_integer_bounds_accept_boundary;
+          Alcotest.test_case "to_json_emits_minimum_maximum" `Quick
+            test_to_json_emits_minimum_maximum;
         ] );
     ]
