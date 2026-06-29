@@ -35,3 +35,15 @@
 (test
  (name config_resolver_test)
  (libraries pera_cli alcotest containers pera_types pera_agent))
+
+(test
+ (name shell_tool_builder_test)
+ (libraries pera_cli alcotest containers pera_types pera_connector pera_core pera_env))
+
+(test
+ (name event_renderer_test)
+ (libraries pera_cli alcotest containers pera_types pera_connector pera_core yojson))
+
+(test
+ (name input_loop_test)
+ (libraries pera_cli alcotest containers re))

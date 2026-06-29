@@ -17,11 +17,9 @@ type parsed_args = {
   no_compact : bool;
   compact_threshold : int option;
   compact_tail : int option;
-  plain : bool;
   show_thinking : bool;
   quiet : bool;
   json : bool;
-  verbose : bool;
 }
 
 val effort_conv : Pera_config.effort Cmdliner.Arg.conv

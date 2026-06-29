@@ -10,7 +10,11 @@ type t =
     }
   | String of { description : string option }
   | Number of { description : string option }
-  | Integer of { description : string option }
+  | Integer of {
+      description : string option;
+      minimum : int option;
+      maximum : int option;
+    }
   | Boolean of { description : string option }
   | Array of { items : t; description : string option }
   | Enum of { values : string list; description : string option }
@@ -24,7 +28,7 @@ let object_ ?description ~properties ~required () =
 
 let string ?description () = String { description }
 let number ?description () = Number { description }
-let integer ?description () = Integer { description }
+let integer ?description ?minimum ?maximum () = Integer { description; minimum; maximum }
 let boolean ?description () = Boolean { description }
 let array ?description ~items () = Array { items; description }
 let enum ?description values = Enum { values; description }
@@ -66,8 +70,19 @@ let rec to_json schema =
         `Assoc (add_description description [ ("type", `String "string") ])
     | Number { description } ->
         `Assoc (add_description description [ ("type", `String "number") ])
-    | Integer { description } ->
-        `Assoc (add_description description [ ("type", `String "integer") ])
+    | Integer { description; minimum; maximum } ->
+        let fields = [ ("type", `String "integer") ] in
+        let fields =
+          match minimum with
+          | None -> fields
+          | Some n -> ("minimum", `Int n) :: fields
+        in
+        let fields =
+          match maximum with
+          | None -> fields
+          | Some n -> ("maximum", `Int n) :: fields
+        in
+        `Assoc (add_description description fields)
     | Boolean { description } ->
         `Assoc (add_description description [ ("type", `String "boolean") ])
     | Array { items; description } ->
@@ -200,9 +215,21 @@ let rec validate (schema : t) (value : Yojson.Safe.t) : (unit, string) result =
   | Number _ ->
       let coerced = apply_type_coercion value "number" in
       check_type coerced "number"
-  | Integer _ ->
+  | Integer { minimum; maximum; _ } ->
       let coerced = apply_type_coercion value "integer" in
-      check_type coerced "integer"
+      let open Result.Syntax in
+      let* () = check_type coerced "integer" in
+      let i = match coerced with `Int n -> n | _ -> assert false in
+      let* () =
+        match minimum with
+        | Some lo when i < lo ->
+            Error (Fmt.str "value %d is less than minimum %d" i lo)
+        | _ -> Ok ()
+      in
+      (match maximum with
+      | Some hi when i > hi ->
+          Error (Fmt.str "value %d is greater than maximum %d" i hi)
+      | _ -> Ok ())
   | Boolean _ ->
       let coerced = apply_type_coercion value "boolean" in
       check_type coerced "boolean"

@@ -21,7 +21,7 @@ let test_parse_user_config () =
        (cache ((policy conversation) (ttl one_hour)))
        (session ((dir "/tmp/pera-sessions")))
        (compaction ((enabled true) (threshold 50) (tail 20)))
-       (output ((plain true) (show_thinking true) (quiet false))))|}
+       (output ((show_thinking true) (quiet false))))|}
   in
   let cfg =
     Pera_cli.Pera_config.config_of_sexp (Sexplib.Sexp.of_string sexp_str)
