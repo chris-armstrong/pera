@@ -30,6 +30,13 @@ type config = {
   thinking_budget_tokens : int option;
       (** [None] = thinking disabled. [Some n] = enable extended thinking with
           budget n tokens. *)
+  cache_policy : Pera_types.Types.cache_policy;
+      (** Cache policy forwarded to the connector on every turn. *)
+  cache_ttl : Pera_types.Types.cache_ttl;
+  extra_tools :
+    (module Pera_env.Execution_env.S) Pera_core.Agent_types.tool list;
+      (** Additional tools appended to [Pera_tools.Tools.default]. Use for
+          user-defined shell tools from config. *)
   compaction : compaction_config option;
       (** [None] = no autonomous compaction (M5 behaviour). [Some cc] = compact
           automatically when the estimated token count exceeds

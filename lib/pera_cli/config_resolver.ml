@@ -12,6 +12,7 @@ type resolved_config = {
   session_override : string option;
   cwd : string;
   system_prompt : string option;
+  system_file : string option;
   compaction : Pera_agent.Agent_harness.compaction_config option;
   output : Pera_config.output_config;
   tools : Pera_config.shell_tool_def list;
@@ -136,11 +137,9 @@ let resolve_output ~merged =
     merged.Pera_config.output
 
 let resolve_system_prompt ~parsed_args =
-  match (parsed_args.Cli_args.system, parsed_args.Cli_args.system_file) with
-  | Some s, None -> Some s
-  | None, Some _ -> None
-  | None, None -> None
-  | Some _, Some _ -> None
+  match parsed_args.Cli_args.system with
+  | Some s -> (Some s, None)
+  | None -> (None, parsed_args.Cli_args.system_file)
 
 let resolve inputs =
   let open Result.Syntax in
@@ -198,7 +197,9 @@ let resolve inputs =
         | Some d -> d
         | None -> Sys.getcwd ())
   in
-  let system_prompt = resolve_system_prompt ~parsed_args:inputs.parsed_args in
+  let system_prompt, system_file =
+    resolve_system_prompt ~parsed_args:inputs.parsed_args
+  in
   let compaction = resolve_compaction ~merged ~model_spec in
   let output = resolve_output ~merged in
   let api_key_source =
@@ -226,6 +227,7 @@ let resolve inputs =
       session_override = inputs.parsed_args.Cli_args.session;
       cwd;
       system_prompt;
+      system_file;
       compaction;
       output;
       tools = merged.Pera_config.tools;

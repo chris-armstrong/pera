@@ -20,7 +20,12 @@ type resolved_config = {
   session_override : string option;
       (** Explicit session file path from [--session] / [PERA_SESSION]. *)
   cwd : string;
-  system_prompt : string option;  (** [None] = use built-in default. *)
+  system_prompt : string option;
+      (** Literal system prompt from [--system]. [None] = use [system_file] or
+          built-in default. *)
+  system_file : string option;
+      (** Path from [--system-file]; mutually exclusive with [system_prompt].
+          The caller is responsible for reading the file. *)
   compaction : Pera_agent.Agent_harness.compaction_config option;
   output : Pera_config.output_config;
   tools : Pera_config.shell_tool_def list;

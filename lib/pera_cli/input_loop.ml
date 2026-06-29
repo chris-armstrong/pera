@@ -4,15 +4,15 @@ type command_result = Send of string | Compact | Info | Quit | Error of string
 
 let is_tty ~stdin_isatty = stdin_isatty
 
+let placeholder_re =
+  Re.(compile (seq [ char '{'; group (rep1 (compl [ char '}' ])); char '}' ]))
+
 let expand_template ~template ~args =
   let tokens =
     String.split_on_char ' ' args
     |> List.filter (fun s -> not (String.is_empty s))
   in
-  let re =
-    Re.(compile (seq [ char '{'; group (rep1 (compl [ char '}' ])); char '}' ]))
-  in
-  Re.replace re template ~f:(fun g ->
+  Re.replace placeholder_re template ~f:(fun g ->
       let name = Re.Group.get g 1 in
       if String.equal name "args" then args
       else

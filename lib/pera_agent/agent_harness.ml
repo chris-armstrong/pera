@@ -17,6 +17,10 @@ type config = {
   exec_env : (module Pera_env.Execution_env.S);
   system_prompt : string;
   thinking_budget_tokens : int option;
+  cache_policy : Pera_types.Types.cache_policy;
+  cache_ttl : Pera_types.Types.cache_ttl;
+  extra_tools :
+    (module Pera_env.Execution_env.S) Pera_core.Agent_types.tool list;
   compaction : compaction_config option;
 }
 
@@ -94,7 +98,7 @@ let create ~config ~env ~sw =
     Pera_harness.Session_writer.create ~path:config.session_path ~env
       ~model:config.model ~cwd:config.cwd
   in
-  let tools = Pera_tools.Tools.default in
+  let tools = Pera_tools.Tools.default @ config.extra_tools in
   let pending_compacted : Pera_core.Agent_types.agent_message list option ref =
     ref None
   in
@@ -103,8 +107,8 @@ let create ~config ~env ~sw =
       {
         max_tokens = config.max_tokens;
         temperature = None;
-        cache_policy = Pera_types.Types.No_cache;
-        cache_ttl = Pera_types.Types.Five_minutes;
+        cache_policy = config.cache_policy;
+        cache_ttl = config.cache_ttl;
         thinking_budget_tokens = config.thinking_budget_tokens;
       }
   in

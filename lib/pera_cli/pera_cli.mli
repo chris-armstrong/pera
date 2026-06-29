@@ -20,11 +20,11 @@
 
     {1 Host process accessors}
 
-    [getenv_opt], [home], [secure_random], and [wall_time] are functions of the
+    [getenv_opt], [home], and [secure_random] are functions of the
     {i real host process} where pera is running. They are declared here only so
-    they can be injected in tests (replacing [Sys.getenv_opt] /
-    [Unix.gettimeofday] with deterministic stubs) — they must always reflect the
-    host, never a sandboxed execution environment.
+    they can be injected in tests (replacing [Sys.getenv_opt] with deterministic
+    stubs) — they must always reflect the host, never a sandboxed execution
+    environment.
 
     Implementors must bind these to host-process primitives:
     [getenv_opt = Sys.getenv_opt], [home] from [HOME] or [passwd], etc. A
@@ -58,10 +58,6 @@ module type Env = sig
 
   val secure_random : env:Eio_unix.Stdenv.base -> bytes -> unit
   (** Fill [bytes] with random data from the {i host} OS entropy source. *)
-
-  val wall_time : unit -> Unix.tm
-  (** Current local time on the {i host}. Used for session file naming. *)
-
 end
 
 (** Re-exported for [run_with] callers. *)

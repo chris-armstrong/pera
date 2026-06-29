@@ -52,7 +52,7 @@ structurally typed — the OCaml type is the schema; no separate parser is writt
 
 | File | Purpose |
 |---|---|
-| `$PREFIX/share/pera/models.sexp` | Packaged provider and model catalog — shipped with pera |
+| `$PREFIX/share/pera/models.sexp` | Packaged provider and model catalog — shipped with pera. Located at runtime by searching: `$PERA_DATA_DIR/models.sexp` (if set), then `../share/pera-cli/models.sexp` relative to the executable, then each entry in `$XDG_DATA_DIRS/pera/models.sexp` |
 | `$XDG_CONFIG_HOME/pera/models.sexp` | User model catalog — merged into packaged catalog by provider name, then by model name within each provider |
 | `$XDG_CONFIG_HOME/pera/config.sexp` | User defaults — provider API keys, default model, output style |
 | `.pera` in project root (walk up from cwd) | Project settings — default model, cache policy, tools, compaction; no `api_key` allowed |
@@ -412,6 +412,17 @@ type config = {
 ## Example config files
 
 ### Packaged models catalog — `$PREFIX/share/pera/models.sexp`
+
+The packaged catalog is located at runtime by searching these paths in order,
+stopping at the first that exists:
+
+1. `$PERA_DATA_DIR/models.sexp` — explicit override; useful for custom-prefix
+   installs where the binary is a symlink or the install layout is non-standard.
+2. `../share/pera-cli/models.sexp` relative to the executable — handles opam
+   and any non-XDG prefix install (`~/.opam/default`, `/opt/pera`, etc.).
+3. Each directory in `$XDG_DATA_DIRS` (default `/usr/local/share:/usr/share`),
+   appended with `/pera/models.sexp` — the standard location for data installed
+   by a system package manager.
 
 ```sexp
 ; Packaged provider and model catalog — shipped with pera.

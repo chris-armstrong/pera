@@ -59,6 +59,9 @@ let make_config ~env ~cwd ~session_path scripts =
       exec_env;
       system_prompt = Pera_agent.Agent_harness.default_system_prompt;
       thinking_budget_tokens = None;
+      cache_policy = Pera_types.Types.No_cache;
+      cache_ttl = Pera_types.Types.Five_minutes;
+      extra_tools = [];
       compaction = None;
     }
 
@@ -431,6 +434,9 @@ let make_compaction_config ~env ~cwd ~session_path scripts =
       exec_env;
       system_prompt = Pera_agent.Agent_harness.default_system_prompt;
       thinking_budget_tokens = None;
+      cache_policy = Pera_types.Types.No_cache;
+      cache_ttl = Pera_types.Types.Five_minutes;
+      extra_tools = [];
       compaction = Some { trigger_tokens = 40; tail_size = 1 };
     }
 

@@ -16,15 +16,23 @@ module type Env = sig
   val getenv_opt : string -> string option
   val home : unit -> string
   val secure_random : env:Eio_unix.Stdenv.base -> bytes -> unit
-  val wall_time : unit -> Unix.tm
 end
 
-module Make (E : Env) = struct
+module Make (Cli_env : Env) = struct
   let or_die = function
     | Ok x -> x
     | Error e ->
         Printf.eprintf "%s\n%!" e;
         exit 1
+
+  let to_cache_policy = function
+    | Pera_config.No_cache -> Pera_types.Types.No_cache
+    | Pera_config.Conversation -> Pera_types.Types.Conversation
+    | Pera_config.System_and_tools -> Pera_types.Types.SystemAndToolsOnly
+
+  let to_cache_ttl = function
+    | Pera_config.Five_minutes -> Pera_types.Types.Five_minutes
+    | Pera_config.One_hour -> Pera_types.Types.One_hour
 
   let read_key_file ~env ~sw:_ path =
     let eio_path = Eio.Path.(Eio.Stdenv.fs env / path) in
@@ -33,6 +41,15 @@ module Make (E : Env) = struct
     | exception exn ->
         let msg = Printexc.to_string exn in
         Printf.eprintf "[pera] failed to read API key file %S: %s\n%!" path msg;
+        exit 1
+
+  let read_system_file ~env path =
+    let eio_path = Eio.Path.(Eio.Stdenv.fs env / path) in
+    match Eio.Path.load eio_path with
+    | content -> String.trim content
+    | exception exn ->
+        let msg = Printexc.to_string exn in
+        Printf.eprintf "[pera] failed to read system file %S: %s\n%!" path msg;
         exit 1
 
   let run_key_command ~env ~sw:_ argv =
@@ -120,35 +137,41 @@ module Make (E : Env) = struct
       =
     let stdin_src = Eio.Stdenv.stdin env in
     let read_line () =
-      Eio.Buf_read.parse_exn ~max_size:stdin_line_limit Eio.Buf_read.line
-        stdin_src
+      match
+        Eio.Buf_read.parse_exn ~max_size:stdin_line_limit Eio.Buf_read.line
+          stdin_src
+      with
+      | s -> s
+      | exception Failure _ -> raise End_of_file
     in
-    let rec loop () =
+    let rec tty_loop () =
       match read_line () with
       | exception End_of_file -> ()
       | line -> (
           match Input_loop.parse_line ~commands line with
           | Send text ->
               if not (String.is_empty text) then send text;
-              loop ()
+              tty_loop ()
             | Compact ->
                 compact_fn ();
-                loop ()
+                tty_loop ()
             | Info ->
                 print_endline (info_stats ());
-                loop ()
+                tty_loop ()
             | Quit -> ()
             | Error msg ->
                 print_endline msg;
-                loop ())
+                tty_loop ())
     in
-    if Input_loop.is_tty ~stdin_isatty then loop ()
-    else
+    let rec pipe_loop () =
       match read_line () with
       | exception End_of_file -> ()
       | text ->
           let trimmed = String.trim text in
-          if not (String.is_empty trimmed) then send trimmed
+          if not (String.is_empty trimmed) then send trimmed;
+          pipe_loop ()
+    in
+    if Input_loop.is_tty ~stdin_isatty then tty_loop () else pipe_loop ()
 
   let run_with ?stream_fn inputs =
     Eio_main.run (fun env ->
@@ -172,10 +195,9 @@ module Make (E : Env) = struct
             let cwd =
               match rc.Config_resolver.cwd with "" -> Sys.getcwd () | d -> d
             in
-            let ctx = E.create ~env ~sw ~cwd in
-            let base_tools = E.tools ctx in
+            let ctx = Cli_env.create ~env ~sw ~cwd in
             let shell_tools =
-              if E.has_shell then (
+              if Cli_env.has_shell then (
                 match Shell_tool_builder.build_all rc.Config_resolver.tools with
                 | Ok tools -> tools
                 | Error (Shell_tool_builder.Unknown_placeholder name) ->
@@ -193,18 +215,19 @@ module Make (E : Env) = struct
             in
             if not (List.is_empty rc.Config_resolver.mcp_servers) then
               Printf.eprintf "[pera] MCP servers not yet supported\n%!";
-            (* TODO Phase 4: pass _all_tools into harness_config once the field exists *)
-            let _all_tools = base_tools @ shell_tools in
             let system_prompt =
-              Option.get_or
-                ~default:Pera_agent.Agent_harness.default_system_prompt
-                rc.Config_resolver.system_prompt
+              match rc.Config_resolver.system_prompt with
+              | Some s -> s
+              | None -> (
+                  match rc.Config_resolver.system_file with
+                  | None -> Pera_agent.Agent_harness.default_system_prompt
+                  | Some path -> read_system_file ~env path)
             in
             let session_path =
               Session_path.resolve
                 ~session_override:rc.Config_resolver.session_override
                 ~session_dir:rc.Config_resolver.session_dir
-                ~secure_random:(E.secure_random ~env)
+                ~secure_random:(Cli_env.secure_random ~env)
                 ~clock:(Eio.Stdenv.clock env)
             in
             let harness_config : Pera_agent.Agent_harness.config =
@@ -218,6 +241,10 @@ module Make (E : Env) = struct
                 system_prompt;
                 thinking_budget_tokens =
                   rc.Config_resolver.thinking_budget_tokens;
+                cache_policy =
+                  to_cache_policy rc.Config_resolver.cache_policy;
+                cache_ttl = to_cache_ttl rc.Config_resolver.cache_ttl;
+                extra_tools = shell_tools;
                 compaction = rc.Config_resolver.compaction;
               }
             in
@@ -254,17 +281,31 @@ module Make (E : Env) = struct
 
   let run () =
     let parsed_args = Cli_args.parse ~argv:Sys.argv in
+    let xdg = Xdg.create ~env:Cli_env.getenv_opt () in
     let models_file =
       let packaged_path =
+        let bin_dir = Fpath.parent (Fpath.v Sys.executable_name) in
         let candidates =
-          let bin_dir = Fpath.parent (Fpath.v Sys.executable_name) in
-          [
-            Fpath.(bin_dir / "../share/pera/models.sexp");
-            Fpath.(
-              v (Xdg.data_dir (Xdg.create ~env:Sys.getenv_opt ()))
-              / "pera" / "models.sexp");
-          ]
-          |> List.map Fpath.to_string
+          let from_env =
+            match Cli_env.getenv_opt "PERA_DATA_DIR" with
+            | Some dir -> [ Fpath.(v dir / "models.sexp") |> Fpath.to_string ]
+            | None -> []
+          in
+          let from_bin =
+            Fpath.(normalize (bin_dir / ".." / "share" / "pera-cli" / "models.sexp"))
+            |> Fpath.to_string
+          in
+          let from_xdg =
+            let dirs =
+              match Cli_env.getenv_opt "XDG_DATA_DIRS" with
+              | Some s -> String.split_on_char ':' s |> List.filter (fun s -> not (String.is_empty s))
+              | None -> [ "/usr/local/share"; "/usr/share" ]
+            in
+            List.map (fun d ->
+                Fpath.(v d / "pera" / "models.sexp") |> Fpath.to_string)
+              dirs
+          in
+          from_env @ [ from_bin ] @ from_xdg
         in
         match List.find_opt Sys.file_exists candidates with
         | Some p -> p
@@ -274,9 +315,7 @@ module Make (E : Env) = struct
       in
       let user_path =
         let p =
-          Fpath.(
-            v (Xdg.config_dir (Xdg.create ~env:Sys.getenv_opt ()))
-            / "pera" / "models.sexp")
+          Fpath.(v (Xdg.config_dir xdg) / "pera" / "models.sexp")
           |> Fpath.to_string
         in
         if Sys.file_exists p then Some p else None
@@ -285,9 +324,7 @@ module Make (E : Env) = struct
     in
     let user_config =
       let path =
-        Fpath.(
-          v (Xdg.config_dir (Xdg.create ~env:Sys.getenv_opt ()))
-          / "pera" / "config.sexp")
+        Fpath.(v (Xdg.config_dir xdg) / "pera" / "config.sexp")
         |> Fpath.to_string
       in
       match Config_loader.load_user_config ~path with
@@ -320,8 +357,8 @@ module Make (E : Env) = struct
         models_file;
         user_config;
         project_config;
-        getenv_opt = E.getenv_opt;
-        home = E.home ();
+        getenv_opt = Cli_env.getenv_opt;
+        home = Cli_env.home ();
       }
 end
 
