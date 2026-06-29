@@ -1840,11 +1840,13 @@ val expand_template : template:string -> args:string -> string
     loading, API key commands, path lookup). Use Eio.Stdenv / Unix / Sys for
     those instead — see the "Execution env vs host" design note in pera-cli.md.
 
-    Host process accessors (getenv_opt / home / secure_random / wall_time /
-    stdin_isatty): functions of the real host process, declared here only so
-    tests can inject stubs. In production these must be Sys.getenv_opt, HOME /
-    getpwuid, OS entropy, Unix.localtime, and a real isatty check respectively.
-    Never proxy these to a sandboxed or remote source. *)
+    Host process accessors (getenv_opt / home / secure_random / wall_time):
+    functions of the real host process, declared here only so tests can inject
+    stubs. In production these must be Sys.getenv_opt, HOME / getpwuid, OS
+    entropy, Unix.localtime respectively. Never proxy these to a sandboxed or
+    remote source. stdin_isatty is NOT in Env — it is called inline as
+    Unix.isatty Unix.stdin, which is a pure host syscall Eio provides no
+    alternative for. *)
 module type Env = sig
   type ctx = (module Pera_env.Execution_env.S)
 
@@ -1862,7 +1864,6 @@ module type Env = sig
   val home : unit -> string
   val secure_random : env:Eio_unix.Stdenv.base -> bytes -> unit
   val wall_time : unit -> Unix.tm
-  val stdin_isatty : env:Eio_unix.Stdenv.base -> bool
 end
 
 module Make (E : Env) : sig
@@ -1962,7 +1963,7 @@ module Make (E : Env) = struct
           List.iter (fun line -> print_string line; flush stdout) lines) in
         (* Interactive loop — lives here, not in Input_loop. *)
         run_interactive ~commands:rc.commands
-          ~stdin_isaty:(E.stdin_isatty ~env)
+          ~stdin_isatty:(Unix.isatty Unix.stdin)
           ~send:(Pera_agent.Agent_harness.send harness)
           ~info_stats:(fun () -> Event_renderer.stats renderer)
           ~compact_fn:(fun () -> Printf.eprintf "[pera] /compact not yet wired\n%!")
@@ -2088,10 +2089,6 @@ module Cli = Pera_cli.Pera_cli.Make (struct
     String.blit got 0 s 0 16
 
   let wall_time () = Unix.localtime (Unix.gettimeofday ())
-
-  (* Eio has no isatty primitive. Use Unix.isatty on fd 0 directly
-     (acceptable: not file IO, and Eio provides no alternative). *)
-  let stdin_isatty ~env:_ = Unix.isatty Unix.stdin
 end)
 
 let () = Cli.run ()

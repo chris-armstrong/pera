@@ -17,7 +17,6 @@ module type Env = sig
   val home : unit -> string
   val secure_random : env:Eio_unix.Stdenv.base -> bytes -> unit
   val wall_time : unit -> Unix.tm
-  val stdin_isatty : env:Eio_unix.Stdenv.base -> bool
 end
 
 module Make (E : Env) = struct
@@ -248,7 +247,7 @@ module Make (E : Env) = struct
                     lines)
             in
             run_interactive ~commands:rc.Config_resolver.commands
-              ~stdin_isatty:(E.stdin_isatty ~env)
+              ~stdin_isatty:(Unix.isatty Unix.stdin)
               ~send:(Pera_agent.Agent_harness.send harness)
               ~info_stats:(fun () -> Event_renderer.stats renderer)
               ~compact_fn:(fun () ->

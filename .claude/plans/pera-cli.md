@@ -928,10 +928,10 @@ agent's* behalf, but it need not share filesystem, environment variables, or
 process identity with the machine running pera itself.
 
 **Host process accessors** (`getenv_opt` / `home` / `secure_random` /
-`wall_time` / `stdin_isatty`) — functions of the *real host process* where the
-pera binary is running. They are declared in `Env` only for testability (so
-tests can stub `Sys.getenv_opt` without `Unix.putenv`). In production they must
-always be bound to real host-process primitives.
+`wall_time`) — functions of the *real host process* where the pera binary is
+running. They are declared in `Env` only for testability (so tests can stub
+`Sys.getenv_opt` without `Unix.putenv`). In production they must always be
+bound to real host-process primitives.
 
 **Rule: never use the execution context for CLI-level work.** Concretely:
 
