@@ -122,6 +122,9 @@ let make_harness_config ~tmpdir ~session_path ~stream_fn ~exec_env :
     exec_env;
     system_prompt = Pera_agent.Agent_harness.default_system_prompt;
     thinking_budget_tokens = None;
+    cache_policy = Pera_types.Types.No_cache;
+    cache_ttl = Pera_types.Types.Five_minutes;
+    extra_tools = [];
     compaction = None;
   }
 
@@ -445,6 +448,9 @@ let scenario_autonomous_compaction ~tmpdir ~env =
       exec_env;
       system_prompt = Pera_agent.Agent_harness.default_system_prompt;
       thinking_budget_tokens = None;
+      cache_policy = Pera_types.Types.No_cache;
+      cache_ttl = Pera_types.Types.Five_minutes;
+      extra_tools = [];
       compaction = Some compaction_cfg;
     }
   in

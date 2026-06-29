@@ -29,9 +29,6 @@ let test_getenv_opt var =
 (** A [secure_random] stub that writes deterministic bytes. *)
 let fixed_random buf = Bytes.fill buf 0 16 '\x00'
 
-(** A [wall_time] stub that returns a fixed time. *)
-let fixed_wall_time () = Unix.gmtime 0.
-
 (** Build a minimal [Models_config.models_file] with one provider and one model.
 *)
 let test_models_file () : Pera_cli.Models_config.models_file =
@@ -110,7 +107,6 @@ module Smoke_env : Pera_cli.Env = struct
   let getenv_opt = test_getenv_opt
   let home () = "/tmp/pera_smoke_home"
   let secure_random ~env:_ = fixed_random
-  let wall_time = fixed_wall_time
   let stdin_isatty ~env:_ = false
 end
 

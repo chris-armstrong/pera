@@ -14,7 +14,6 @@ module Cli = Pera_cli.Make (struct
     let got = Cstruct.to_string cs in
     Bytes.blit_string got 0 s 0 16
 
-  let wall_time () = Unix.localtime (Unix.gettimeofday ())
   let stdin_isatty ~env:_ = Unix.isatty Unix.stdin
 end)
 

@@ -22,14 +22,13 @@ module type Env = sig
   (** [true] if this environment supports shell-backed tools. *)
 
   val getenv_opt : string -> string option
-  (** Process-environment accessors, usable before [ctx] exists (config
-      resolution happens before env creation). Injecting these makes
+  (** Process-environment accessor, usable before [ctx] exists (config
+      resolution happens before env creation). Injecting this makes
       [Env_reader] / [Config_resolver] / [Session_path] testable without
       [Unix.putenv] or real TTYs. *)
 
   val home : unit -> string
   val secure_random : env:Eio_unix.Stdenv.base -> bytes -> unit
-  val wall_time : unit -> Unix.tm
   val stdin_isatty : env:Eio_unix.Stdenv.base -> bool
 end
 

@@ -148,8 +148,12 @@ let invoke_get_api_key get_api_key ~model =
     emissions without itself suspending in a cancelled context. *)
 let consume_provider_stream ~provider_stream out_stream =
   let partial_ref = ref empty_assistant_message in
-  let emitted_start = ref false in
   let cancelled = ref false in
+  let initial_agent_msg =
+    Agent_types.Real
+      (Pera_connector.Connector.AssistantMessage empty_assistant_message)
+  in
+  push_event out_stream (Agent_types.AE_message_start { message = initial_agent_msg });
   (try
      let _iter_result =
        Pera_connector.Event_stream.iter provider_stream ~f:(fun event ->
@@ -159,11 +163,6 @@ let consume_provider_stream ~provider_stream out_stream =
              Agent_types.Real
                (Pera_connector.Connector.AssistantMessage partial)
            in
-           if not !emitted_start then begin
-             emitted_start := true;
-             push_event out_stream
-               (Agent_types.AE_message_start { message = agent_msg })
-           end;
            push_event out_stream
              (Agent_types.AE_message_update { message = agent_msg; event }))
      in
