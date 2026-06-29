@@ -252,18 +252,28 @@ module Make (Cli_env : Env) = struct
     let xdg = Xdg.create ~env:Cli_env.getenv_opt () in
     let models_file =
       let packaged_path =
+        let bin_dir = Fpath.parent (Fpath.v Sys.executable_name) in
         let candidates =
-          let bin_dir = Fpath.parent (Fpath.v Sys.executable_name) in
-          let bin_str = Fpath.to_string bin_dir in
-          [
-            Fpath.(normalize (v (bin_str ^ "/../share/pera-cli/models.sexp")));
-            Fpath.(normalize (v (bin_str ^ "/../../share/pera/models.sexp")));
-            Fpath.(
-              v (Xdg.data_dir xdg) / "pera-cli" / "models.sexp");
-            Fpath.v "/usr/local/share/pera-cli/models.sexp";
-            Fpath.v "/usr/share/pera-cli/models.sexp";
-          ]
-          |> List.map Fpath.to_string
+          let from_env =
+            match Cli_env.getenv_opt "PERA_DATA_DIR" with
+            | Some dir -> [ Fpath.(v dir / "models.sexp") |> Fpath.to_string ]
+            | None -> []
+          in
+          let from_bin =
+            Fpath.(normalize (bin_dir / ".." / "share" / "pera-cli" / "models.sexp"))
+            |> Fpath.to_string
+          in
+          let from_xdg =
+            let dirs =
+              match Cli_env.getenv_opt "XDG_DATA_DIRS" with
+              | Some s -> String.split_on_char ':' s |> List.filter (fun s -> not (String.is_empty s))
+              | None -> [ "/usr/local/share"; "/usr/share" ]
+            in
+            List.map (fun d ->
+                Fpath.(v d / "pera" / "models.sexp") |> Fpath.to_string)
+              dirs
+          in
+          from_env @ [ from_bin ] @ from_xdg
         in
         match List.find_opt Sys.file_exists candidates with
         | Some p -> p
