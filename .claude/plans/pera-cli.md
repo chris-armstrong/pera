@@ -975,10 +975,7 @@ The packaged `models.sexp` is located at startup using a short candidate list:
    and data is at `$PREFIX/share/pera/`; the `..` traversal works regardless of
    prefix. This is the canonical path for all package-manager installs.
 
-2. `<bin_dir>/../../share/pera/models.sexp` — covers `dune` development builds
-   where the binary is at `_build/default/bin/pera/pera.exe`.
-
-3. `$XDG_DATA_HOME/pera/models.sexp` (default `~/.local/share/pera/` on Linux)
+2. `$XDG_DATA_HOME/pera/models.sexp` (default `~/.local/share/pera/` on Linux)
    — covers user-space installs that aren't on a standard prefix (e.g. an
    extracted tarball placed in `~/.local/`).
 

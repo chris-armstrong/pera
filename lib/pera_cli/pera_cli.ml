@@ -35,13 +35,11 @@ module Make (E : Env) = struct
         Printf.eprintf "[pera] failed to read API key file %S: %s\n%!" path msg;
         exit 1
 
-  let run_key_command ~env ~sw argv =
+  let run_key_command ~env ~sw:_ argv =
     let proc_mgr = Eio.Stdenv.process_mgr env in
     let clock = Eio.Stdenv.clock env in
-    let cmd = String.concat " " (List.map Filename.quote argv) in
     let run_once () =
       Eio.Switch.run (fun sub_sw ->
-          let _ = sw in
           let stdout_buf = Buffer.create 256 in
           let stderr_buf = Buffer.create 256 in
           let stdout_src, stdout_sink =
@@ -52,7 +50,7 @@ module Make (E : Env) = struct
           in
           let proc =
             Eio.Process.spawn ~sw:sub_sw proc_mgr ~stdout:stdout_sink
-              ~stderr:stderr_sink [ "/bin/sh"; "-c"; cmd ]
+              ~stderr:stderr_sink argv
           in
           Eio.Resource.close stdout_sink;
           Eio.Resource.close stderr_sink;
@@ -262,7 +260,6 @@ module Make (E : Env) = struct
           let bin_dir = Fpath.parent (Fpath.v Sys.executable_name) in
           [
             Fpath.(bin_dir / "../share/pera/models.sexp");
-            Fpath.(bin_dir / "../../share/pera/models.sexp");
             Fpath.(
               v (Xdg.data_dir (Xdg.create ~env:Sys.getenv_opt ()))
               / "pera" / "models.sexp");
