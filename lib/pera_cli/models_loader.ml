@@ -53,11 +53,14 @@ let read_and_parse ~path =
 
 let load ~packaged_path ~user_path =
   let open Result.Syntax in
-  let* packaged = read_and_parse ~path:packaged_path in
-  match user_path with
-  | None -> Ok packaged
-  | Some path ->
-      let* user = read_and_parse ~path in
+  match packaged_path, user_path with
+  | None, None ->
+      Error "no models.sexp found — place one at $XDG_CONFIG_HOME/pera/models.sexp"
+  | Some pp, None -> read_and_parse ~path:pp
+  | None, Some up -> read_and_parse ~path:up
+  | Some pp, Some up ->
+      let* packaged = read_and_parse ~path:pp in
+      let* user = read_and_parse ~path:up in
       Ok (merge ~base:packaged ~overlay:user)
 
 let resolve_model mf qualified_name =

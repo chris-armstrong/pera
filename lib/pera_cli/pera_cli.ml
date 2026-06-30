@@ -307,11 +307,7 @@ module Make (Cli_env : Env) = struct
           in
           from_env @ [ from_bin ] @ from_xdg
         in
-        match List.find_opt Sys.file_exists candidates with
-        | Some p -> p
-        | None ->
-            Printf.eprintf "[pera] could not locate packaged models.sexp\n%!";
-            exit 1
+        List.find_opt Sys.file_exists candidates
       in
       let user_path =
         let p =
