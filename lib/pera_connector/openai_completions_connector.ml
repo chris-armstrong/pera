@@ -100,15 +100,11 @@ let do_request ~provider ~model ~context ~options ~sw:_ stream =
       ~body:request_body_str ~on_chunk "/v1/chat/completions"
   in
   match http_result with
-  | Error http_err ->
-      let stop_err =
-        match http_err.status with
-        | Some code -> Pera_types.Types.Http { status = code }
-        | None -> Pera_types.Types.Transport
-      in
-      Event_stream.close_error stream
-        (Http_client.error_to_string http_err)
-        stop_err
+  | Error (Http_client.Transport_error te) ->
+      Event_stream.close_error stream te.message Pera_types.Types.Transport
+  | Error (Http_client.Http_error he) ->
+      Event_stream.close_error stream he.message
+        (Pera_types.Types.Http { status = he.status })
   | Ok () -> finalise ()
 
 let create ~api_key ~env ~sw =
@@ -133,7 +129,7 @@ let create ~api_key ~env ~sw =
     | Error e ->
         failwith
           (Printf.sprintf "Openai_completions_connector.create: %s"
-             (Http_client.error_to_string e))
+             (Http_client.request_error_to_string e))
   in
   { client; api_key; compat }
 

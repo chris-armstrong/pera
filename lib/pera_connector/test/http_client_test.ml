@@ -33,7 +33,7 @@ let capture_request_path ~env ~sw ~base_url ~path =
       Eio.Flow.copy_string "HTTP/1.1 200 OK\r\ncontent-length: 0\r\n\r\n" conn);
   let url = Printf.sprintf "http://127.0.0.1:%d%s" port base_url in
   (match Http_client.create ~env ~sw url with
-  | Error e -> failwith (Http_client.error_to_string e)
+  | Error e -> failwith (Http_client.request_error_to_string e)
   | Ok client ->
       ignore
         (Http_client.post_stream ~client ~headers:[] ~body:"{}"
@@ -63,10 +63,35 @@ let test_no_base_path () =
   Alcotest.(check string)
     "path unchanged when no base prefix" "/v1/chat/completions" got
 
+(** A transport failure must be reported as [Transport_error] (not an
+    [Http_error] inferred from a [None] status sentinel), with a non-empty
+    message and a non-[Other] kind for the unroutable-port case. *)
+let check_transport_error ?(expect_kind = None) label result =
+  match result with
+  | Ok () -> Alcotest.fail "expected an Error for an unroutable address"
+  | Error (Http_client.Http_error _) ->
+      Alcotest.fail
+        (Printf.sprintf
+           "%s: expected Transport_error, got Http_error" label)
+  | Error (Http_client.Transport_error te) ->
+      Alcotest.(check bool)
+        (label ^ ": message non-empty") true
+        (not (String.is_empty te.message));
+      (match expect_kind with
+       | Some k ->
+           let actual = Http_client.request_error_to_string
+             (Http_client.Transport_error te)
+           in
+           let expected = Http_client.request_error_to_string
+             (Http_client.Transport_error { te with kind = k })
+           in
+           Alcotest.(check string) (label ^ ": kind") expected actual
+       | None -> ())
+
 (** Drive [Http_client.post_stream] against an address that cannot be connected
     to (port 1 on localhost is unroutable in practice) and assert that the
-    result is [Error] with a non-empty [error_to_string]. *)
-let test_error_to_string_is_total_and_nonempty () =
+    result is a [Transport_error] with a non-empty message. *)
+let test_transport_failure_is_transport_error () =
   Eio_main.run @@ fun env ->
   Eio.Switch.run @@ fun sw ->
   let clock = Eio.Stdenv.clock env in
@@ -79,46 +104,30 @@ let test_error_to_string_is_total_and_nonempty () =
           ~on_chunk:(fun _ -> ())
           "/"
   in
-  match result with
-  | Ok () -> Alcotest.fail "expected an Error for an unroutable address"
-  | Error e ->
-      let msg = Http_client.error_to_string e in
-      Alcotest.(check bool)
-        "error_to_string returns a non-empty string" true
-        (not (String.is_empty msg))
+  (* Port 1 is unroutable: classify as [Connect] (connection refused). *)
+  check_transport_error ~expect_kind:(Some Http_client.Connect)
+    "post_stream unroutable" result
 
-(** [Http_client.create] against an invalid URL returns [Error] with a non-empty
-    [error_to_string]. *)
-let test_create_error_gives_nonempty_message () =
+(** [Http_client.create] against an invalid URL returns a [Transport_error]
+    with a non-empty message. *)
+let test_create_error_gives_transport_error () =
   Eio_main.run @@ fun env ->
   Eio.Switch.run @@ fun sw ->
   let clock = Eio.Stdenv.clock env in
   Eio.Time.with_timeout_exn clock 5.0 @@ fun () ->
   let result = Http_client.create ~env ~sw "http://127.0.0.1:1/" in
   match result with
-  | Ok _ -> (
-      (* create may succeed (connection is lazy in some Piaf versions);
-         in that case drive post_stream to force the failure *)
-      let client = Result.get_exn result in
+  | Ok client -> (
+      (* create may succeed (connection is lazy); in that case drive post_stream
+         to force the failure. *)
       let post_result =
         Http_client.post_stream ~client ~headers:[] ~body:"{}"
           ~on_chunk:(fun _ -> ())
           "/"
       in
-      match post_result with
-      | Ok () ->
-          Alcotest.fail
-            "expected an Error from post_stream against an unroutable address"
-      | Error e ->
-          let msg = Http_client.error_to_string e in
-          Alcotest.(check bool)
-            "error_to_string returns a non-empty string" true
-            (not (String.is_empty msg)))
-  | Error e ->
-      let msg = Http_client.error_to_string e in
-      Alcotest.(check bool)
-        "error_to_string returns a non-empty string" true
-        (not (String.is_empty msg))
+      check_transport_error ~expect_kind:(Some Http_client.Connect)
+        "post_stream unroutable" post_result)
+  | Error e -> check_transport_error "create unroutable" (Error e)
 
 let () =
   Alcotest.run "Http_client"
@@ -130,11 +139,11 @@ let () =
           Alcotest.test_case "unchanged when base_url has no path" `Quick
             test_no_base_path;
         ] );
-      ( "error_to_string",
+      ( "transport_error",
         [
-          Alcotest.test_case "total and non-empty for transport failure" `Quick
-            test_error_to_string_is_total_and_nonempty;
-          Alcotest.test_case "create error gives non-empty message" `Quick
-            test_create_error_gives_nonempty_message;
+          Alcotest.test_case "post_stream unroutable -> Transport_error" `Quick
+            test_transport_failure_is_transport_error;
+          Alcotest.test_case "create unroutable -> Transport_error" `Quick
+            test_create_error_gives_transport_error;
         ] );
     ]
