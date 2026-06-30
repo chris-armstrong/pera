@@ -14,7 +14,7 @@
 
 open Containers
 open Pera_types
-open Pera_provider
+open Pera_connector
 open Pera_core
 open Session_jsonl_helpers
 
@@ -23,7 +23,7 @@ open Session_jsonl_helpers
 let default_model : Types.model =
   {
     id = "claude-haiku-4-5-20251001";
-    api = "anthropic";
+    protocol = "anthropic";
     context_window = 200_000;
   }
 
@@ -31,7 +31,7 @@ let model_of_argv () =
   if Array.length Sys.argv > 1 then
     (* TODO: accept --context-window from the CLI; 200K is wrong for 1M Claude
        variants and for non-Anthropic models passed via this driver. *)
-    Types.{ id = Sys.argv.(1); api = "anthropic"; context_window = 200_000 }
+    Types.{ id = Sys.argv.(1); protocol = "anthropic"; context_window = 200_000 }
   else default_model
 
 (* ── Session content helpers ──────────────────────────────────────────────── *)
@@ -96,6 +96,11 @@ let make_harness_config ~model ~tmpdir ~session_path ~stream_fn ~exec_env :
     stream_fn;
     max_tokens = 1024;
     exec_env;
+    system_prompt = Pera_agent.Agent_harness.default_system_prompt;
+    thinking_budget_tokens = None;
+    cache_policy = Pera_types.Types.No_cache;
+    cache_ttl = Pera_types.Types.Five_minutes;
+    extra_tools = [];
     compaction = None;
   }
 
@@ -156,8 +161,15 @@ let verify_multi_turn ~sentinel entries =
 (* ── Provider setup ───────────────────────────────────────────────────────── *)
 
 let build_anthropic_registry () =
-  Provider_registry.register Provider_registry.empty ~name:"anthropic"
-    (module Anthropic_provider)
+  Connector_registry.register Connector_registry.empty ~name:"anthropic"
+    (module Anthropic_connector)
+
+(** The per-connector API-key list for the Anthropic-only registry built by
+    {!build_anthropic_registry}. *)
+let anthropic_api_keys () =
+  [ ("anthropic",
+     Option.get_exn_or "ANTHROPIC_API_KEY" (Sys.getenv_opt "ANTHROPIC_API_KEY"))
+  ]
 
 (* ── Scenarios ────────────────────────────────────────────────────────────── *)
 
@@ -194,8 +206,12 @@ let scenario_bash_echo ~model ~tmpdir ~env ~registry =
   Eio.Switch.run @@ fun sw ->
   let session_path = Filename.concat tmpdir "bash_echo.jsonl" in
   let sentinel = "pera_echo_42" in
-  let adapter = Provider_adapter.create ~registry ~env ~sw in
-  let stream_fn = Provider_adapter.stream_fn adapter in
+  let adapter =
+    Connector_adapter.create ~registry
+      ~api_keys:(anthropic_api_keys ())
+      ~env ~sw
+  in
+  let stream_fn = Connector_adapter.stream_fn adapter in
   let exec_env = Pera_env.Local_env.create ~env ~cwd:tmpdir in
   let config =
     make_harness_config ~model ~tmpdir ~session_path ~stream_fn ~exec_env
@@ -222,8 +238,12 @@ let scenario_read_preseeded ~model ~tmpdir ~env ~registry =
     with_open_text seed_file (fun oc -> output_string oc sentinel));
   Eio.Switch.run @@ fun sw ->
   let session_path = Filename.concat tmpdir "read_preseeded.jsonl" in
-  let adapter = Provider_adapter.create ~registry ~env ~sw in
-  let stream_fn = Provider_adapter.stream_fn adapter in
+  let adapter =
+    Connector_adapter.create ~registry
+      ~api_keys:(anthropic_api_keys ())
+      ~env ~sw
+  in
+  let stream_fn = Connector_adapter.stream_fn adapter in
   let exec_env = Pera_env.Local_env.create ~env ~cwd:tmpdir in
   let config =
     make_harness_config ~model ~tmpdir ~session_path ~stream_fn ~exec_env
@@ -249,8 +269,12 @@ let scenario_multi_turn ~model ~tmpdir ~env ~registry =
   let session_path = Filename.concat tmpdir "multi_turn.jsonl" in
   let data_file = Filename.concat tmpdir "mt_data.txt" in
   let sentinel = "pera_token_789" in
-  let adapter = Provider_adapter.create ~registry ~env ~sw in
-  let stream_fn = Provider_adapter.stream_fn adapter in
+  let adapter =
+    Connector_adapter.create ~registry
+      ~api_keys:(anthropic_api_keys ())
+      ~env ~sw
+  in
+  let stream_fn = Connector_adapter.stream_fn adapter in
   let exec_env = Pera_env.Local_env.create ~env ~cwd:tmpdir in
   let config =
     make_harness_config ~model ~tmpdir ~session_path ~stream_fn ~exec_env

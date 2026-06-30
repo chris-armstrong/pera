@@ -101,7 +101,7 @@ let test_single_text_turn_emits_lifecycle_and_final_messages () =
         |> Option.get_exn_or "expected second message"
       in
       match assistant_msg with
-      | Agent_types.Real (Pera_provider.Provider.AssistantMessage am) -> (
+      | Agent_types.Real (Pera_connector.Connector.AssistantMessage am) -> (
           match am.content with
           | [ Pera_types.Types.AText t ] ->
               Alcotest.(check string) "assistant text" "hello" t
@@ -138,9 +138,9 @@ let test_transform_context_applied_before_convert_to_llm () =
   in
   Alcotest.(check int)
     "recorded context has one message (transform dropped the first)" 1
-    (List.length ctx.Pera_provider.Provider.messages);
-  match List.nth_opt ctx.Pera_provider.Provider.messages 0 with
-  | Some (Pera_provider.Provider.UserMessage { content = [ UText t ]; _ }) ->
+    (List.length ctx.Pera_connector.Connector.messages);
+  match List.nth_opt ctx.Pera_connector.Connector.messages 0 with
+  | Some (Pera_connector.Connector.UserMessage { content = [ UText t ]; _ }) ->
       Alcotest.(check string)
         "remaining message is the second one" "second message (kept)" t
   | _ -> Alcotest.fail "expected UserMessage with UText content"
@@ -196,7 +196,7 @@ let test_prepare_next_turn_swaps_model () =
   Faux_provider.reset_recorded ();
   let new_model =
     Pera_types.Types.
-      { id = "swapped-model"; api = "faux"; context_window = 200_000 }
+      { id = "swapped-model"; protocol = "faux"; context_window = 200_000 }
   in
   (* Record models seen by our custom stream_fn wrapper *)
   let recorded_models : Pera_types.Types.model list ref = ref [] in
@@ -209,7 +209,7 @@ let test_prepare_next_turn_swaps_model () =
         if Int.equal !turn_count 1 then
           Some
             Agent_types.
-              { messages = None; model = Some new_model; thinking = None }
+              { messages = None; model = Some new_model; thinking = Inherit }
         else None)
   in
   (* Use a steering message to force a second turn *)
@@ -291,10 +291,10 @@ let test_steering_message_injected_on_next_iteration () =
     List.exists
       (fun msg ->
         match msg with
-        | Pera_provider.Provider.UserMessage { content = [ UText t ]; _ } ->
+        | Pera_connector.Connector.UserMessage { content = [ UText t ]; _ } ->
             String.equal t "steering content"
         | _ -> false)
-      second_ctx.Pera_provider.Provider.messages
+      second_ctx.Pera_connector.Connector.messages
   in
   Alcotest.(check bool) "steering message in second context" true has_steering
 
@@ -333,7 +333,8 @@ let test_error_stop_reason_terminates_run () =
   Eio.Switch.run @@ fun sw ->
   Faux_provider.reset_recorded ();
   let error_final =
-    make_assistant_message ~stop_reason:(Pera_types.Types.Error Pera_types.Types.Transport)
+    make_assistant_message
+      ~stop_reason:(Pera_types.Types.Error Pera_types.Types.Transport)
       [ Pera_types.Types.AText "oops" ]
   in
   let error_script =
@@ -377,7 +378,7 @@ let test_error_stop_reason_terminates_run () =
     |> Option.get_exn_or "expected turn_end message"
   in
   match turn_end_msg with
-  | Agent_types.Real (Pera_provider.Provider.AssistantMessage am) -> (
+  | Agent_types.Real (Pera_connector.Connector.AssistantMessage am) -> (
       match am.stop_reason with
       | Pera_types.Types.Error _ -> () (* expected *)
       | other ->

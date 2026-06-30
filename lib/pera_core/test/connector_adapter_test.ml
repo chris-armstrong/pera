@@ -1,0 +1,294 @@
+open Containers [@@warning "-33"]
+open Pera_core
+open Pera_core_test_util
+open Agent_loop_helpers
+
+(** {1 Event predicate helpers} *)
+
+let is_agent_start = function Agent_types.AE_agent_start -> true | _ -> false
+let is_agent_end = function Agent_types.AE_agent_end _ -> true | _ -> false
+let is_turn_start = function Agent_types.AE_turn_start -> true | _ -> false
+let is_turn_end = function Agent_types.AE_turn_end _ -> true | _ -> false
+
+let is_message_start = function
+  | Agent_types.AE_message_start _ -> true
+  | _ -> false
+
+let is_message_end = function
+  | Agent_types.AE_message_end _ -> true
+  | _ -> false
+
+(** Build a minimal provider context for tests. *)
+let make_provider_context ~system messages =
+  Pera_connector.Connector.{ system; messages; tools = [] }
+
+(** Collect assistant_message_event values from a provider stream into a list,
+    and return the final result. *)
+let collect_assistant_events stream =
+  let buf = ref [] in
+  let result =
+    Pera_connector.Event_stream.iter stream ~f:(fun e -> buf := e :: !buf)
+  in
+  (List.rev !buf, result)
+
+(** {1 Test 1: stream_fn resolves a registered provider} *)
+
+let test_stream_fn_resolves_registered_provider () =
+  Eio_main.run @@ fun env ->
+  Eio.Switch.run @@ fun sw ->
+  Faux_provider.reset_recorded ();
+  let script_events =
+    [
+      Pera_types.Types.AME_text_start
+        { partial = make_text_assistant_message "" };
+      Pera_types.Types.AME_text_delta
+        {
+          text = "hello from faux";
+          partial = make_text_assistant_message "hello from faux";
+        };
+    ]
+  in
+  let final_msg = make_text_assistant_message "hello from faux" in
+  let script =
+    Faux_provider.Turn
+      Faux_provider.{ events = script_events; final = final_msg }
+  in
+  let provider_mod = Faux_provider.as_provider [ script ] in
+  let registry =
+    Pera_connector.Connector_registry.register
+      Pera_connector.Connector_registry.empty ~name:"faux" provider_mod
+  in
+  let adapter =
+    Connector_adapter.create ~registry
+      ~api_keys:[ ("faux", "test-key") ]
+      ~env ~sw
+  in
+  let stream_fn = Connector_adapter.stream_fn adapter in
+  let context =
+    make_provider_context ~system:"test"
+      [
+        Pera_connector.Connector.UserMessage
+          { Pera_types.Types.role = "user"; content = [ UText "hi" ] };
+      ]
+  in
+  let model =
+    {
+      Pera_types.Types.id = "test-model";
+      protocol = "faux";
+      context_window = 200_000;
+    }
+  in
+  let options =
+    Pera_connector.Connector.
+      {
+        max_tokens = 1024;
+        temperature = None;
+        cache_policy = Pera_types.Types.No_cache;
+        cache_ttl = Pera_types.Types.Five_minutes;
+        thinking_budget_tokens = None;
+      }
+  in
+  let stream = stream_fn ~model ~context ~options ~sw in
+  let events, result = collect_assistant_events stream in
+  (* Assert: two events emitted (text_start, text_delta) *)
+  Alcotest.(check int) "two events emitted" 2 (List.length events);
+  (* Assert: result is Ok with expected final message *)
+  match result with
+  | Error (e, _) -> Alcotest.failf "expected Ok result, got Error '%s'" e
+  | Ok msg -> (
+      match msg.Pera_types.Types.content with
+      | [ Pera_types.Types.AText t ] ->
+          Alcotest.(check string) "final message text" "hello from faux" t
+      | _ -> Alcotest.fail "expected AText content in final message")
+
+(** {1 Test 2: unknown api returns error stream} *)
+
+let test_stream_fn_unknown_api_returns_error_stream () =
+  Eio_main.run @@ fun env ->
+  Eio.Switch.run @@ fun sw ->
+  Faux_provider.reset_recorded ();
+  (* Create adapter with an empty registry *)
+  let registry = Pera_connector.Connector_registry.empty in
+  let adapter = Connector_adapter.create ~registry ~api_keys:[] ~env ~sw in
+  let stream_fn = Connector_adapter.stream_fn adapter in
+  let context =
+    make_provider_context ~system:"test"
+      [
+        Pera_connector.Connector.UserMessage
+          { Pera_types.Types.role = "user"; content = [ UText "hi" ] };
+      ]
+  in
+  let model =
+    {
+      Pera_types.Types.id = "nonexistent-model";
+      protocol = "nonexistent-api";
+      context_window = 200_000;
+    }
+  in
+  let options =
+    Pera_connector.Connector.
+      {
+        max_tokens = 1024;
+        temperature = None;
+        cache_policy = Pera_types.Types.No_cache;
+        cache_ttl = Pera_types.Types.Five_minutes;
+        thinking_budget_tokens = None;
+      }
+  in
+  let stream = stream_fn ~model ~context ~options ~sw in
+  let _events, result = collect_assistant_events stream in
+  (* Assert: result is Error with message containing the unknown api name *)
+  match result with
+  | Ok _ -> Alcotest.fail "expected Error result for unknown API"
+  | Error (err_msg, _stop_err) ->
+      Alcotest.(check bool)
+        "error message contains the unknown api name" true
+        (String.mem ~sub:"nonexistent-api" err_msg)
+
+(** {1 Test 3: stream_fn preserves provider semantics through Agent_loop.run} *)
+
+let test_stream_fn_preserves_provider_semantics () =
+  Eio_main.run @@ fun env ->
+  Eio.Switch.run @@ fun sw ->
+  Faux_provider.reset_recorded ();
+  let script = make_text_turn_script "hello from adapter" in
+  let provider_mod = Faux_provider.as_provider [ script ] in
+  let registry =
+    Pera_connector.Connector_registry.register
+      Pera_connector.Connector_registry.empty ~name:"faux" provider_mod
+  in
+  let adapter =
+    Connector_adapter.create ~registry
+      ~api_keys:[ ("faux", "test-key") ]
+      ~env ~sw
+  in
+  let stream_fn = Connector_adapter.stream_fn adapter in
+  (* Build a loop config using the adapter's stream_fn.
+     The model.protocol must match the registered name 'faux'. *)
+  let model =
+    {
+      Pera_types.Types.id = "test-model";
+      protocol = "faux";
+      context_window = 200_000;
+    }
+  in
+  let options =
+    Pera_connector.Connector.
+      {
+        max_tokens = 1024;
+        temperature = None;
+        cache_policy = Pera_types.Types.No_cache;
+        cache_ttl = Pera_types.Types.Five_minutes;
+        thinking_budget_tokens = None;
+      }
+  in
+  let config =
+    Agent_loop.
+      {
+        model;
+        system = "test system";
+        options;
+        stream_fn;
+        convert_to_llm = default_convert_to_llm;
+        tool_ctx = ();
+        tools = [];
+        tool_execution = `Parallel;
+        transform_context = None;
+        get_api_key = None;
+        before_tool_call = None;
+        after_tool_call = None;
+        should_stop_after_turn = None;
+        prepare_next_turn = None;
+        get_steering_messages = None;
+        get_follow_up_messages = None;
+      }
+  in
+  let initial_msg = make_user_agent_message "hi" in
+  let loop_stream = Agent_loop.run config ~messages:[ initial_msg ] ~sw in
+  let events, result = collect_agent_events loop_stream in
+  (* Assert event lifecycle *)
+  Alcotest.(check int)
+    "agent_start emitted" 1
+    (count_events is_agent_start events);
+  Alcotest.(check int)
+    "turn_start emitted" 1
+    (count_events is_turn_start events);
+  Alcotest.(check int)
+    "message_start emitted" 1
+    (count_events is_message_start events);
+  Alcotest.(check int)
+    "message_end emitted" 1
+    (count_events is_message_end events);
+  Alcotest.(check int) "turn_end emitted" 1 (count_events is_turn_end events);
+  Alcotest.(check int) "agent_end emitted" 1 (count_events is_agent_end events);
+  (* Assert order *)
+  check_event_order
+    [
+      ("agent_start", is_agent_start);
+      ("turn_start", is_turn_start);
+      ("message_start", is_message_start);
+      ("message_end", is_message_end);
+      ("turn_end", is_turn_end);
+      ("agent_end", is_agent_end);
+    ]
+    events;
+  (* Assert final messages: user + assistant *)
+  match result with
+  | Error (err_msg, _stop_err) ->
+      Alcotest.failf "expected Ok result, got Error '%s'" err_msg
+  | Ok final_messages -> (
+      Alcotest.(check int) "two final messages" 2 (List.length final_messages);
+      let assistant_msg =
+        List.nth_opt final_messages 1
+        |> Option.get_exn_or "expected second message"
+      in
+      match assistant_msg with
+      | Agent_types.Real (Pera_connector.Connector.AssistantMessage am) -> (
+          match am.content with
+          | [ Pera_types.Types.AText t ] ->
+              Alcotest.(check string) "assistant text" "hello from adapter" t
+          | _ -> Alcotest.fail "expected AText content")
+      | _ -> Alcotest.fail "expected AssistantMessage")
+
+(** {1 Test 4: per-connector API-key routing} *)
+
+(** Register two faux providers under distinct names and build the adapter with
+    a per-connector [api_keys] list. Each provider's [create] must receive its
+    own key — never a single key fanned out to all of them. *)
+let test_create_routes_api_keys_per_connector () =
+  Eio_main.run @@ fun env ->
+  Eio.Switch.run @@ fun sw ->
+  Faux_provider.reset_recorded_api_keys ();
+  let provider_a = Faux_provider.as_provider [] in
+  let provider_b = Faux_provider.as_provider [] in
+  let registry =
+    Pera_connector.Connector_registry.empty |> fun r ->
+    Pera_connector.Connector_registry.register r ~name:"faux-a" provider_a
+    |> fun r ->
+    Pera_connector.Connector_registry.register r ~name:"faux-b" provider_b
+  in
+  let api_keys = [ ("faux-a", "key-a"); ("faux-b", "key-b") ] in
+  let _adapter = Connector_adapter.create ~registry ~api_keys ~env ~sw in
+  (* [create] is called eagerly in registry order; the registry stores
+     most-recently-registered first, so order is [faux-b; faux-a]. *)
+  let received = Faux_provider.recorded_api_keys () in
+  Alcotest.(check (list string))
+    "each connector received its own key" [ "key-b"; "key-a" ] received
+
+let () =
+  Alcotest.run "connector_adapter"
+    [
+      ( "adapter",
+        [
+          Alcotest.test_case
+            "stream_fn resolves registered provider and yields scripted events"
+            `Quick test_stream_fn_resolves_registered_provider;
+          Alcotest.test_case "stream_fn unknown api returns error stream" `Quick
+            test_stream_fn_unknown_api_returns_error_stream;
+          Alcotest.test_case
+            "stream_fn preserves provider semantics through Agent_loop.run"
+            `Quick test_stream_fn_preserves_provider_semantics;
+          Alcotest.test_case "create routes api keys per connector" `Quick
+            test_create_routes_api_keys_per_connector;
+        ] );
+    ]

@@ -127,8 +127,8 @@ val pp_usage : Format.formatter -> usage -> unit
 val show_usage : usage -> string
 
 type provenance = {
-  api : string;
-      (** Provider API identifier, e.g. ["anthropic"] or ["openai-completions"].
+  protocol : string;
+      (** Connector protocol, e.g. ["anthropic"] or ["openai-completions"].
       *)
   provider : string;  (** Human-readable provider name. *)
   model : string;  (** Model identifier as given to the API. *)
@@ -261,8 +261,8 @@ val show_tool_error : tool_error -> string
 type model = {
   id : string;
       (** Model identifier as given to the API, e.g. ["claude-sonnet-4-5"]. *)
-  api : string;
-      (** API family, e.g. ["anthropic"] or ["openai-completions"]. *)
+  protocol : string;
+      (** Connector protocol, e.g. ["anthropic"] or ["openai-completions"]. *)
   context_window : int;
       (** Input context window in tokens for this model variant.
 

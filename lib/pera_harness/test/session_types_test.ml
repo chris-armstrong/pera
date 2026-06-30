@@ -25,7 +25,7 @@ let make_usage ?(cost_usd = None) () =
 let make_provenance () =
   Pera_types.Types.
     {
-      api = "anthropic";
+      protocol = "anthropic";
       provider = "anthropic";
       model = "test-model";
       error_message = None;
@@ -33,7 +33,7 @@ let make_provenance () =
 
 let make_assistant_message ?(stop_reason = Pera_types.Types.EndTurn)
     ?(cost_usd = None) content =
-  Pera_provider.Provider.AssistantMessage
+  Pera_connector.Connector.AssistantMessage
     Pera_types.Types.
       {
         content;
@@ -50,7 +50,7 @@ let fake_ts = 1700000000.0
 
 let fake_model =
   Pera_types.Types.
-    { id = "claude-3-5"; api = "anthropic"; context_window = 200_000 }
+    { id = "claude-3-5"; protocol = "anthropic"; context_window = 200_000 }
 
 (* ── session_info tests ─────────────────────────────────────────────────── *)
 
@@ -78,7 +78,7 @@ let test_session_info_serialises_required_fields () =
     "model.id" "claude-3-5"
     (get_str (member "model" json) "id");
   Alcotest.(check string)
-    "model.api" "anthropic"
+    "model.protocol" "anthropic"
     (get_str (member "model" json) "api");
   Alcotest.(check int)
     "model.context_window" 200_000
@@ -111,7 +111,7 @@ let test_message_entry_serialises_parent_id () =
         parent_id = Some fake_parent_id;
         timestamp = fake_ts;
         message =
-          Pera_provider.Provider.UserMessage
+          Pera_connector.Connector.UserMessage
             Pera_types.Types.{ role = "user"; content = [] };
       }
   in
@@ -127,7 +127,7 @@ let test_message_entry_omits_parent_id_when_none () =
         parent_id = None;
         timestamp = fake_ts;
         message =
-          Pera_provider.Provider.UserMessage
+          Pera_connector.Connector.UserMessage
             Pera_types.Types.{ role = "user"; content = [] };
       }
   in
@@ -145,7 +145,7 @@ let test_leaf_entry_serialises_correctly () =
 
 let test_user_message_content_serialised_as_array () =
   let msg =
-    Pera_provider.Provider.UserMessage
+    Pera_connector.Connector.UserMessage
       Pera_types.Types.{ role = "user"; content = [ UText "hi" ] }
   in
   let json = message_to_json msg in
@@ -204,7 +204,7 @@ let test_tool_call_arguments_embedded_as_json () =
 
 let test_tool_result_message_serialised () =
   let msg =
-    Pera_provider.Provider.ToolResultMessage
+    Pera_connector.Connector.ToolResultMessage
       Pera_types.Types.
         { tool_call_id = "tc1"; content = `String "result"; is_error = true }
   in
@@ -227,7 +227,7 @@ let test_assistant_message_cost_usd_omitted_when_none () =
 
 let test_entry_to_json_wraps_message_entry () =
   let inner_msg =
-    Pera_provider.Provider.UserMessage
+    Pera_connector.Connector.UserMessage
       Pera_types.Types.{ role = "user"; content = [ UText "hello" ] }
   in
   let e =

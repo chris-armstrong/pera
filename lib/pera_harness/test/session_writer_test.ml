@@ -13,10 +13,10 @@ let has_key json key =
 
 let fake_model =
   Pera_types.Types.
-    { id = "test-model"; api = "anthropic"; context_window = 200_000 }
+    { id = "test-model"; protocol = "anthropic"; context_window = 200_000 }
 
 let fake_user_message =
-  Pera_provider.Provider.UserMessage
+  Pera_connector.Connector.UserMessage
     Pera_types.Types.{ role = "user"; content = [ UText "hello" ] }
 
 (* Read all JSONL lines from a file and parse each as JSON *)
@@ -174,7 +174,7 @@ let test_multiple_appends_accumulate_lines env () =
   Result.get_exn
     (Session_writer.write_model_change t
        Pera_types.Types.
-         { id = "new-model"; api = "anthropic"; context_window = 200_000 });
+         { id = "new-model"; protocol = "anthropic"; context_window = 200_000 });
   let lines = read_jsonl_lines env path in
   Alcotest.(check int) "four lines" 4 (List.length lines);
   List.iteri
@@ -258,7 +258,7 @@ let test_compaction_then_synthetic_then_leaf_chain env () =
   Result.get_exn (Session_writer.write_session_info t);
   Result.get_exn (Session_writer.write_message t fake_user_message);
   let second_user_message =
-    Pera_provider.Provider.UserMessage
+    Pera_connector.Connector.UserMessage
       Pera_types.Types.{ role = "user"; content = [ UText "ack" ] }
   in
   Result.get_exn (Session_writer.write_message t second_user_message);

@@ -1,5 +1,5 @@
 open Containers
-open Pera_provider
+open Pera_connector
 open Pera_types
 
 let src = Logs.Src.create "pera.driver.provider" ~doc:"Provider driver"
@@ -54,7 +54,7 @@ let summarise_content content =
     invocation. The driver does not implement the tool; it only exercises the
     provider's ability to request a call and parse the arguments. *)
 let get_weather_tool =
-  Provider.
+  Connector.
     {
       name = "get_weather";
       description = "Get the current weather conditions for a location.";
@@ -82,27 +82,27 @@ let stop_reason_string = function
 
 let run_default_scenario ~model_id ~prompt_text ~max_tokens =
   let model =
-    Types.{ id = model_id; api = "anthropic"; context_window = 200_000 }
+    Types.{ id = model_id; protocol = "anthropic"; context_window = 200_000 }
   in
   let user_msg =
     Types.{ role = "user"; content = [ Types.UText prompt_text ] }
   in
   let context =
-    Provider.
+    Connector.
       {
         system = "You are a helpful assistant.";
-        messages = [ Provider.UserMessage user_msg ];
+        messages = [ Connector.UserMessage user_msg ];
         tools = [ get_weather_tool ];
-        thinking = false;
       }
   in
   let options =
-    Provider.
+    Connector.
       {
         max_tokens;
         temperature = None;
         cache_policy = Types.No_cache;
         cache_ttl = Types.Five_minutes;
+        thinking_budget_tokens = None;
       }
   in
   Printf.printf "model: %s\n" model_id;
@@ -110,9 +110,11 @@ let run_default_scenario ~model_id ~prompt_text ~max_tokens =
   Printf.printf "---\n%!";
   Eio_main.run @@ fun env ->
   Eio.Switch.run @@ fun sw ->
-  let provider = Anthropic_provider.create ~env ~sw in
+  let provider =
+    Anthropic_connector.create_from_env ~env ~sw |> Result.get_exn
+  in
   let stream =
-    Anthropic_provider.stream_simple provider ~model ~context ~options ~sw
+    Anthropic_connector.stream_simple provider ~model ~context ~options ~sw
   in
   let result =
     Event_stream.iter stream ~f:(fun event ->
@@ -133,7 +135,7 @@ let run_default_scenario ~model_id ~prompt_text ~max_tokens =
 let run_thinking_scenario () =
   let model =
     Types.
-      { id = "claude-sonnet-4-5"; api = "anthropic"; context_window = 200_000 }
+      { id = "claude-sonnet-4-5"; protocol = "anthropic"; context_window = 200_000 }
   in
   let user_msg =
     Types.
@@ -144,30 +146,32 @@ let run_thinking_scenario () =
       }
   in
   let context =
-    Provider.
+    Connector.
       {
         system = "You are a helpful assistant.";
-        messages = [ Provider.UserMessage user_msg ];
+        messages = [ Connector.UserMessage user_msg ];
         tools = [];
-        thinking = true;
       }
   in
   let options =
-    Provider.
+    Connector.
       {
         max_tokens = 16000;
         temperature = None;
         cache_policy = Types.No_cache;
         cache_ttl = Types.Five_minutes;
+        thinking_budget_tokens = None;
       }
   in
   Printf.printf "thinking scenario: model=%s\n%!" model.Types.id;
   Printf.printf "---\n%!";
   Eio_main.run @@ fun env ->
   Eio.Switch.run @@ fun sw ->
-  let provider = Anthropic_provider.create ~env ~sw in
+  let provider =
+    Anthropic_connector.create_from_env ~env ~sw |> Result.get_exn
+  in
   let stream =
-    Anthropic_provider.stream_simple provider ~model ~context ~options ~sw
+    Anthropic_connector.stream_simple provider ~model ~context ~options ~sw
   in
   let events = ref [] in
   let result =
@@ -197,8 +201,8 @@ let run_thinking_scenario () =
         Printf.printf "thinking scenario: FAIL: no AME_thinking_start events\n";
         exit 1)
 
-let run_openai_completions_scenario ~model_id ~prompt_text ~max_tokens ~thinking
-    () =
+let run_openai_completions_scenario ~model_id ~prompt_text ~max_tokens
+    ~enable_thinking () =
   match Sys.getenv_opt "OPENAI_API_KEY" with
   | None ->
       Printf.printf
@@ -209,21 +213,22 @@ let run_openai_completions_scenario ~model_id ~prompt_text ~max_tokens ~thinking
         Types.{ role = "user"; content = [ Types.UText prompt_text ] }
       in
       let context =
-        Provider.
+        Connector.
           {
             system = "You are a helpful assistant.";
-            messages = [ Provider.UserMessage user_msg ];
+            messages = [ Connector.UserMessage user_msg ];
             tools = [];
-            thinking;
           }
       in
       let options =
-        Provider.
+        Connector.
           {
             max_tokens;
             temperature = None;
             cache_policy = Types.No_cache;
             cache_ttl = Types.Five_minutes;
+            thinking_budget_tokens =
+              (if enable_thinking then Some 8000 else None);
           }
       in
       let base_url =
@@ -251,14 +256,17 @@ let run_openai_completions_scenario ~model_id ~prompt_text ~max_tokens ~thinking
           Types.
             {
               id = model_id;
-              api = "openai-completions";
+              protocol = "openai-completions";
               context_window = 128_000;
             }
         in
-        let provider = Openai_completions_provider.create ~env ~sw in
+        let provider =
+          Openai_completions_connector.create_from_env ~env ~sw
+          |> Result.get_exn
+        in
         Printf.printf "(request sent, waiting for first token...)\n%!";
         let stream =
-          Openai_completions_provider.stream_simple provider ~model ~context
+          Openai_completions_connector.stream_simple provider ~model ~context
             ~options ~sw
         in
         let events = ref [] in
@@ -348,72 +356,64 @@ let () =
   Driver_log.setup ();
   let argv = Sys.argv in
   let argv1 = if Array.length argv > 1 then Some argv.(1) else None in
-  try
-    match argv1 with
-    | Some "thinking" -> (
-        match Sys.getenv_opt "ANTHROPIC_API_KEY" with
-        | None ->
-            print_endline "skipped: no API key";
-            exit 0
-        | Some _ -> run_thinking_scenario ())
-    | Some "openai-completions" ->
-        let default_oc_model = "gpt-4o-mini" in
-        let default_oc_prompt = "Say hello in one word." in
-        let default_oc_max_tokens = 16000 in
-        let remaining =
-          Array.to_list (Array.sub argv 2 (max 0 (Array.length argv - 2)))
-        in
-        let thinking = List.mem ~eq:String.equal "--thinking" remaining in
-        let positional =
-          List.filter (fun s -> not (String.equal s "--thinking")) remaining
-        in
-        let model_id =
-          match positional with x :: _ -> x | [] -> default_oc_model
-        in
-        let prompt_text =
-          match positional with _ :: x :: _ -> x | _ -> default_oc_prompt
-        in
-        let max_tokens =
-          match positional with
-          | _ :: _ :: x :: _ -> (
-              match int_of_string_opt x with
+  match argv1 with
+  | Some "thinking" -> (
+      match Sys.getenv_opt "ANTHROPIC_API_KEY" with
+      | None ->
+          print_endline "skipped: no API key";
+          exit 0
+      | Some _ -> run_thinking_scenario ())
+  | Some "openai-completions" ->
+      let default_oc_model = "gpt-4o-mini" in
+      let default_oc_prompt = "Say hello in one word." in
+      let default_oc_max_tokens = 16000 in
+      let remaining =
+        Array.to_list (Array.sub argv 2 (max 0 (Array.length argv - 2)))
+      in
+      let enable_thinking = List.mem ~eq:String.equal "--thinking" remaining in
+      let positional =
+        List.filter (fun s -> not (String.equal s "--thinking")) remaining
+      in
+      let model_id =
+        match positional with x :: _ -> x | [] -> default_oc_model
+      in
+      let prompt_text =
+        match positional with _ :: x :: _ -> x | _ -> default_oc_prompt
+      in
+      let max_tokens =
+        match positional with
+        | _ :: _ :: x :: _ -> (
+            match int_of_string_opt x with
+            | Some n -> n
+            | None -> default_oc_max_tokens)
+        | _ -> default_oc_max_tokens
+      in
+      run_openai_completions_scenario ~model_id ~prompt_text ~max_tokens
+        ~enable_thinking ()
+  | _ -> (
+      match Sys.getenv_opt "ANTHROPIC_API_KEY" with
+      | None ->
+          print_endline "skipped: no API key";
+          exit 0
+      | Some _ ->
+          let default_model = "claude-3-5-haiku-latest" in
+          let default_prompt =
+            "What is the weather like in Sydney right now?"
+          in
+          let default_max_tokens = 4096 in
+          let model_id = Option.value argv1 ~default:default_model in
+          let prompt_text =
+            if Array.length argv > 2 then argv.(2) else default_prompt
+          in
+          let max_tokens =
+            if Array.length argv > 3 then (
+              match int_of_string_opt argv.(3) with
               | Some n -> n
-              | None -> default_oc_max_tokens)
-          | _ -> default_oc_max_tokens
-        in
-        run_openai_completions_scenario ~model_id ~prompt_text ~max_tokens
-          ~thinking ()
-    | _ -> (
-        match Sys.getenv_opt "ANTHROPIC_API_KEY" with
-        | None ->
-            print_endline "skipped: no API key";
-            exit 0
-        | Some _ ->
-            let default_model = "claude-3-5-haiku-latest" in
-            let default_prompt =
-              "What is the weather like in Sydney right now?"
-            in
-            let default_max_tokens = 4096 in
-            let model_id = Option.value argv1 ~default:default_model in
-            let prompt_text =
-              if Array.length argv > 2 then argv.(2) else default_prompt
-            in
-            let max_tokens =
-              if Array.length argv > 3 then (
-                match int_of_string_opt argv.(3) with
-                | Some n -> n
-                | None ->
-                    Log.warn (fun m ->
-                        m "invalid max_tokens %S, using %d" argv.(3)
-                          default_max_tokens);
-                    default_max_tokens)
-              else default_max_tokens
-            in
-            run_default_scenario ~model_id ~prompt_text ~max_tokens)
-  with
-  | Failure msg ->
-      Printf.eprintf "provider_driver: %s\n%!" msg;
-      exit 2
-  | exn ->
-      Printf.eprintf "provider_driver crashed: %s\n%!" (Printexc.to_string exn);
-      exit 1
+              | None ->
+                  Log.warn (fun m ->
+                      m "invalid max_tokens %S, using %d" argv.(3)
+                        default_max_tokens);
+                  default_max_tokens)
+            else default_max_tokens
+          in
+          run_default_scenario ~model_id ~prompt_text ~max_tokens)

@@ -7,7 +7,7 @@
   pera_env
   pera_core
   pera_types
-  pera_provider
+  pera_connector
   eio
   eio_main
   eio_linux

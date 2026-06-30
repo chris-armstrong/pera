@@ -38,11 +38,7 @@ let is_substring ~sub s =
 
 (** Find a tool by name in a tool list. Raises [Failure] if not found. *)
 let find_tool ~name tools =
-  match
-    List.find_opt
-      (fun (t : unit tool) -> String.equal (Tool.name t) name)
-      tools
-  with
+  match List.find_opt (fun t -> String.equal (Tool.name t) name) tools with
   | Some t -> t
   | None -> failwith (Printf.sprintf "tool_driver: tool '%s' not found" name)
 
@@ -71,25 +67,25 @@ let print_verdict ~tool ~scenario = function
   | Skip msg -> Printf.printf "[%s] %s ... SKIP: %s\n" tool scenario msg
 
 (** Write a file via the write tool. Returns [Ok ()] or [Error string]. *)
-let write_file ~(t : unit tool) ~path ~content ~sw ~cancel =
+let write_file ~t ~env_mod ~path ~content ~sw ~cancel =
   let args = `Assoc [ ("path", `String path); ("content", `String content) ] in
-  match Tool.execute t ~ctx:() ~args ~sw ~cancel with
+  match Tool.execute t ~ctx:env_mod ~args ~sw ~cancel with
   | Ok _ -> Ok ()
   | Error e -> Error e.message
 
 (** Read a file via the read tool. Returns [Ok string] or [Error string]. *)
-let read_file ~(t : unit tool) ~path ~sw ~cancel =
+let read_file ~t ~env_mod ~path ~sw ~cancel =
   let args = `Assoc [ ("path", `String path) ] in
-  match Tool.execute t ~ctx:() ~args ~sw ~cancel with
+  match Tool.execute t ~ctx:env_mod ~args ~sw ~cancel with
   | Ok (Tool_text s) -> Ok s
   | Ok _ -> Error "read returned non-text output"
   | Error e -> Error e.message
 
 (** Execute a bash command via the bash tool. Returns [Ok string] or
     [Error string]. *)
-let run_bash ~(t : unit tool) ~command ~sw ~cancel =
+let run_bash ~t ~command ~env_mod ~sw ~cancel =
   let args = `Assoc [ ("command", `String command) ] in
-  match Tool.execute t ~ctx:() ~args ~sw ~cancel with
+  match Tool.execute t ~ctx:env_mod ~args ~sw ~cancel with
   | Ok (Tool_text s) -> Ok s
   | Ok _ -> Error "bash returned non-text output"
   | Error e -> Error e.message
@@ -97,9 +93,9 @@ let run_bash ~(t : unit tool) ~command ~sw ~cancel =
 (* ── Scenario helpers (≤ 2 levels of nesting each) ───────────────────────── *)
 
 (** Scenario 1 helper: read a file and check it contains expected substring. *)
-let check_read_contains ~(read : unit tool) ~path ~expected ~tool ~scenario ~sw
-    ~cancel =
-  match read_file ~t:read ~path ~sw ~cancel with
+let check_read_contains ~read ~path ~expected ~tool ~scenario ~sw ~cancel
+    ~env_mod =
+  match read_file ~t:read ~env_mod ~path ~sw ~cancel with
   | Error msg ->
       let v = Fail (Printf.sprintf "read failed: %s" msg) in
       print_verdict ~tool ~scenario v;
@@ -114,11 +110,13 @@ let check_read_contains ~(read : unit tool) ~path ~expected ~tool ~scenario ~sw
 
 (** Scenario 2 helper: write a 10-line file, read with offset=3/limit=2, return
     the trimmed output string or error. *)
-let write_and_read_offset ~(write : unit tool) ~(read : unit tool) ~sw ~cancel =
+let write_and_read_offset ~write ~read ~env_mod ~sw ~cancel =
   let lines =
     String.concat "\n" (List.init 10 (fun i -> string_of_int (i + 1)))
   in
-  match write_file ~t:write ~path:"numbers.txt" ~content:lines ~sw ~cancel with
+  match
+    write_file ~t:write ~env_mod ~path:"numbers.txt" ~content:lines ~sw ~cancel
+  with
   | Error msg -> Error msg
   | Ok () -> (
       let args =
@@ -129,40 +127,40 @@ let write_and_read_offset ~(write : unit tool) ~(read : unit tool) ~sw ~cancel =
             ("limit", `Int 2);
           ]
       in
-      match Tool.execute read ~ctx:() ~args ~sw ~cancel with
+      match Tool.execute read ~ctx:env_mod ~args ~sw ~cancel with
       | Ok (Tool_text s) -> Ok (String.trim s)
       | Ok _ -> Error "read returned non-text output"
       | Error e -> Error e.message)
 
 (** Scenario 4 helper: write "first", then overwrite with "second" (6 bytes),
     return the overwrite output message. *)
-let overwrite_twice ~(t : unit tool) ~sw ~cancel =
+let overwrite_twice ~t ~env_mod ~sw ~cancel =
   let args_first =
     `Assoc [ ("path", `String "overwrite.txt"); ("content", `String "first") ]
   in
-  match Tool.execute t ~ctx:() ~args:args_first ~sw ~cancel with
+  match Tool.execute t ~ctx:env_mod ~args:args_first ~sw ~cancel with
   | Error e -> Error e.message
   | Ok _ -> (
       let args_second =
         `Assoc
           [ ("path", `String "overwrite.txt"); ("content", `String "second") ]
       in
-      match Tool.execute t ~ctx:() ~args:args_second ~sw ~cancel with
+      match Tool.execute t ~ctx:env_mod ~args:args_second ~sw ~cancel with
       | Ok (Tool_text msg) -> Ok msg
       | Ok _ -> Error "write returned non-text output"
       | Error e -> Error e.message)
 
 (** Scenario 7 helper: write a file with a unique pattern, run grep, return
     output or error. *)
-let write_and_grep ~(write : unit tool) ~(grep : unit tool) ~sw ~cancel =
+let write_and_grep ~write ~grep ~env_mod ~sw ~cancel =
   match
-    write_file ~t:write ~path:"grep_test.txt" ~content:"unique_grep_pattern_xyz"
-      ~sw ~cancel
+    write_file ~t:write ~env_mod ~path:"grep_test.txt"
+      ~content:"unique_grep_pattern_xyz" ~sw ~cancel
   with
   | Error msg -> Error msg
   | Ok () -> (
       let args = `Assoc [ ("pattern", `String "unique_grep_pattern") ] in
-      match Tool.execute grep ~ctx:() ~args ~sw ~cancel with
+      match Tool.execute grep ~ctx:env_mod ~args ~sw ~cancel with
       | Ok (Tool_text s) -> Ok s
       | Ok _ -> Error "grep returned non-text output"
       | Error e -> Error e.message)
@@ -170,11 +168,12 @@ let write_and_grep ~(write : unit tool) ~(grep : unit tool) ~sw ~cancel =
 (* ── Scenarios (≤ 2 levels of nesting each) ──────────────────────────────── *)
 
 (** Scenario 1: Basic read — write "hello world", read it back, verify. *)
-let scenario_read_basic ~(read : unit tool) ~(write : unit tool) ~sw ~cancel =
+let scenario_read_basic ~read ~write ~env_mod ~sw ~cancel =
   let scenario = "basic read" in
   let tool_name = Tool.name read in
   match
-    write_file ~t:write ~path:"hello.txt" ~content:"hello world" ~sw ~cancel
+    write_file ~t:write ~env_mod ~path:"hello.txt" ~content:"hello world" ~sw
+      ~cancel
   with
   | Error msg ->
       let v = Fail (Printf.sprintf "write failed: %s" msg) in
@@ -182,13 +181,13 @@ let scenario_read_basic ~(read : unit tool) ~(write : unit tool) ~sw ~cancel =
       v
   | Ok () ->
       check_read_contains ~read ~path:"hello.txt" ~expected:"hello world"
-        ~tool:tool_name ~scenario ~sw ~cancel
+        ~tool:tool_name ~scenario ~sw ~cancel ~env_mod
 
 (** Scenario 2: Read with offset/limit — write 10 lines, read from line 3,
     expect output starts with "3". *)
-let scenario_read_offset ~(read : unit tool) ~(write : unit tool) ~sw ~cancel =
+let scenario_read_offset ~read ~write ~env_mod ~sw ~cancel =
   let scenario = "read with offset/limit" in
-  match write_and_read_offset ~write ~read ~sw ~cancel with
+  match write_and_read_offset ~write ~read ~env_mod ~sw ~cancel with
   | Error msg ->
       let v = Fail msg in
       print_verdict ~tool:(Tool.name read) ~scenario v;
@@ -205,11 +204,12 @@ let scenario_read_offset ~(read : unit tool) ~(write : unit tool) ~sw ~cancel =
       v
 
 (** Scenario 3: Write create — write a file, read via env to verify content. *)
-let scenario_write_create ~(read : unit tool) ~(write : unit tool) ~sw ~cancel =
+let scenario_write_create ~read ~write ~env_mod ~sw ~cancel =
   let scenario = "create file" in
   let tool_name = Tool.name write in
   match
-    write_file ~t:write ~path:"created.txt" ~content:"write test" ~sw ~cancel
+    write_file ~t:write ~env_mod ~path:"created.txt" ~content:"write test" ~sw
+      ~cancel
   with
   | Error msg ->
       let v = Fail (Printf.sprintf "write failed: %s" msg) in
@@ -217,13 +217,13 @@ let scenario_write_create ~(read : unit tool) ~(write : unit tool) ~sw ~cancel =
       v
   | Ok () ->
       check_read_contains ~read ~path:"created.txt" ~expected:"write test"
-        ~tool:tool_name ~scenario ~sw ~cancel
+        ~tool:tool_name ~scenario ~sw ~cancel ~env_mod
 
 (** Scenario 4: Write overwrite + bytes — write twice, check message contains "6
     bytes". *)
-let scenario_write_overwrite ~(write : unit tool) ~sw ~cancel =
+let scenario_write_overwrite ~write ~env_mod ~sw ~cancel =
   let scenario = "overwrite + bytes" in
-  match overwrite_twice ~t:write ~sw ~cancel with
+  match overwrite_twice ~t:write ~env_mod ~sw ~cancel with
   | Error msg ->
       let v = Fail msg in
       print_verdict ~tool:(Tool.name write) ~scenario v;
@@ -240,9 +240,9 @@ let scenario_write_overwrite ~(write : unit tool) ~sw ~cancel =
       v
 
 (** Scenario 5: Bash echo — run "echo hello", check output. *)
-let scenario_bash_echo ~(bash : unit tool) ~sw ~cancel =
+let scenario_bash_echo ~bash ~env_mod ~sw ~cancel =
   let scenario = "echo hello" in
-  match run_bash ~t:bash ~command:"echo hello" ~sw ~cancel with
+  match run_bash ~t:bash ~command:"echo hello" ~env_mod ~sw ~cancel with
   | Error msg ->
       let v = Fail msg in
       print_verdict ~tool:(Tool.name bash) ~scenario v;
@@ -256,10 +256,10 @@ let scenario_bash_echo ~(bash : unit tool) ~sw ~cancel =
       v
 
 (** Scenario 6: Bash exit code — run "exit 99", check error message. *)
-let scenario_bash_exit_code ~(bash : unit tool) ~sw ~cancel =
+let scenario_bash_exit_code ~bash ~env_mod ~sw ~cancel =
   let scenario = "exit code handling" in
   let args = `Assoc [ ("command", `String "exit 99") ] in
-  match Tool.execute bash ~ctx:() ~args ~sw ~cancel with
+  match Tool.execute bash ~ctx:env_mod ~args ~sw ~cancel with
   | Error e ->
       let v =
         if is_substring ~sub:"99" e.message then Pass
@@ -276,10 +276,9 @@ let scenario_bash_exit_code ~(bash : unit tool) ~sw ~cancel =
 
 (** Scenario 7: Grep pattern search — create file with unique pattern, search
     for it. Skips if ripgrep (rg) is not installed. *)
-let scenario_grep_search ~(grep : unit tool) ~(write : unit tool) env ~sw
-    ~cancel =
+let scenario_grep_search ~grep ~write ~env_mod ~sw ~cancel =
   let scenario = "pattern search" in
-  let module E = (val env : Execution_env.S) in
+  let module E = (val env_mod : Pera_env.Execution_env.S) in
   match E.Sh.find_executable ~name:"rg" with
   | None ->
       let v = Skip "ripgrep not installed" in
@@ -287,7 +286,7 @@ let scenario_grep_search ~(grep : unit tool) ~(write : unit tool) env ~sw
       v
   | Some _ -> (
       let tool_name = Tool.name grep in
-      match write_and_grep ~write ~grep ~sw ~cancel with
+      match write_and_grep ~write ~grep ~env_mod ~sw ~cancel with
       | Error msg ->
           let v = Fail msg in
           print_verdict ~tool:tool_name ~scenario v;
@@ -306,19 +305,18 @@ let scenario_grep_search ~(grep : unit tool) ~(write : unit tool) env ~sw
 (** Scenario 8: Write a file with more lines than Truncate.max_lines; read it
     via the read tool; verify the output is shorter than the input and contains
     the truncation footer. *)
-let scenario_read_truncation ~(read : unit tool) ~(write : unit tool) ~sw
-    ~cancel =
+let scenario_read_truncation ~read ~write ~env_mod ~sw ~cancel =
   let scenario = "read truncation" in
   let line_count = Pera_tools.Truncate.max_lines * 2 in
   let content = String.concat "\n" (List.init line_count (fun _ -> "x")) in
-  match write_file ~t:write ~path:"big.txt" ~content ~sw ~cancel with
+  match write_file ~t:write ~env_mod ~path:"big.txt" ~content ~sw ~cancel with
   | Error msg ->
       let v = Fail (Printf.sprintf "write failed: %s" msg) in
       print_verdict ~tool:(Tool.name read) ~scenario v;
       v
   | Ok () -> (
       let args = `Assoc [ ("path", `String "big.txt") ] in
-      match Tool.execute read ~ctx:() ~args ~sw ~cancel with
+      match Tool.execute read ~ctx:env_mod ~args ~sw ~cancel with
       | Error e ->
           let v = Fail (Printf.sprintf "read failed: %s" e.message) in
           print_verdict ~tool:(Tool.name read) ~scenario v;
@@ -346,11 +344,11 @@ let scenario_read_truncation ~(read : unit tool) ~(write : unit tool) ~sw
 
 (** Scenario 9: Call read.execute with no "path" key in args; verify Error is
     returned (not an exception, not Ok). *)
-let scenario_read_missing_path_arg ~(read : unit tool) ~sw ~cancel =
+let scenario_read_missing_path_arg ~read ~env_mod ~sw ~cancel =
   let scenario = "read missing path arg" in
   let args = `Assoc [] in
   let v =
-    match Tool.execute read ~ctx:() ~args ~sw ~cancel with
+    match Tool.execute read ~ctx:env_mod ~args ~sw ~cancel with
     | Ok _ -> Fail "expected Error for missing path arg, got Ok"
     | Error e ->
         if String.is_empty e.message then
@@ -371,7 +369,7 @@ let () =
         Eio.Switch.run @@ fun sw ->
         let module E = (val Local_env.create ~env ~cwd:tmpdir : Execution_env.S)
         in
-        let tools = Tools.default (module E) in
+        let tools = Tools.default in
         let read = find_tool ~name:"read" tools in
         let write = find_tool ~name:"write" tools in
         let bash = find_tool ~name:"bash" tools in
@@ -380,15 +378,33 @@ let () =
         let verdicts =
           Eio.Cancel.sub (fun cancel ->
               [
-                scenario_read_basic ~read ~write ~sw ~cancel;
-                scenario_read_offset ~read ~write ~sw ~cancel;
-                scenario_write_create ~read ~write ~sw ~cancel;
-                scenario_write_overwrite ~write ~sw ~cancel;
-                scenario_bash_echo ~bash ~sw ~cancel;
-                scenario_bash_exit_code ~bash ~sw ~cancel;
-                scenario_grep_search ~grep ~write (module E) ~sw ~cancel;
-                scenario_read_truncation ~read ~write ~sw ~cancel;
-                scenario_read_missing_path_arg ~read ~sw ~cancel;
+                scenario_read_basic ~read ~write
+                  ~env_mod:(module E : Pera_env.Execution_env.S)
+                  ~sw ~cancel;
+                scenario_read_offset ~read ~write
+                  ~env_mod:(module E : Pera_env.Execution_env.S)
+                  ~sw ~cancel;
+                scenario_write_create ~read ~write
+                  ~env_mod:(module E : Pera_env.Execution_env.S)
+                  ~sw ~cancel;
+                scenario_write_overwrite ~write
+                  ~env_mod:(module E : Pera_env.Execution_env.S)
+                  ~sw ~cancel;
+                scenario_bash_echo ~bash
+                  ~env_mod:(module E : Pera_env.Execution_env.S)
+                  ~sw ~cancel;
+                scenario_bash_exit_code ~bash
+                  ~env_mod:(module E : Pera_env.Execution_env.S)
+                  ~sw ~cancel;
+                scenario_grep_search ~grep ~write
+                  ~env_mod:(module E : Pera_env.Execution_env.S)
+                  ~sw ~cancel;
+                scenario_read_truncation ~read ~write
+                  ~env_mod:(module E : Pera_env.Execution_env.S)
+                  ~sw ~cancel;
+                scenario_read_missing_path_arg ~read
+                  ~env_mod:(module E : Pera_env.Execution_env.S)
+                  ~sw ~cancel;
               ])
         in
         Printf.printf "\n";

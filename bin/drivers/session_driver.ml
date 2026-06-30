@@ -10,13 +10,13 @@
 
 open Containers
 open Pera_types
-open Pera_provider
+open Pera_connector
 open Session_jsonl_helpers
 
 (* ── Minimal message builders ─────────────────────────────────────────────── *)
 
 let test_model : Types.model =
-  { id = "test-model"; api = "test"; context_window = 200_000 }
+  { id = "test-model"; protocol = "test"; context_window = 200_000 }
 
 let test_usage : Types.usage =
   {
@@ -28,13 +28,13 @@ let test_usage : Types.usage =
   }
 
 let test_provenance : Types.provenance =
-  { api = "test"; provider = "test"; model = "test"; error_message = None }
+  { protocol = "test"; provider = "test"; model = "test"; error_message = None }
 
 let make_user_msg text =
-  Provider.UserMessage { role = "user"; content = [ Types.UText text ] }
+  Connector.UserMessage { role = "user"; content = [ Types.UText text ] }
 
 let make_assistant_msg text =
-  Provider.AssistantMessage
+  Connector.AssistantMessage
     {
       content = [ Types.AText text ];
       stop_reason = Types.EndTurn;
@@ -43,7 +43,7 @@ let make_assistant_msg text =
     }
 
 let make_tool_call_msg id name =
-  Provider.AssistantMessage
+  Connector.AssistantMessage
     {
       content = [ Types.AToolCall { id; name; arguments = `Assoc [] } ];
       stop_reason = Types.ToolUse;
@@ -52,7 +52,7 @@ let make_tool_call_msg id name =
     }
 
 let make_tool_result_msg tool_call_id =
-  Provider.ToolResultMessage
+  Connector.ToolResultMessage
     { tool_call_id; content = `String "result"; is_error = false }
 
 (* ── Verify helpers ───────────────────────────────────────────────────────── *)
@@ -411,7 +411,7 @@ let scenario_compaction ~tmpdir ~env =
 let scenario_model_change ~tmpdir ~env =
   let path = Filename.concat tmpdir "s5.jsonl" in
   let new_model : Types.model =
-    { id = "new-model"; api = "test"; context_window = 200_000 }
+    { id = "new-model"; protocol = "test"; context_window = 200_000 }
   in
   match
     Pera_harness.Session_writer.create ~path ~env ~model:test_model ~cwd:tmpdir

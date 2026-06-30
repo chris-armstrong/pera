@@ -29,7 +29,7 @@ let make_config ?(get_follow_up_messages = None) ?(tools = [])
 (** Collect events from an [Event_stream] into a ref list. Returns a function to
     call after the switch to get the collected events. *)
 let collect_events_into buf stream =
-  Pera_provider.Event_stream.iter stream ~f:(fun e -> buf := !buf @ [ e ])
+  Pera_connector.Event_stream.iter stream ~f:(fun e -> buf := !buf @ [ e ])
 
 (** Check whether an event is [AE_agent_start]. *)
 let is_agent_start = function Agent_types.AE_agent_start -> true | _ -> false

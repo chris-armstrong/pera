@@ -19,18 +19,18 @@ val compaction_framing : string
 (** ["Context from earlier conversation:\n\n"] — the user-role framing prepended
     to a compaction summary when it is rendered for the LLM. *)
 
-val synthetic_to_message : synthetic -> Pera_provider.Provider.message
+val synthetic_to_message : synthetic -> Pera_connector.Connector.message
 (** Render a synthetic message into the provider message the LLM sees. For
     [Compaction_summary {summary}] this is a user message whose single text
     block is [compaction_framing ^ summary]. *)
 
 (** Agent-level message: a real provider message, or a synthetic one. *)
 type agent_message =
-  | Real of Pera_provider.Provider.message
+  | Real of Pera_connector.Connector.message
       (** A real provider message (user, assistant, or tool result). *)
   | Synthetic of synthetic  (** A synthetic message kind. *)
 
-val to_provider_message : agent_message -> Pera_provider.Provider.message
+val to_provider_message : agent_message -> Pera_connector.Connector.message
 (** [Real m -> m]; [Synthetic s -> synthetic_to_message s]. The canonical
     agent-to-provider message projection.
 
@@ -63,14 +63,14 @@ module Tool : sig
   val create :
     name:string ->
     description:string ->
-    schema:Pera_provider.Json_schema.t ->
+    schema:Pera_connector.Json_schema.t ->
     parallel_safe:bool ->
     execute:
       (ctx:'ctx ->
-       args:Yojson.Safe.t ->
-       sw:Eio.Switch.t ->
-       cancel:Eio.Cancel.t ->
-       (tool_output, Pera_types.Types.tool_error) result) ->
+      args:Yojson.Safe.t ->
+      sw:Eio.Switch.t ->
+      cancel:Eio.Cancel.t ->
+      (tool_output, Pera_types.Types.tool_error) result) ->
     'ctx t
   (** Construct a tool.
 
@@ -80,7 +80,7 @@ module Tool : sig
 
   val name : _ t -> string
   val description : _ t -> string
-  val schema : _ t -> Pera_provider.Json_schema.t
+  val schema : _ t -> Pera_connector.Json_schema.t
   val parallel_safe : _ t -> bool
 
   val execute :
@@ -92,8 +92,8 @@ module Tool : sig
     (tool_output, Pera_types.Types.tool_error) result
 end
 
-(** Backwards-compatible alias for the opaque {!Tool.t}. *)
 type 'ctx tool = 'ctx Tool.t
+(** Backwards-compatible alias for the opaque {!Tool.t}. *)
 
 (** {1 Agent events} *)
 
@@ -181,15 +181,24 @@ val pp_before_tool_call_result :
 
 val show_before_tool_call_result : before_tool_call_result -> string
 
+type thinking_update =
+  | Inherit  (** Keep the current thinking budget setting (no change). *)
+  | Budget of int  (** Enable extended thinking with this budget. *)
+  | Disabled  (** Disable extended thinking. *)
+
+val equal_thinking_update : thinking_update -> thinking_update -> bool
+val pp_thinking_update : Format.formatter -> thinking_update -> unit
+val show_thinking_update : thinking_update -> string
+
 type turn_update = {
   messages : agent_message list option;
       (** Replace the current message history; [None] to keep it. *)
   model : Pera_types.Types.model option;
       (** Switch to a different model for the next turn; [None] to keep the
           current model. *)
-  thinking : bool option;
-      (** Enable or disable extended thinking; [None] to keep the current
-          setting. *)
+  thinking : thinking_update;
+      (** Update the thinking budget for the next turn. [Inherit] keeps the
+          current setting. *)
 }
 
 val equal_turn_update : turn_update -> turn_update -> bool
@@ -214,24 +223,24 @@ val tool_output_to_result_content :
 
 type stream_fn =
   model:Pera_types.Types.model ->
-  context:Pera_provider.Provider.context ->
-  options:Pera_provider.Provider.simple_stream_options ->
+  context:Pera_connector.Connector.context ->
+  options:Pera_connector.Connector.simple_stream_options ->
   sw:Eio.Switch.t ->
   ( Pera_types.Types.assistant_message_event,
     Pera_types.Types.assistant_message )
-  Pera_provider.Event_stream.t
+  Pera_connector.Event_stream.t
 (** The function type the agent loop uses to call a provider for one turn.
 
     This is the loop's provider-agnostic seam: any value satisfying this type
     can be used as the provider backend. The [Faux_provider] test double and the
-    adapter from [Provider.S] both produce values of this type.
+    adapter from [Connector.S] both produce values of this type.
 
     The [~env] parameter is absent by design — the loop itself is pure-from-IO.
-    Callers that wrap a real [Provider.S] bind [~env] into the closure before
+    Callers that wrap a real [Connector.S] bind [~env] into the closure before
     passing it here. *)
 
 (** {1 Equality helpers} *)
 
 val agent_message_equal : agent_message -> agent_message -> bool
-(** Structural equality for {!agent_message}. Uses [Provider.equal_message] for
+(** Structural equality for {!agent_message}. Uses [Connector.equal_message] for
     [Real] messages and [equal_synthetic] for [Synthetic] messages. *)

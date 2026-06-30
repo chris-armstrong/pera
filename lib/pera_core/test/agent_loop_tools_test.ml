@@ -102,9 +102,9 @@ let test_single_tool_call_executes_and_feeds_result_back () =
     List.exists
       (fun msg ->
         match msg with
-        | Pera_provider.Provider.ToolResultMessage _ -> true
+        | Pera_connector.Connector.ToolResultMessage _ -> true
         | _ -> false)
-      second_ctx.Pera_provider.Provider.messages
+      second_ctx.Pera_connector.Connector.messages
   in
   Alcotest.(check bool)
     "second turn context contains ToolResultMessage" true has_tool_result
@@ -187,9 +187,9 @@ let test_parallel_tool_results_appended_in_source_order () =
     List.filter_map
       (fun msg ->
         match msg with
-        | Pera_provider.Provider.ToolResultMessage tr -> Some tr
+        | Pera_connector.Connector.ToolResultMessage tr -> Some tr
         | _ -> None)
-      second_ctx.Pera_provider.Provider.messages
+      second_ctx.Pera_connector.Connector.messages
   in
   Alcotest.(check int)
     "two tool result messages" 2

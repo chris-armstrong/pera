@@ -19,13 +19,17 @@ let run_write_test (body : (module Execution_env.S) -> Eio.Switch.t -> unit) =
 
 let test_write_creates_file_with_correct_content () =
   run_write_test (fun (module E) sw ->
-      let tool = Write_tool.write (module E) in
+      let tool = Write_tool.write in
       let args =
         `Assoc
           [ ("path", `String "out.txt"); ("content", `String "hello world") ]
       in
       Eio.Cancel.sub (fun cancel ->
-          match Tool.execute tool ~ctx:() ~args ~sw ~cancel with
+          match
+            Tool.execute tool
+              ~ctx:(module E : Pera_env.Execution_env.S)
+              ~args ~sw ~cancel
+          with
           | Ok (Tool_text _) -> (
               (* Verify content via env *)
               match E.Fs.read_text_file ~path:"out.txt" ~sw with
@@ -38,12 +42,16 @@ let test_write_creates_file_with_correct_content () =
 
 let test_write_creates_parent_directories () =
   run_write_test (fun (module E) sw ->
-      let tool = Write_tool.write (module E) in
+      let tool = Write_tool.write in
       let args =
         `Assoc [ ("path", `String "a/b/c.txt"); ("content", `String "nested") ]
       in
       Eio.Cancel.sub (fun cancel ->
-          match Tool.execute tool ~ctx:() ~args ~sw ~cancel with
+          match
+            Tool.execute tool
+              ~ctx:(module E : Pera_env.Execution_env.S)
+              ~args ~sw ~cancel
+          with
           | Ok (Tool_text _) -> (
               match E.Fs.exists ~path:"a/b/c.txt" ~sw with
               | Ok true -> ()
@@ -56,7 +64,7 @@ let test_write_creates_parent_directories () =
 
 let test_write_overwrites_existing_file () =
   run_write_test (fun (module E) sw ->
-      let tool = Write_tool.write (module E) in
+      let tool = Write_tool.write in
       (* Write first content *)
       write_file (module E) ~path:"overwrite.txt" ~content:"first version" ~sw;
       (* Write second content via tool *)
@@ -68,7 +76,11 @@ let test_write_overwrites_existing_file () =
           ]
       in
       Eio.Cancel.sub (fun cancel ->
-          match Tool.execute tool ~ctx:() ~args ~sw ~cancel with
+          match
+            Tool.execute tool
+              ~ctx:(module E : Pera_env.Execution_env.S)
+              ~args ~sw ~cancel
+          with
           | Ok (Tool_text _) -> (
               match E.Fs.read_text_file ~path:"overwrite.txt" ~sw with
               | Ok content ->
@@ -81,13 +93,17 @@ let test_write_overwrites_existing_file () =
 
 let test_write_returns_bytes_written () =
   run_write_test (fun (module E) sw ->
-      let tool = Write_tool.write (module E) in
+      let tool = Write_tool.write in
       let args =
         `Assoc
           [ ("path", `String "bytes_test.txt"); ("content", `String "hello") ]
       in
       Eio.Cancel.sub (fun cancel ->
-          match Tool.execute tool ~ctx:() ~args ~sw ~cancel with
+          match
+            Tool.execute tool
+              ~ctx:(module E : Pera_env.Execution_env.S)
+              ~args ~sw ~cancel
+          with
           | Ok (Tool_text s) ->
               Alcotest.(check bool)
                 "reports 5 bytes written" true

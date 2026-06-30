@@ -18,7 +18,7 @@ val write_session_info : t -> (unit, Pera_types.Types.file_error) result
 
 val write_message :
   t ->
-  Pera_provider.Provider.message ->
+  Pera_connector.Connector.message ->
   (unit, Pera_types.Types.file_error) result
 (** Append a [message] entry and advance [current_parent_id]. *)
 

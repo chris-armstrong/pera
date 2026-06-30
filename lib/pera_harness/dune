@@ -4,7 +4,7 @@
  (modules entry_id session_types session_writer agent_wrapper cache_fingerprint compaction)
  (libraries
   pera_types
-  pera_provider
+  pera_connector
   pera_core
   eio
   eio_main

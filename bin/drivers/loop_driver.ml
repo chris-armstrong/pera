@@ -1,7 +1,7 @@
 open Containers
 open Pera_core
 open Pera_core_test_util
-open Pera_provider
+open Pera_connector
 open Pera_types
 
 let src = Logs.Src.create "pera.driver.loop" ~doc:"Loop driver"
@@ -18,7 +18,7 @@ let make_assistant_message ?(stop_reason = Types.EndTurn) text =
       stop_reason;
       provenance =
         {
-          api = "faux";
+          protocol = "faux";
           provider = "faux";
           model = "faux";
           error_message = None;
@@ -36,7 +36,7 @@ let make_assistant_message ?(stop_reason = Types.EndTurn) text =
 (** Build an [agent_message] wrapping a user message. *)
 let make_user_agent_message text =
   let um = Types.{ role = "user"; content = [ UText text ] } in
-  Agent_types.Real (Provider.UserMessage um)
+  Agent_types.Real (Connector.UserMessage um)
 
 (** Build an assistant message with tool calls and ToolUse stop_reason. *)
 let make_tool_use_message tool_calls =
@@ -47,7 +47,7 @@ let make_tool_use_message tool_calls =
       stop_reason = ToolUse;
       provenance =
         {
-          api = "faux";
+          protocol = "faux";
           provider = "faux";
           model = "faux";
           error_message = None;
@@ -70,16 +70,17 @@ let default_convert_to_llm msgs = List.map Agent_types.to_provider_message msgs
 
 (** Default model for loop calls. *)
 let test_model =
-  Types.{ id = "faux-model"; api = "faux"; context_window = 200_000 }
+  Types.{ id = "faux-model"; protocol = "faux"; context_window = 200_000 }
 
 (** Default options for loop calls. *)
 let test_options =
-  Provider.
+  Connector.
     {
       max_tokens = 1024;
       temperature = None;
       cache_policy = Types.No_cache;
       cache_ttl = Types.Five_minutes;
+      thinking_budget_tokens = None;
     }
 
 (** Empty JSON schema for tools that take no args. *)
@@ -397,9 +398,8 @@ let scenario_tool_error sw =
   in
   let failing_tool =
     Agent_types.Tool.create ~name:"failing_tool"
-      ~description:"Always returns an error."
-      ~schema:empty_schema ~parallel_safe:true
-      ~execute:(fun ~ctx:_ ~args:_ ~sw:_ ~cancel:_ ->
+      ~description:"Always returns an error." ~schema:empty_schema
+      ~parallel_safe:true ~execute:(fun ~ctx:_ ~args:_ ~sw:_ ~cancel:_ ->
         Error Types.{ message = "intentional failure"; is_user_error = false })
   in
   let stream_fn = Faux_provider.stream_fn_of_scripts [ script1; script2 ] in
@@ -848,7 +848,7 @@ let scenario_transform_context_applied sw =
   in
   let injected =
     Agent_types.Real
-      (Provider.UserMessage
+      (Connector.UserMessage
          Types.{ role = "user"; content = [ Types.UText "INJECTED" ] })
   in
   let transform_context = Some (fun msgs -> msgs @ [ injected ]) in
@@ -866,14 +866,14 @@ let scenario_transform_context_applied sw =
           let found =
             List.exists
               (function
-                | Provider.UserMessage um ->
+                | Connector.UserMessage um ->
                     List.exists
                       (function
                         | Types.UText s -> String.equal s "INJECTED"
                         | _ -> false)
                       um.Types.content
                 | _ -> false)
-              ctx.Provider.messages
+              ctx.Connector.messages
           in
           Printf.printf "    injected_found=%b\n%!" found;
           found)
@@ -930,10 +930,10 @@ let scenario_prepare_next_turn_update sw =
                   Types.
                     {
                       id = "prepared-model";
-                      api = "faux";
+                      protocol = "faux";
                       context_window = 200_000;
                     };
-              thinking = None;
+              thinking = Inherit;
             })
   in
   let steering_count = ref 0 in
@@ -977,7 +977,7 @@ let scenario_thinking_blocks sw =
         stop_reason = EndTurn;
         provenance =
           {
-            api = "faux";
+            protocol = "faux";
             provider = "faux";
             model = "faux";
             error_message = None;
@@ -1016,7 +1016,7 @@ let scenario_thinking_blocks sw =
         List.exists
           (function
             | Agent_types.AE_message_end
-                { message = Real (Provider.AssistantMessage am) } ->
+                { message = Real (Connector.AssistantMessage am) } ->
                 List.exists
                   (function Types.AThinking _ -> true | _ -> false)
                   am.content

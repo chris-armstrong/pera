@@ -8,7 +8,7 @@
 
 open Containers
 open Pera_types
-open Pera_provider
+open Pera_connector
 open Pera_core
 open Pera_core_test_util
 open Session_jsonl_helpers
@@ -18,12 +18,12 @@ open Session_jsonl_helpers
 let haiku_model : Types.model =
   {
     id = "claude-haiku-4-5-20251001";
-    api = "anthropic";
+    protocol = "anthropic";
     context_window = 200_000;
   }
 
 let faux_provenance : Types.provenance =
-  { api = "faux"; provider = "faux"; model = "faux"; error_message = None }
+  { protocol = "faux"; provider = "faux"; model = "faux"; error_message = None }
 
 let faux_usage : Types.usage =
   {
@@ -38,11 +38,11 @@ let faux_usage : Types.usage =
 
 let make_user text =
   Agent_types.Real
-    (Provider.UserMessage Types.{ role = "user"; content = [ UText text ] })
+    (Connector.UserMessage Types.{ role = "user"; content = [ UText text ] })
 
 let make_assistant_text text =
   Agent_types.Real
-    (Provider.AssistantMessage
+    (Connector.AssistantMessage
        Types.
          {
            content = [ AText text ];
@@ -53,7 +53,7 @@ let make_assistant_text text =
 
 let make_tool_call id name =
   Agent_types.Real
-    (Provider.AssistantMessage
+    (Connector.AssistantMessage
        Types.
          {
            content = [ AToolCall { id; name; arguments = `Assoc [] } ];
@@ -64,7 +64,7 @@ let make_tool_call id name =
 
 let make_tool_result tool_call_id text =
   Agent_types.Real
-    (Provider.ToolResultMessage
+    (Connector.ToolResultMessage
        Types.{ tool_call_id; content = `String text; is_error = false })
 
 let build_conversation () =
@@ -121,7 +121,7 @@ let verify_offline_result ~original_messages ~tail_size r =
         let rendered_synth = Agent_types.to_provider_message synth_msg in
         let synth_ok =
           match rendered_synth with
-          | Provider.UserMessage { content = [ Types.UText text ]; _ } ->
+          | Connector.UserMessage { content = [ Types.UText text ]; _ } ->
               starts_with_framing text
           | _ -> false
         in
@@ -153,12 +153,13 @@ let scenario_offline_faux ~env:_ =
     Faux_provider.stream_fn_of_scripts [ make_summary_script () ]
   in
   let options =
-    Provider.
+    Connector.
       {
         max_tokens = 1024;
         temperature = None;
         cache_policy = Pera_types.Types.No_cache;
         cache_ttl = Pera_types.Types.Five_minutes;
+        thinking_budget_tokens = None;
       }
   in
   let result =
@@ -178,22 +179,30 @@ let scenario_real_model ~env =
   let messages = build_conversation () in
   let model = haiku_model in
   let options =
-    Provider.
+    Connector.
       {
         max_tokens = 1024;
         temperature = None;
         cache_policy = Pera_types.Types.No_cache;
         cache_ttl = Pera_types.Types.Five_minutes;
+        thinking_budget_tokens = None;
       }
   in
   let registry =
-    Provider_registry.register Provider_registry.empty ~name:"anthropic"
-      (module Anthropic_provider)
+    Connector_registry.register Connector_registry.empty ~name:"anthropic"
+      (module Anthropic_connector)
+  in
+  let api_keys =
+    [ ("anthropic",
+       Option.get_exn_or "ANTHROPIC_API_KEY" (Sys.getenv_opt "ANTHROPIC_API_KEY"))
+    ]
   in
   let result =
     Eio.Switch.run @@ fun sw ->
-    let adapter = Provider_adapter.create ~registry ~env ~sw in
-    let stream_fn = Provider_adapter.stream_fn adapter in
+    let adapter =
+      Connector_adapter.create ~registry ~api_keys ~env ~sw
+    in
+    let stream_fn = Connector_adapter.stream_fn adapter in
     Pera_harness.Compaction.compact ~stream_fn ~model ~options ~messages
       ~tail_size ~sw
   in

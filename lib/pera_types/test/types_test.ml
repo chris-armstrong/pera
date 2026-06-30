@@ -14,7 +14,7 @@ let test_assistant_message_event_carries_partial_snapshot () =
   in
   let empty_provenance =
     {
-      api = "anthropic";
+      protocol = "anthropic";
       provider = "anthropic";
       model = "test";
       error_message = None;

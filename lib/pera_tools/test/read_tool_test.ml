@@ -54,11 +54,15 @@ let run_read_test (body : (module Execution_env.S) -> Eio.Switch.t -> unit) =
 
 let test_read_returns_file_content () =
   run_read_test (fun (module E) sw ->
-      let tool = Read_tool.read (module E) in
+      let tool = Read_tool.read in
       write_file (module E) ~path:"hello.txt" ~content:"hello world" ~sw;
       let args = `Assoc [ ("path", `String "hello.txt") ] in
       Eio.Cancel.sub (fun cancel ->
-          match Tool.execute tool ~ctx:() ~args ~sw ~cancel with
+          match
+            Tool.execute tool
+              ~ctx:(module E : Pera_env.Execution_env.S)
+              ~args ~sw ~cancel
+          with
           | Ok (Tool_text s) ->
               Alcotest.(check bool)
                 "contains hello world" true
@@ -68,13 +72,17 @@ let test_read_returns_file_content () =
 
 let test_read_with_offset_skips_lines () =
   run_read_test (fun (module E) sw ->
-      let tool = Read_tool.read (module E) in
+      let tool = Read_tool.read in
       let lines = List.init 5 (fun i -> "line" ^ string_of_int (i + 1)) in
       let content = String.concat "\n" lines in
       write_file (module E) ~path:"test.txt" ~content ~sw;
       let args = `Assoc [ ("path", `String "test.txt"); ("offset", `Int 3) ] in
       Eio.Cancel.sub (fun cancel ->
-          match Tool.execute tool ~ctx:() ~args ~sw ~cancel with
+          match
+            Tool.execute tool
+              ~ctx:(module E : Pera_env.Execution_env.S)
+              ~args ~sw ~cancel
+          with
           | Ok (Tool_text s) ->
               let trimmed = String.trim s in
               Alcotest.(check bool)
@@ -85,7 +93,7 @@ let test_read_with_offset_skips_lines () =
 
 let test_read_with_limit_caps_output () =
   run_read_test (fun (module E) sw ->
-      let tool = Read_tool.read (module E) in
+      let tool = Read_tool.read in
       let lines = List.init 100 (fun i -> string_of_int (i + 1)) in
       let content = String.concat "\n" lines in
       write_file (module E) ~path:"limit_test.txt" ~content ~sw;
@@ -93,7 +101,11 @@ let test_read_with_limit_caps_output () =
         `Assoc [ ("path", `String "limit_test.txt"); ("limit", `Int 5) ]
       in
       Eio.Cancel.sub (fun cancel ->
-          match Tool.execute tool ~ctx:() ~args ~sw ~cancel with
+          match
+            Tool.execute tool
+              ~ctx:(module E : Pera_env.Execution_env.S)
+              ~args ~sw ~cancel
+          with
           | Ok (Tool_text s) ->
               let output_lines =
                 String.trim s |> String.split_on_char '\n'
@@ -111,23 +123,31 @@ let test_read_with_limit_caps_output () =
 
 let test_read_missing_file_returns_error () =
   run_read_test (fun (module E) sw ->
-      let tool = Read_tool.read (module E) in
+      let tool = Read_tool.read in
       let args = `Assoc [ ("path", `String "does_not_exist.txt") ] in
       Eio.Cancel.sub (fun cancel ->
-          match Tool.execute tool ~ctx:() ~args ~sw ~cancel with
+          match
+            Tool.execute tool
+              ~ctx:(module E : Pera_env.Execution_env.S)
+              ~args ~sw ~cancel
+          with
           | Error e ->
               Alcotest.(check bool) "is_user_error false" false e.is_user_error
           | Ok _ -> Alcotest.fail "expected Error for missing file"))
 
 let test_read_truncates_at_line_limit () =
   run_read_test (fun (module E) sw ->
-      let tool = Read_tool.read (module E) in
+      let tool = Read_tool.read in
       let lines = List.init 2001 (fun i -> string_of_int (i + 1)) in
       let content = String.concat "\n" lines in
       write_file (module E) ~path:"many_lines.txt" ~content ~sw;
       let args = `Assoc [ ("path", `String "many_lines.txt") ] in
       Eio.Cancel.sub (fun cancel ->
-          match Tool.execute tool ~ctx:() ~args ~sw ~cancel with
+          match
+            Tool.execute tool
+              ~ctx:(module E : Pera_env.Execution_env.S)
+              ~args ~sw ~cancel
+          with
           | Ok (Tool_text s) ->
               Alcotest.(check bool)
                 "contains Use offset=" true
@@ -137,7 +157,7 @@ let test_read_truncates_at_line_limit () =
 
 let test_read_offset_beyond_eof_returns_user_error () =
   run_read_test (fun (module E) sw ->
-      let tool = Read_tool.read (module E) in
+      let tool = Read_tool.read in
       let lines = List.init 5 (fun i -> "line" ^ string_of_int (i + 1)) in
       let content = String.concat "\n" lines in
       write_file (module E) ~path:"short.txt" ~content ~sw;
@@ -145,7 +165,11 @@ let test_read_offset_beyond_eof_returns_user_error () =
         `Assoc [ ("path", `String "short.txt"); ("offset", `Int 10) ]
       in
       Eio.Cancel.sub (fun cancel ->
-          match Tool.execute tool ~ctx:() ~args ~sw ~cancel with
+          match
+            Tool.execute tool
+              ~ctx:(module E : Pera_env.Execution_env.S)
+              ~args ~sw ~cancel
+          with
           | Error e ->
               Alcotest.(check bool) "is_user_error true" true e.is_user_error
           | Ok _ -> Alcotest.fail "expected Error for offset beyond EOF"))

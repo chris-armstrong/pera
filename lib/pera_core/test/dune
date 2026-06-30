@@ -7,7 +7,7 @@
   agent_loop_test
   agent_loop_tools_test
   agent_loop_cancel_test
-  provider_adapter_test
+  connector_adapter_test
   synthetic_test
   token_estimator_test
   model_window_test
@@ -18,7 +18,7 @@
   agent_loop_test
   agent_loop_tools_test
   agent_loop_cancel_test
-  provider_adapter_test
+  connector_adapter_test
   synthetic_test
   token_estimator_test
   model_window_test
@@ -28,7 +28,7 @@
   pera_core
   pera_core_test_util
   pera_types
-  pera_provider
+  pera_connector
   alcotest
   containers
   eio_main
