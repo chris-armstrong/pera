@@ -297,19 +297,42 @@ module Make (Cli_env : Env) = struct
         Printf.eprintf "[pera] session error: %s\n%!" e.Pera_types.Types.message;
         exit 1
 
-  let run_with ?stream_fn inputs =
-    Eio_main.run (fun env ->
-        Eio.Switch.run (fun sw ->
-            let rc = resolve_config inputs in
-            let api_key = get_api_key ~env ~sw rc in
-            let stream_fn =
-              match stream_fn with
-              | Some fn -> fn
-              | None ->
-                  build_stream_fn ~env ~sw ~api_key
-                    ~protocol:
-                      rc.Config_resolver.provider_spec.Models_config.protocol
-            in
+(* Resolve the base URL for a provider. Priority:
+   1. [OPENAI_BASE_URL] env var (global override)
+   2. [api_env] env var from provider spec
+   3. [api] field from provider spec *)
+let resolve_base_url ~getenv_opt (spec : Models_config.provider_spec) =
+  match getenv_opt "OPENAI_BASE_URL" with
+  | Some url -> Some url
+  | None -> (
+      match spec.Models_config.api_env with
+      | Some var -> getenv_opt var
+      | None -> spec.Models_config.api)
+
+(** Set [OPENAI_BASE_URL] in the process environment if a provider-specific
+    base URL is configured and not already overridden. This lets the connector
+    pick it up without changing the [Connector.S] interface. *)
+let apply_base_url ~getenv_opt spec =
+  match resolve_base_url ~getenv_opt spec with
+  | Some url -> Unix.putenv "OPENAI_BASE_URL" url
+  | None -> ()
+
+let run_with ?stream_fn inputs =
+  Eio_main.run (fun env ->
+      Eio.Switch.run (fun sw ->
+          let rc = resolve_config inputs in
+          let api_key = get_api_key ~env ~sw rc in
+          apply_base_url
+            ~getenv_opt:inputs.Config_resolver.getenv_opt
+            rc.Config_resolver.provider_spec;
+          let stream_fn =
+            match stream_fn with
+            | Some fn -> fn
+            | None ->
+                build_stream_fn ~env ~sw ~api_key
+                  ~protocol:
+                    rc.Config_resolver.provider_spec.Models_config.protocol
+          in
             let cwd, ctx, shell_tools = resolve_exec_env ~env ~sw rc in
             let system_prompt = resolve_system_prompt ~env rc in
             if not (List.is_empty rc.Config_resolver.mcp_servers) then
