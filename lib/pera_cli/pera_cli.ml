@@ -315,23 +315,23 @@ let run_with ?stream_fn inputs =
       Eio.Switch.run (fun sw ->
           let rc = resolve_config inputs in
           let api_key = get_api_key ~env ~sw rc in
-          let base_url =
-            match
-              resolve_base_url
-                ~getenv_opt:inputs.Config_resolver.getenv_opt
-                rc.Config_resolver.provider_spec
-            with
-            | Some url -> url
-            | None ->
-                Printf.eprintf
-                  "[pera] no API URL configured for provider %s\n%!"
-                  rc.Config_resolver.provider_spec.Models_config.name;
-                exit 1
-          in
           let stream_fn =
             match stream_fn with
             | Some fn -> fn
             | None ->
+                let base_url =
+                  match
+                    resolve_base_url
+                      ~getenv_opt:inputs.Config_resolver.getenv_opt
+                      rc.Config_resolver.provider_spec
+                  with
+                  | Some url -> url
+                  | None ->
+                      Printf.eprintf
+                        "[pera] no API URL configured for provider %s\n%!"
+                        rc.Config_resolver.provider_spec.Models_config.name;
+                      exit 1
+                in
                 build_stream_fn ~env ~sw ~api_key ~base_url
                   ~protocol:
                     rc.Config_resolver.provider_spec.Models_config.protocol
