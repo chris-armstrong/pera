@@ -1,5 +1,9 @@
 open Containers [@@warning "-33"]
 
+let log_src = Logs.Src.create "pera.agent_wrapper" ~doc:"Agent wrapper actor"
+
+module Log = (val Logs.src_log log_src : Logs.LOG)
+
 (** {1 Internal message type} *)
 
 type msg =
@@ -76,7 +80,11 @@ let create ~config ~sw =
      complete, giving it the correct lifetime relative to its callers. *)
   Eio.Fiber.fork_daemon ~sw (fun () ->
       let rec loop () =
+        Log.debug (fun f -> f "actor: waiting for message");
         let (Run { messages; reply }) = Eio.Stream.take t.mailbox in
+        Log.debug (fun f ->
+            f "actor: received message (%d messages in history)"
+              (List.length messages));
         t.is_running <- true;
         t.last_error <- None;
         let current_fingerprint =
@@ -91,25 +99,33 @@ let create ~config ~sw =
           ~finally:(fun () ->
             t.is_running <- false;
             t.in_flight_tools <- [];
+            Log.debug (fun f -> f "actor: resolving completion promise");
             Eio.Cancel.protect (fun () -> Eio.Promise.resolve reply ()))
           (fun () ->
+            Log.debug (fun f -> f "actor: starting agent loop");
             let stream = Pera_core.Agent_loop.run t.config ~messages ~sw in
+            Log.debug (fun f -> f "actor: consuming event stream");
             let iter_result =
               Pera_connector.Event_stream.iter stream ~f:(fun event ->
+                  Log.debug (fun f ->
+                      f "actor: event %s"
+                        (Pera_core.Agent_types.show_agent_event event));
                   update_state t event;
                   let subs =
                     Eio.Mutex.use_ro t.sub_mutex (fun () -> t.subscribers)
                   in
                   List.iter (fun sub -> sub event) subs)
             in
+            Log.debug (fun f -> f "actor: event stream consumed");
             match iter_result with
             | Ok _ -> ()
             | Error (msg, stop_err) ->
+                Log.debug (fun f -> f "actor: stream error: %s" msg);
                 t.last_error <- Some (msg, stop_err));
         loop ()
       in
       (try loop () with
-      | Eio.Cancel.Cancelled _ -> ()
+      | Eio.Cancel.Cancelled _ -> Log.debug (fun f -> f "actor: cancelled")
       | exn ->
           Printf.eprintf "agent_wrapper: actor loop terminated: %s\n%!"
             (Printexc.to_string exn));

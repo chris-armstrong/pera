@@ -23,6 +23,7 @@
   decimal
   eio
   eio_main
-  eio_linux)
+  eio_linux
+  logs)
  (preprocess
   (pps ppx_sexp_conv ppx_deriving.show ppx_deriving.eq)))

@@ -2,7 +2,6 @@ open Containers
 open Pera_types
 
 let name = "Anthropic"
-let anthropic_base_url = "https://api.anthropic.com"
 let anthropic_messages_path = "/v1/messages"
 let anthropic_version = "2023-06-01"
 
@@ -87,13 +86,14 @@ let do_request ~provider ~model ~context ~options ~sw:_ stream =
   | Error (Http_client.Transport_error te) ->
       Event_stream.close_error stream te.message Pera_types.Types.Transport
   | Error (Http_client.Http_error he) ->
-      Event_stream.close_error stream he.message
+      Event_stream.close_error stream
+        (Http_client.request_error_to_string (Http_client.Http_error he))
         (Pera_types.Types.Http { status = he.status })
   | Ok () -> finalise ()
 
-let create ~api_key ~env ~sw =
+let create ~api_key ~base_url ~env ~sw =
   let client =
-    match Http_client.create ~env ~sw anthropic_base_url with
+    match Http_client.create ~env ~sw base_url with
     | Ok c -> c
     | Error e ->
         failwith
@@ -102,8 +102,9 @@ let create ~api_key ~env ~sw =
   in
   { client; api_key }
 
-let create_from_env ~env ~sw =
-  Connector.create_from_env_var ~var_name:"ANTHROPIC_API_KEY" ~create ~env ~sw
+let create_from_env ~base_url ~env ~sw =
+  Connector.create_from_env_var ~var_name:"ANTHROPIC_API_KEY" ~create
+    ~base_url ~env ~sw
 
 let stream_simple provider ~model ~context ~options ~sw =
   let stream :

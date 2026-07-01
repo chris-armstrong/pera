@@ -142,7 +142,8 @@ let test_thinking_suppressed () =
   let lines =
     Pera_cli.Event_renderer.render r (make_thinking_delta "thinking...")
   in
-  Alcotest.(check (list string)) "thinking suppressed" [] lines
+  Alcotest.(check (list string)) "thinking suppressed"
+    [ "\n[thinking...]\n" ] lines
 
 let test_thinking_shown () =
   let output =
@@ -175,7 +176,8 @@ let test_tool_start_visible () =
       { tool_call_id = "1"; tool_name = "bash"; args = `Null }
   in
   let lines = Pera_cli.Event_renderer.render r event in
-  Alcotest.(check (list string)) "tool start visible" [ "\n[tool: bash]" ] lines
+  Alcotest.(check (list string)) "tool start visible"
+    [ "\n[tool: bash — running...]" ] lines
 
 let test_json_mode () =
   let r = Pera_cli.Event_renderer.create ~output:default_output ~json:true in

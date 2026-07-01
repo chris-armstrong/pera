@@ -6,18 +6,13 @@
         "claude-haiku-4-5":         { "budget_medium": 8000, "budget_high": 32000 },
         "claude-haiku-4-5-20251001":{ "budget_medium": 8000, "budget_high": 32000 },
         "claude-opus-4-8":          { "budget_medium": 8000, "budget_high": 32000 }
-      },
-      "model_filter": [
-        "claude-sonnet-4-6",
-        "claude-haiku-4-5-20251001"
-      ]
+      }
     },
     "openai": {
       "compat": {
         "max_tokens_field": "max_completion_tokens",
         "require_tool_result_name": false
-      },
-      "model_filter": ["gpt-4o", "o3"]
+      }
     },
     "moonshotai": {
       "compat": {
@@ -28,62 +23,26 @@
       },
       "thinking_models": {
         "kimi-k2-0905-preview": { "budget_medium": 8000, "budget_high": 32000 }
-      },
-      "model_filter": ["kimi-k2-0905-preview"]
+      }
     },
     "deepseek": {
+      "api": "https://api.deepseek.com/v1",
       "compat": {
         "reasoning_field": "reasoning_content"
-      },
-      "model_filter": [
-        "deepseek-v4-flash",
-        "deepseek-v4-pro",
-        "deepseek-chat",
-        "deepseek-reasoner"
-      ]
+      }
     },
     "zhipuai": {
       "compat": {
         "reasoning_field": "reasoning_content"
-      },
-      "model_filter": [
-        "glm-5.2",
-        "glm-5.1",
-        "glm-5",
-        "glm-4.7-flash"
-      ]
+      }
     },
     "ollama-cloud": {
       "compat": {
         "reasoning_field": "reasoning_content"
-      },
-      "model_filter": [
-        "deepseek-v4-flash",
-        "minimax-m2.5",
-        "glm-4.7"
-      ]
+      }
     },
-    "groq": {
-      "model_filter": [
-        "llama-3.3-70b-versatile",
-        "llama-3.1-8b-instant",
-        "meta-llama/llama-4-scout-17b-16e-instruct",
-        "qwen/qwen3-32b"
-      ]
-    },
-    "mistral": {
-      "model_filter": [
-        "codestral-latest",
-        "devstral-latest",
-        "mistral-large-latest",
-        "mistral-small-latest"
-      ]
-    },
-    "togetherai": {
-      "model_filter": [
-        "meta-llama/Llama-3.3-70B-Instruct-Turbo",
-        "moonshotai/Kimi-K2.6"
-      ]
-    }
+    "groq": {},
+    "mistral": {},
+    "togetherai": {}
   }
 }

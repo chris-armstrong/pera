@@ -69,7 +69,7 @@ let as_provider scripts =
     type t = unit
 
     let name = "Faux"
-    let create ~api_key:k ~env:_ ~sw:_ =
+    let create ~api_key:k ~base_url:_ ~env:_ ~sw:_ =
       recorded_api_keys_ref := k :: !recorded_api_keys_ref;
       ()
 

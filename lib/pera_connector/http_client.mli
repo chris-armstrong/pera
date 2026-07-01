@@ -13,6 +13,7 @@ type t
 
 (** {2 Request outcomes} *)
 
+(** A coarse classification of why a transport-level request failed. *)
 type transport_kind =
   | Dns  (** DNS lookup returned no addresses for the host. *)
   | Connect
@@ -20,10 +21,9 @@ type transport_kind =
           server. *)
   | Tls  (** TLS handshake or certificate verification failed. *)
   | Network
-      (** The connection broke mid-stream (connection reset, EPIPE, read
-          error) after the request was sent. *)
+      (** The connection broke mid-stream (connection reset, EPIPE, read error)
+          after the request was sent. *)
   | Other  (** Unclassified transport failure. *)
-(** A coarse classification of why a transport-level request failed. *)
 
 type transport_error = {
   kind : transport_kind;
@@ -33,26 +33,32 @@ type transport_error = {
 
 type http_error = {
   status : int;  (** The non-2xx HTTP status code returned by the server. *)
-  message : string;
+  status_text : string;
+      (** The HTTP status line text (e.g. "404 Not Found"). *)
+  body : string;  (** The response body, truncated to 4096 bytes. *)
+  url : string;  (** The full request URL. *)
+  method_ : string;  (** The HTTP method used (e.g. "POST"). *)
 }
 (** The server responded with a non-2xx HTTP status code. *)
 
+(** Outcome of a failed request. The two arms distinguish transport failures
+    (DNS, TLS, connect, network) from HTTP error responses, replacing the
+    previous [status : int option] sentinel. *)
 type request_error =
   | Transport_error of transport_error
       (** The request failed before a usable HTTP response was received. *)
   | Http_error of http_error
       (** The server returned a non-2xx HTTP response. *)
-(** Outcome of a failed request. The two arms distinguish transport failures
-    (DNS, TLS, connect, network) from HTTP error responses, replacing the
-    previous [status : int option] sentinel. *)
 
 val request_error_to_string : request_error -> string
 (** [request_error_to_string e] converts a {!request_error} to a human-readable
     string. Always returns a non-empty string. Never raises. *)
 
 val create :
-  env:Eio_unix.Stdenv.base -> sw:Eio.Switch.t -> string
-  -> (t, request_error) result
+  env:Eio_unix.Stdenv.base ->
+  sw:Eio.Switch.t ->
+  string ->
+  (t, request_error) result
 (** [create ~env ~sw base_url] opens a persistent HTTP connection to [base_url]
     (e.g. ["https://api.anthropic.com"]). Returns [Ok t] on success or
     [Error (Transport_error _)] if the URL is invalid or the initial connection

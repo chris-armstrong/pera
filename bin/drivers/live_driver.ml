@@ -209,6 +209,7 @@ let scenario_bash_echo ~model ~tmpdir ~env ~registry =
   let adapter =
     Connector_adapter.create ~registry
       ~api_keys:(anthropic_api_keys ())
+      ~base_url:"https://api.anthropic.com"
       ~env ~sw
   in
   let stream_fn = Connector_adapter.stream_fn adapter in
@@ -241,6 +242,7 @@ let scenario_read_preseeded ~model ~tmpdir ~env ~registry =
   let adapter =
     Connector_adapter.create ~registry
       ~api_keys:(anthropic_api_keys ())
+      ~base_url:"https://api.anthropic.com"
       ~env ~sw
   in
   let stream_fn = Connector_adapter.stream_fn adapter in
@@ -272,6 +274,7 @@ let scenario_multi_turn ~model ~tmpdir ~env ~registry =
   let adapter =
     Connector_adapter.create ~registry
       ~api_keys:(anthropic_api_keys ())
+      ~base_url:"https://api.anthropic.com"
       ~env ~sw
   in
   let stream_fn = Connector_adapter.stream_fn adapter in
