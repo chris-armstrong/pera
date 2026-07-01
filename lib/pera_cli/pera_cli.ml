@@ -113,11 +113,11 @@ let build_registry () =
   Connector_registry.register r ~name:"openai-completions"
     (module Openai_completions_connector)
 
-let build_stream_fn ~env ~sw ~api_key ~protocol =
+let build_stream_fn ~env ~sw ~api_key ~base_url ~protocol =
   let registry = build_registry () in
   let api_keys = [ (protocol, api_key) ] in
   let adapter =
-    Pera_core.Connector_adapter.create ~registry ~api_keys ~env ~sw
+    Pera_core.Connector_adapter.create ~registry ~api_keys ~base_url ~env ~sw
   in
   Pera_core.Connector_adapter.stream_fn adapter
 
@@ -300,36 +300,40 @@ module Make (Cli_env : Env) = struct
 (* Resolve the base URL for a provider. Priority:
    1. [OPENAI_BASE_URL] env var (global override)
    2. [api_env] env var from provider spec
-   3. [api] field from provider spec *)
+   3. [api] field from provider spec
+   4. Connector default (e.g. [https://api.openai.com]) *)
 let resolve_base_url ~getenv_opt (spec : Models_config.provider_spec) =
   match getenv_opt "OPENAI_BASE_URL" with
-  | Some url -> Some url
+  | Some url -> url
   | None -> (
       match spec.Models_config.api_env with
-      | Some var -> getenv_opt var
-      | None -> spec.Models_config.api)
-
-(** Set [OPENAI_BASE_URL] in the process environment if a provider-specific
-    base URL is configured and not already overridden. This lets the connector
-    pick it up without changing the [Connector.S] interface. *)
-let apply_base_url ~getenv_opt spec =
-  match resolve_base_url ~getenv_opt spec with
-  | Some url -> Unix.putenv "OPENAI_BASE_URL" url
-  | None -> ()
+      | Some var -> (
+          match getenv_opt var with
+          | Some url -> url
+          | None -> (
+              match spec.Models_config.api with
+              | Some url -> url
+              | None -> "https://api.openai.com"))
+      | None -> (
+          match spec.Models_config.api with
+          | Some url -> url
+          | None -> "https://api.openai.com"))
 
 let run_with ?stream_fn inputs =
   Eio_main.run (fun env ->
       Eio.Switch.run (fun sw ->
           let rc = resolve_config inputs in
           let api_key = get_api_key ~env ~sw rc in
-          apply_base_url
-            ~getenv_opt:inputs.Config_resolver.getenv_opt
-            rc.Config_resolver.provider_spec;
+          let base_url =
+            resolve_base_url
+              ~getenv_opt:inputs.Config_resolver.getenv_opt
+              rc.Config_resolver.provider_spec
+          in
           let stream_fn =
             match stream_fn with
             | Some fn -> fn
             | None ->
-                build_stream_fn ~env ~sw ~api_key
+                build_stream_fn ~env ~sw ~api_key ~base_url
                   ~protocol:
                     rc.Config_resolver.provider_spec.Models_config.protocol
           in

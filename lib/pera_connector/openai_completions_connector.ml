@@ -107,7 +107,7 @@ let do_request ~provider ~model ~context ~options ~sw:_ stream =
         (Pera_types.Types.Http { status = he.status })
   | Ok () -> finalise ()
 
-let create ~api_key ~env ~sw =
+let create ~api_key ~base_url ~env ~sw =
   let base_compat =
     match Sys.getenv_opt "OPENAI_COMPAT" with
     | Some preset -> Openai_completions_request.compat_of_string preset
@@ -116,7 +116,7 @@ let create ~api_key ~env ~sw =
   let base_url =
     match Sys.getenv_opt "OPENAI_BASE_URL" with
     | Some url -> url
-    | None -> base_compat.base_url
+    | None -> base_url
   in
   let compat = { base_compat with base_url } in
   Log.debug (fun m ->
@@ -133,8 +133,9 @@ let create ~api_key ~env ~sw =
   in
   { client; api_key; compat }
 
-let create_from_env ~env ~sw =
-  Connector.create_from_env_var ~var_name:"OPENAI_API_KEY" ~create ~env ~sw
+let create_from_env ~base_url ~env ~sw =
+  Connector.create_from_env_var ~var_name:"OPENAI_API_KEY" ~create ~base_url
+    ~env ~sw
 
 let stream_simple provider ~model ~context ~options ~sw =
   let stream :

@@ -100,6 +100,7 @@ let () =
   let adapter =
     Connector_adapter.create ~registry
       ~api_keys:(build_api_keys ())
+      ~base_url:"https://api.anthropic.com"
       ~env ~sw
   in
   let stream_fn = Connector_adapter.stream_fn adapter in

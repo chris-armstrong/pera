@@ -200,7 +200,7 @@ let scenario_real_model ~env =
   let result =
     Eio.Switch.run @@ fun sw ->
     let adapter =
-      Connector_adapter.create ~registry ~api_keys ~env ~sw
+      Connector_adapter.create ~registry ~api_keys ~base_url:"https://api.anthropic.com" ~env ~sw
     in
     let stream_fn = Connector_adapter.stream_fn adapter in
     Pera_harness.Compaction.compact ~stream_fn ~model ~options ~messages
