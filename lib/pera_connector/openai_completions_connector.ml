@@ -113,11 +113,6 @@ let create ~api_key ~base_url ~env ~sw =
     | Some preset -> Openai_completions_request.compat_of_string preset
     | None -> Openai_completions_request.default_compat
   in
-  let base_url =
-    match Sys.getenv_opt "OPENAI_BASE_URL" with
-    | Some url -> url
-    | None -> base_url
-  in
   let compat = { base_compat with base_url } in
   Log.debug (fun m ->
       m "OPENAI_COMPAT=%s  base_url=%s"

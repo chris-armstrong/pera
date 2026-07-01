@@ -298,26 +298,22 @@ module Make (Cli_env : Env) = struct
         exit 1
 
 (* Resolve the base URL for a provider. Priority:
-   1. [OPENAI_BASE_URL] env var (global override)
-   2. [api_env] env var from provider spec
-   3. [api] field from provider spec
-   4. Connector default (e.g. [https://api.openai.com]) *)
+   1. [api_env] env var from provider spec (if set)
+   2. [api] field from provider spec
+   3. Fallback to [https://api.openai.com] *)
 let resolve_base_url ~getenv_opt (spec : Models_config.provider_spec) =
-  match getenv_opt "OPENAI_BASE_URL" with
-  | Some url -> url
-  | None -> (
-      match spec.Models_config.api_env with
-      | Some var -> (
-          match getenv_opt var with
-          | Some url -> url
-          | None -> (
-              match spec.Models_config.api with
-              | Some url -> url
-              | None -> "https://api.openai.com"))
+  match spec.Models_config.api_env with
+  | Some var -> (
+      match getenv_opt var with
+      | Some url -> url
       | None -> (
           match spec.Models_config.api with
           | Some url -> url
           | None -> "https://api.openai.com"))
+  | None -> (
+      match spec.Models_config.api with
+      | Some url -> url
+      | None -> "https://api.openai.com")
 
 let run_with ?stream_fn inputs =
   Eio_main.run (fun env ->

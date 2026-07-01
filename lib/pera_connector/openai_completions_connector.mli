@@ -7,8 +7,7 @@
     convenience wrapper {!create_from_env} reads the key from the
     [OPENAI_API_KEY] environment variable and returns [Error] if absent.
 
-    The base URL is read from [OPENAI_BASE_URL] (defaults to
-    [Openai_completions_request.default_compat.base_url]). *)
+    The base URL is provided via the [~base_url] argument to {!create}. *)
 
 type t
 
@@ -21,8 +20,7 @@ val create :
   sw:Eio.Switch.t ->
   t
 (** [create ~api_key ~base_url ~env ~sw] initialises an OpenAI connector with
-    the given API key and base URL. The [OPENAI_BASE_URL] environment variable
-    still takes precedence over [base_url] for backward compatibility. *)
+    the given API key and base URL. *)
 
 val create_from_env :
   base_url:string ->
