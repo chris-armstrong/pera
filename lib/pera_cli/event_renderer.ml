@@ -9,7 +9,12 @@ type stats = {
   mutable model_name : string;
 }
 
-type t = { output : Pera_config.output_config; json : bool; stats : stats }
+type t = {
+  output : Pera_config.output_config;
+  json : bool;
+  stats : stats;
+  mutable in_thinking : bool;
+}
 
 let create ~output ~json =
   let stats =
@@ -22,7 +27,7 @@ let create ~output ~json =
       model_name = "";
     }
   in
-  { output; json; stats }
+  { output; json; stats; in_thinking = false }
 
 let show_thinking r = Option.get_or ~default:false r.output.show_thinking
 let is_quiet r = Option.get_or ~default:false r.output.quiet
@@ -85,26 +90,36 @@ let render r event =
     match event with
     | Pera_core.Agent_types.AE_message_update { message = _; event = ev } -> (
         match ev with
-        | Pera_types.Types.AME_text_delta { text; partial = _ } -> [ text ]
+        | Pera_types.Types.AME_text_delta { text; partial = _ } ->
+            r.in_thinking <- false;
+            [ text ]
         | Pera_types.Types.AME_thinking_delta { text; partial = _ } ->
-            if show then [ text ] else []
+            if show then (
+              r.in_thinking <- false;
+              [ text ])
+            else if not r.in_thinking then (
+              r.in_thinking <- true;
+              [ "\n[thinking...]\n" ])
+            else []
         | _ -> [])
     | Pera_core.Agent_types.AE_turn_end _ ->
         r.stats.turns <- r.stats.turns + 1;
+        r.in_thinking <- false;
         []
     | Pera_core.Agent_types.AE_message_end { message } ->
         accumulate_from_message r message;
+        r.in_thinking <- false;
         []
     | Pera_core.Agent_types.AE_tool_execution_start { tool_name; _ } ->
-        if quiet then [] else [ "\n[tool: " ^ tool_name ^ "]" ]
+        if quiet then [] else [ "\n[tool: " ^ tool_name ^ " — running...]" ]
     | Pera_core.Agent_types.AE_tool_execution_end { tool_name; is_error; _ } ->
         if quiet then []
         else if is_error then [ "\n[tool: " ^ tool_name ^ " — error]" ]
-        else [ "\n[tool: " ^ tool_name ^ " — done]" ]
+        else [ "[done]" ]
     | Pera_core.Agent_types.AE_agent_end _ -> [ "\n" ]
     | Pera_core.Agent_types.AE_compaction_start ->
         [ "\n[compacting context...]" ]
-    | Pera_core.Agent_types.AE_compaction_end _ -> [ "\n[compaction complete]" ]
+    | Pera_core.Agent_types.AE_compaction_end _ -> [ "[done]\n" ]
     | Pera_core.Agent_types.AE_compaction_error { message = _ } ->
         [ "\n[compaction failed]" ]
     | _ -> []

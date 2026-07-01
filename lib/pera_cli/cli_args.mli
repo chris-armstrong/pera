@@ -20,6 +20,8 @@ type parsed_args = {
   show_thinking : bool;
   quiet : bool;
   json : bool;
+  input : string option;
+  input_file : string option;
 }
 
 val effort_conv : Pera_config.effort Cmdliner.Arg.conv

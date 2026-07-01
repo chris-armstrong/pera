@@ -55,6 +55,8 @@ let empty_args : Pera_cli.Cli_args.parsed_args =
     show_thinking = false;
     quiet = false;
     json = false;
+    input = None;
+    input_file = None;
   }
 
 let make_inputs ?(parsed_args = empty_args) ?(user_config = None)

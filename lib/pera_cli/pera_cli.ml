@@ -179,6 +179,8 @@ let run_interactive ~commands ~stdin_isatty ~send ~info_stats ~compact_fn ~env =
   Log.debug (fun f -> f "run_interactive: isatty=%b" stdin_isatty);
   let rec tty_loop () =
     Log.debug (fun f -> f "tty_loop: waiting for input");
+    print_string "> ";
+    flush stdout;
     match read_line () with
     | exception End_of_file ->
         Log.debug (fun f -> f "tty_loop: EOF");
@@ -347,14 +349,30 @@ let run_with ?stream_fn inputs =
                 ~json:rc.Config_resolver.json_output
             in
             subscribe_renderer harness renderer;
-            Log.debug (fun f -> f "starting interactive session");
-            run_interactive ~commands:rc.Config_resolver.commands
-              ~stdin_isatty:(Unix.isatty Unix.stdin)
-              ~send:(Pera_agent.Agent_harness.send harness)
-              ~info_stats:(fun () -> Event_renderer.stats renderer)
-              ~compact_fn:(fun () ->
-                Printf.eprintf "[pera] /compact not yet wired\n%!")
-              ~env))
+            Log.debug (fun f -> f "starting session");
+            (match
+               ( inputs.Config_resolver.parsed_args.Cli_args.input,
+                 inputs.Config_resolver.parsed_args.Cli_args.input_file )
+            with
+            | Some text, None ->
+                Pera_agent.Agent_harness.send harness text
+            | None, Some path -> (
+                match
+                  try Ok (Stdlib.In_channel.with_open_text path Stdlib.In_channel.input_all)
+                  with Sys_error msg -> Error msg
+                with
+                | Ok text -> Pera_agent.Agent_harness.send harness text
+                | Error msg ->
+                    Printf.eprintf "[pera] cannot read %s: %s\n%!" path msg;
+                    exit 1)
+            | _ ->
+                run_interactive ~commands:rc.Config_resolver.commands
+                  ~stdin_isatty:(Unix.isatty Unix.stdin)
+                  ~send:(Pera_agent.Agent_harness.send harness)
+                  ~info_stats:(fun () -> Event_renderer.stats renderer)
+                  ~compact_fn:(fun () ->
+                    Printf.eprintf "[pera] /compact not yet wired\n%!")
+                  ~env)))
 
   let run () =
     let parsed_args = Cli_args.parse ~argv:Sys.argv in
