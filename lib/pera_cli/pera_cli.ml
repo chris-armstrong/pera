@@ -420,6 +420,28 @@ let run_with ?stream_fn inputs =
       in
       Models_loader.load ~packaged_path ~user_path |> or_die
     in
+    (if parsed_args.Cli_args.list_models then
+       let max_name_len = ref 0 in
+       let entries =
+         List.concat_map
+           (fun (p : Models_config.provider_spec) ->
+              let env_vars = String.concat ", " p.Models_config.api_key_env in
+              let env_str =
+                if String.is_empty env_vars then "(none)" else env_vars
+              in
+              List.map
+                (fun (m : Models_config.model_spec) ->
+                   let full = p.Models_config.name ^ "/" ^ m.Models_config.name in
+                   max_name_len := max !max_name_len (String.length full);
+                   (full, env_str))
+                p.Models_config.models)
+           models_file.Models_config.providers
+       in
+       List.iter
+         (fun (name, env) ->
+            Printf.printf "%-*s  %s\n" !max_name_len name env)
+         entries;
+       exit 0);
     let user_config =
       let path =
         Fpath.(v (Xdg.config_dir xdg) / "pera" / "config.sexp")

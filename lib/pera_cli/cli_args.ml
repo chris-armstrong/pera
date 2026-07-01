@@ -22,6 +22,7 @@ type parsed_args = {
   json : bool;
   input : string option;
   input_file : string option;
+  list_models : bool;
 }
 
 let effort_conv =
@@ -186,10 +187,17 @@ let parse ~argv =
       (Arg.info [ "input-file" ] ~docv:"PATH"
          ~doc:"Read prompt from file, run non-interactively and exit.")
   in
+  let list_models =
+    Arg.(
+      value & flag
+      & info [ "list-models" ]
+          ~doc:"List all available providers and models with their API key \
+                 environment variables, then exit.")
+  in
   let build_args model api_key api_key_file api_key_command effort max_tokens
       cache_policy cache_ttl session session_dir cwd system system_file
       no_compact compact_threshold compact_tail show_thinking quiet json input
-      input_file =
+      input_file list_models =
     let () =
       let count =
         List.length
@@ -243,6 +251,7 @@ let parse ~argv =
       json;
       input;
       input_file;
+      list_models;
     }
   in
   let term =
@@ -250,7 +259,8 @@ let parse ~argv =
       const build_args $ model $ api_key $ api_key_file $ api_key_command
       $ effort $ max_tokens $ cache_policy $ cache_ttl $ session $ session_dir
       $ cwd $ system $ system_file $ no_compact $ compact_threshold
-      $ compact_tail $ show_thinking $ quiet $ json $ input $ input_file)
+      $ compact_tail $ show_thinking $ quiet $ json $ input $ input_file
+      $ list_models)
   in
   let info = Cmdliner.Cmd.info "pera" ~version:"dev" ~doc:"Pera coding agent" in
   let cmd = Cmdliner.Cmd.v info term in

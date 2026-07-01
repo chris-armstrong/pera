@@ -22,6 +22,7 @@ type parsed_args = {
   json : bool;
   input : string option;
   input_file : string option;
+  list_models : bool;
 }
 
 val effort_conv : Pera_config.effort Cmdliner.Arg.conv

@@ -47,7 +47,7 @@ let make_args ?(model = None) ?(api_key = None) ?(api_key_file = None)
     ?(session_dir = None) ?(cwd = None) ?(system = None) ?(system_file = None)
     ?(no_compact = false) ?(compact_threshold = None) ?(compact_tail = None)
     ?(show_thinking = false) ?(quiet = false) ?(json = false)
-    ?(input = None) ?(input_file = None) () =
+    ?(input = None) ?(input_file = None) ?(list_models = false) () =
   Pera_cli.Cli_args.
     {
       model;
@@ -71,6 +71,7 @@ let make_args ?(model = None) ?(api_key = None) ?(api_key_file = None)
       json;
       input;
       input_file;
+      list_models;
     }
 
 let test_to_partial_no_compact () =
