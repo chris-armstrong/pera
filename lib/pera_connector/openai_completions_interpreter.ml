@@ -419,13 +419,19 @@ let extract_usage json =
             | Some (`Assoc details) -> json_int_field details "cached_tokens"
             | _ -> 0
           in
+          let cost_usd =
+            match List.assoc_opt ~eq:String.equal "cost" u with
+            | Some (`Float f) -> Some (Decimal.of_string (Printf.sprintf "%g" f))
+            | Some (`Int n) -> Some (Decimal.of_string (string_of_int n))
+            | _ -> None
+          in
           Some
             {
               Types.input_tokens;
               output_tokens;
               cache_read_tokens;
               cache_write_tokens = 0;
-              cost_usd = None;
+              cost_usd;
             }
       | _ -> None)
   | _ -> None

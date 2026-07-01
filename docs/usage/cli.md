@@ -61,6 +61,11 @@ starts an interactive session.
 | `--session=PATH` | Explicit session file path. |
 | `--session-dir=DIR` | Directory for session files. |
 
+If neither is given, session logs are written to
+`$HOME/.local/state/pera/sessions/` with an auto-generated filename
+(`YYYYMMDD_HHMMSS_<uuid>.jsonl`). The session path is printed to stderr
+on startup.
+
 ### Compaction
 
 | Option | Description |

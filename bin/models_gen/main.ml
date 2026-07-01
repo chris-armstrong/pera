@@ -12,6 +12,8 @@ let npm_to_protocol =
     ("@ai-sdk/groq", "openai-completions");
     ("@ai-sdk/togetherai", "openai-completions");
     ("@ai-sdk/mistral", "openai-completions");
+    ("@ai-sdk/vercel", "openai-completions");
+    ("@openrouter/ai-sdk-provider", "openrouter");
   ]
 
 let die fmt =
