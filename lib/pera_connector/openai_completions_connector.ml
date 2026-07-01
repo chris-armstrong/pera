@@ -96,7 +96,7 @@ let do_request ~provider ~model ~context ~options ~sw:_ stream =
   let on_chunk, finalise = process_chunks stream ~compat:provider.compat in
   let http_result =
     Http_client.post_stream ~client:provider.client ~headers
-      ~body:request_body_str ~on_chunk "/v1/chat/completions"
+      ~body:request_body_str ~on_chunk "/chat/completions"
   in
   match http_result with
   | Error (Http_client.Transport_error te) ->

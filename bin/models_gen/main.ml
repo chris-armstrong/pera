@@ -175,7 +175,10 @@ let parse_provider provider_id provider_json aug_providers =
                   name = provider_id;
                   protocol;
                   api_key_env = strings "env" provider_json;
-                  api = string_opt "api" provider_json;
+                  api =
+                    (match string_opt "api" aug_provider with
+                    | Some url -> Some url
+                    | None -> string_opt "api" provider_json);
                   api_env = None;
                   compat = parse_compat aug_provider;
                   models;

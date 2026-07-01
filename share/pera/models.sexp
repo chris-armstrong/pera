@@ -104,7 +104,7 @@
         ((input_per_mtok 1.2) (output_per_mtok 4.5)
          (cache_read_per_mtok 0.2)))))))
    ((name deepseek) (protocol openai-completions)
-    (api_key_env (DEEPSEEK_API_KEY)) (api https://api.deepseek.com)
+    (api_key_env (DEEPSEEK_API_KEY)) (api https://api.deepseek.com/v1)
     (compat ((reasoning_field reasoning_content)))
     (models
      (((name deepseek-v4-flash) (context_window 1000000) (max_tokens 384000)

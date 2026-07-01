@@ -32,6 +32,7 @@
       "model_filter": ["kimi-k2-0905-preview"]
     },
     "deepseek": {
+      "api": "https://api.deepseek.com/v1",
       "compat": {
         "reasoning_field": "reasoning_content"
       },
