@@ -122,11 +122,32 @@ Prints all available providers and models in the format:
 provider/model_name    API_KEY_ENV_VAR
 ```
 
+## Model database
+
+Pera discovers available providers and models from a `models.sexp` file.
+The search order is:
+
+1. `$PERA_DATA_DIR/models.sexp` — if the environment variable is set.
+2. `../share/pera/models.sexp` — relative to the pera binary (typical for
+   installations where the binary lives in `bin/`).
+3. `$XDG_DATA_DIRS/pera/models.sexp` — each colon-separated directory in
+   `XDG_DATA_DIRS` is checked in order. If the variable is unset, the
+   default is `/usr/local/share:/usr/share`.
+
+The first file found is used as the **packaged** model database.
+
+If `$XDG_CONFIG_HOME/pera/models.sexp` exists, it is loaded as a **user**
+override and merged on top of the packaged database. Providers are matched
+by name; models within a provider are matched by name. User entries take
+precedence, so you can add new providers, add models to existing providers,
+or override model fields (e.g. context window, cost) without editing the
+packaged file.
+
 ## Environment variables
 
 | Variable | Description |
 |----------|-------------|
-| `PERA_DATA_DIR` | Override the directory containing `models.sexp`. |
+| `PERA_DATA_DIR` | Override the first search path for `models.sexp`. |
 | `PERA_CWD` | Working directory for tools (overridden by `--cwd`). |
 | `PERA_MODEL` | Default model (overridden by `--model`). |
 | `PERA_EFFORT` | Default effort level. |
