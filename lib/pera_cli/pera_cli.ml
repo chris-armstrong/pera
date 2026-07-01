@@ -299,21 +299,14 @@ module Make (Cli_env : Env) = struct
 
 (* Resolve the base URL for a provider. Priority:
    1. [api_env] env var from provider spec (if set)
-   2. [api] field from provider spec
-   3. Fallback to [https://api.openai.com] *)
+   2. [api] field from provider spec *)
 let resolve_base_url ~getenv_opt (spec : Models_config.provider_spec) =
   match spec.Models_config.api_env with
   | Some var -> (
       match getenv_opt var with
-      | Some url -> url
-      | None -> (
-          match spec.Models_config.api with
-          | Some url -> url
-          | None -> "https://api.openai.com"))
-  | None -> (
-      match spec.Models_config.api with
-      | Some url -> url
-      | None -> "https://api.openai.com")
+      | Some url -> Some url
+      | None -> spec.Models_config.api)
+  | None -> spec.Models_config.api
 
 let run_with ?stream_fn inputs =
   Eio_main.run (fun env ->
@@ -321,9 +314,17 @@ let run_with ?stream_fn inputs =
           let rc = resolve_config inputs in
           let api_key = get_api_key ~env ~sw rc in
           let base_url =
-            resolve_base_url
-              ~getenv_opt:inputs.Config_resolver.getenv_opt
-              rc.Config_resolver.provider_spec
+            match
+              resolve_base_url
+                ~getenv_opt:inputs.Config_resolver.getenv_opt
+                rc.Config_resolver.provider_spec
+            with
+            | Some url -> url
+            | None ->
+                Printf.eprintf
+                  "[pera] no API URL configured for provider %s\n%!"
+                  rc.Config_resolver.provider_spec.Models_config.name;
+                exit 1
           in
           let stream_fn =
             match stream_fn with
