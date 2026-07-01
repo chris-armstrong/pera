@@ -87,7 +87,8 @@ let do_request ~provider ~model ~context ~options ~sw:_ stream =
   | Error (Http_client.Transport_error te) ->
       Event_stream.close_error stream te.message Pera_types.Types.Transport
   | Error (Http_client.Http_error he) ->
-      Event_stream.close_error stream he.message
+      Event_stream.close_error stream
+        (Http_client.request_error_to_string (Http_client.Http_error he))
         (Pera_types.Types.Http { status = he.status })
   | Ok () -> finalise ()
 

@@ -91,8 +91,7 @@ let do_request ~provider ~model ~context ~options ~sw:_ stream =
   let request_body_str = Yojson.Safe.to_string request_body in
   let full_url = provider.compat.base_url ^ "/v1/chat/completions" in
   Log.info (fun m -> m "POST %s  model=%s" full_url model.Types.id);
-  if log_chunks then
-    Log.debug (fun m -> m "request body: %s" request_body_str);
+  if log_chunks then Log.debug (fun m -> m "request body: %s" request_body_str);
   let headers = build_headers provider.api_key in
   let on_chunk, finalise = process_chunks stream ~compat:provider.compat in
   let http_result =
@@ -103,7 +102,8 @@ let do_request ~provider ~model ~context ~options ~sw:_ stream =
   | Error (Http_client.Transport_error te) ->
       Event_stream.close_error stream te.message Pera_types.Types.Transport
   | Error (Http_client.Http_error he) ->
-      Event_stream.close_error stream he.message
+      Event_stream.close_error stream
+        (Http_client.request_error_to_string (Http_client.Http_error he))
         (Pera_types.Types.Http { status = he.status })
   | Ok () -> finalise ()
 
