@@ -346,7 +346,7 @@ module Make (Cli_env : Env) = struct
           in
           let from_bin =
             Fpath.(
-              normalize (bin_dir / ".." / "share" / "pera-cli" / "models.sexp"))
+              normalize (bin_dir / ".." / "share" / "pera" / "models.sexp"))
             |> Fpath.to_string
           in
           let from_xdg =
