@@ -57,12 +57,7 @@
     "ollama-cloud": {
       "compat": {
         "reasoning_field": "reasoning_content"
-      },
-      "model_filter": [
-        "deepseek-v4-flash",
-        "minimax-m2.5",
-        "glm-4.7"
-      ]
+      }
     },
     "groq": {
       "model_filter": [
