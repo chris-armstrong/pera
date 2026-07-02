@@ -110,8 +110,12 @@ let build_registry () =
   let r =
     Connector_registry.register r ~name:"anthropic" (module Anthropic_connector)
   in
-  Connector_registry.register r ~name:"openai-completions"
-    (module Openai_completions_connector)
+  let r =
+    Connector_registry.register r ~name:"openai-completions"
+      (module Openai_completions_connector)
+  in
+  Connector_registry.register r ~name:"openrouter"
+    (module Openrouter_connector)
 
 let build_stream_fn ~env ~sw ~api_key ~base_url ~protocol =
   let registry = build_registry () in
@@ -277,6 +281,7 @@ module Make (Cli_env : Env) = struct
     Log.debug (fun f ->
         f "creating harness: model=%s session=%s"
           rc.Config_resolver.model.Pera_types.Types.id session_path);
+    Printf.eprintf "[pera] session: %s\n%!" session_path;
     let harness_config : Pera_agent.Agent_harness.config =
       {
         cwd;

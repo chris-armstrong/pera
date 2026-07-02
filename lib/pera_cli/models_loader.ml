@@ -68,13 +68,13 @@ let resolve_model mf qualified_name =
   let open Models_config in
   let* provider_name, model_name =
     match String.split_on_char '/' qualified_name with
-    | [ p; m ] -> Ok (p, m)
-    | _ ->
+    | [] | [ _ ] ->
         Error
           (Printf.sprintf
              "[pera] not a fully qualified model name %S — expected \
               \"provider/model\""
              qualified_name)
+    | p :: parts -> Ok (p, String.concat "/" parts)
   in
   let* p =
     List.find_opt (provider_named ~name:provider_name) mf.providers

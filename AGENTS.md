@@ -214,6 +214,8 @@ These are part of the project's workflow, not runtime code.
 |----------|---------------|
 | `SPECIFICATION.md` | Full architectural specification (layers, data model, provider layer, agent core, harness, compaction, tools, CLI) |
 | `USAGE.md` | How to run the development drivers (`provider_driver`, `conversation_driver`, `loop_driver`, `env_driver`, `tool_driver`) |
+| `docs/usage/cli.md` | Pera CLI usage (options, interactive mode, configuration, environment variables) |
+| `docs/usage/models-gen.md` | Model database generator (`pera-models-gen`) — converting models.dev JSON to `models.sexp` |
 | `docs/guidelines/index.md` | Mandatory coding guidelines index |
 | `dune-project` | Package definitions and dependencies |
 

@@ -12,6 +12,8 @@ let npm_to_protocol =
     ("@ai-sdk/groq", "openai-completions");
     ("@ai-sdk/togetherai", "openai-completions");
     ("@ai-sdk/mistral", "openai-completions");
+    ("@ai-sdk/vercel", "openai-completions");
+    ("@openrouter/ai-sdk-provider", "openrouter");
   ]
 
 let die fmt =
@@ -144,45 +146,44 @@ let parse_provider provider_id provider_json aug_providers =
   | None -> None
   | Some protocol ->
       let aug_provider = aug_provider_of aug_providers provider_id in
-      (* Only emit providers explicitly listed in the augmentation file. *)
-      (match aug_provider with
-      | `Null -> None
-      | _ ->
-          let filter = model_filter_of aug_provider in
-          let models_raw =
-            match assoc_opt "models" provider_json with
-            | Some (`Assoc m) -> m
-            | _ -> []
-          in
-          let models_filtered =
-            match filter with
-            | Some names ->
-                List.filter
-                  (fun (k, _) -> List.mem ~eq:String.equal k names)
-                  models_raw
-            | None -> models_raw
-          in
-          let models =
-            List.map
-              (fun (name, json) -> parse_model name json aug_provider)
-              models_filtered
-          in
-          if List.is_empty models then None
-          else
-            Some
-              Models_config.
-                {
-                  name = provider_id;
-                  protocol;
-                  api_key_env = strings "env" provider_json;
-                  api =
-                    (match string_opt "api" aug_provider with
-                    | Some url -> Some url
-                    | None -> string_opt "api" provider_json);
-                  api_env = None;
-                  compat = parse_compat aug_provider;
-                  models;
-                })
+      (* Augmentations are optional overrides (compat, thinking, model filter,
+         API URL). Providers with a known npm→protocol mapping are emitted
+         regardless of whether they appear in augmentations.json. *)
+      let filter = model_filter_of aug_provider in
+      let models_raw =
+        match assoc_opt "models" provider_json with
+        | Some (`Assoc m) -> m
+        | _ -> []
+      in
+      let models_filtered =
+        match filter with
+        | Some names ->
+            List.filter
+              (fun (k, _) -> List.mem ~eq:String.equal k names)
+              models_raw
+        | None -> models_raw
+      in
+      let models =
+        List.map
+          (fun (name, json) -> parse_model name json aug_provider)
+          models_filtered
+      in
+      if List.is_empty models then None
+      else
+        Some
+          Models_config.
+            {
+              name = provider_id;
+              protocol;
+              api_key_env = strings "env" provider_json;
+              api =
+                (match string_opt "api" aug_provider with
+                | Some url -> Some url
+                | None -> string_opt "api" provider_json);
+              api_env = None;
+              compat = parse_compat aug_provider;
+              models;
+            }
 
 (* ── Entry point ──────────────────────────────────────────────────────────── *)
 
