@@ -2,10 +2,13 @@
   "providers": {
     "anthropic": {
       "thinking_models": {
-        "claude-sonnet-4-6":        { "budget_medium": 8000, "budget_high": 32000 },
-        "claude-haiku-4-5":         { "budget_medium": 8000, "budget_high": 32000 },
-        "claude-haiku-4-5-20251001":{ "budget_medium": 8000, "budget_high": 32000 },
-        "claude-opus-4-8":          { "budget_medium": 8000, "budget_high": 32000 }
+        "claude-sonnet-4-6": { "budget_medium": 8000, "budget_high": 32000 },
+        "claude-haiku-4-5": { "budget_medium": 8000, "budget_high": 32000 },
+        "claude-haiku-4-5-20251001": {
+          "budget_medium": 8000,
+          "budget_high": 32000
+        },
+        "claude-opus-4-8": { "budget_medium": 8000, "budget_high": 32000 }
       }
     },
     "openai": {
@@ -43,6 +46,7 @@
     },
     "groq": {},
     "mistral": {},
-    "togetherai": {}
+    "togetherai": {},
+    "openrouter": {}
   }
 }
