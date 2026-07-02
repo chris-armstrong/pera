@@ -97,15 +97,9 @@ lib/
     ├── tool_util.{ml,mli}        # Shared tool helpers (schema builders, text splitting)
     └── tools.{ml,mli}            # Assembly: all tool schemas + dispatch
 
-bin/drivers/              # Thin drivers / CLI entry points
-  conversation_driver.ml  # Interactive conversation loop
-  loop_driver.ml          # Non-interactive agent loop
+test/live/              # Live integration test executables
   provider_driver.ml      # Raw provider streaming test
-  env_driver.ml           # Execution environment smoke test
-  tool_driver.ml          # Individual tool smoke test
-  harness_driver.ml       # Full harness integration test (includes autonomous compaction scenario)
-  session_driver.ml       # Session JSONL inspection (includes compaction entry scenario)
-  compaction_driver.ml    # Compaction module layer test (offline faux + optional real-model)
+  compaction_driver.ml    # Compaction module layer test (real-model only)
   live_driver.ml          # Live agent with terminal UI
 ```
 

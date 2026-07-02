@@ -716,7 +716,7 @@ A failing driver is more informative than a failing end-to-end run. "The provide
 
 A driver is a small program (typically 50–200 lines) that:
 
-- Lives in the codebase as a persistent artifact (`bin/drivers/<layer>_driver.ml` or similar).
+- Lives in the codebase as a persistent artifact (`test/live/<layer>_driver.ml` or similar).
 - Takes its inputs from argv, stdin, or hardcoded scenarios; not from a test framework.
 - Prints structured human-readable output.
 - Returns a meaningful exit code.

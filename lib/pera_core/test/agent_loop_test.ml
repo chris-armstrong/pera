@@ -392,6 +392,83 @@ let test_error_stop_reason_terminates_run () =
             | Pera_types.Types.Aborted -> "Aborted"))
   | _ -> Alcotest.fail "expected AssistantMessage in turn_end"
 
+(** {1 Test 9: thinking blocks flow through the loop} *)
+
+let test_thinking_blocks_flow_through_loop () =
+  Eio_main.run @@ fun _env ->
+  Eio.Switch.run @@ fun sw ->
+  Faux_provider.reset_recorded ();
+  let partial_msg = make_text_assistant_message "" in
+  let final_msg =
+    Pera_types.Types.
+      {
+        content =
+          [
+            AThinking { text = "thinking step"; signature = None };
+            AText "answer";
+          ];
+        stop_reason = EndTurn;
+        provenance =
+          {
+            protocol = "faux";
+            provider = "faux";
+            model = "faux";
+            error_message = None;
+          };
+        usage =
+          {
+            input_tokens = 0;
+            output_tokens = 0;
+            cache_read_tokens = 0;
+            cache_write_tokens = 0;
+            cost_usd = None;
+          };
+      }
+  in
+  let script =
+    Faux_provider.Turn
+      Faux_provider.
+        {
+          events =
+            [
+              Pera_types.Types.AME_thinking_start { partial = partial_msg };
+              Pera_types.Types.AME_thinking_delta
+                { text = "thinking step"; partial = partial_msg };
+              Pera_types.Types.AME_text_start { partial = partial_msg };
+              Pera_types.Types.AME_text_delta
+                { text = "answer"; partial = final_msg };
+            ];
+          final = final_msg;
+        }
+  in
+  let stream_fn = Faux_provider.stream_fn_of_scripts [ script ] in
+  let config = make_config stream_fn in
+  let loop_stream =
+    Agent_loop.run config ~messages:[ make_user_agent_message "think" ] ~sw
+  in
+  let events, _result = collect_agent_events loop_stream in
+  (* AE_message_end should contain AThinking content *)
+  let has_thinking_in_message =
+    List.exists
+      (function
+        | Agent_types.AE_message_end
+            { message = Real (Pera_connector.Connector.AssistantMessage am); _ } ->
+            List.exists
+              (function Pera_types.Types.AThinking _ -> true | _ -> false)
+              am.content
+        | _ -> false)
+      events
+  in
+  Alcotest.(check bool)
+    "AE_message_end contains AThinking content" true has_thinking_in_message;
+  (* AE_agent_end is the last event *)
+  let agent_end_last =
+    match List.last_opt events with
+    | Some (Agent_types.AE_agent_end _) -> true
+    | _ -> false
+  in
+  Alcotest.(check bool) "AE_agent_end is last event" true agent_end_last
+
 let () =
   Alcotest.run "agent_loop"
     [
@@ -402,6 +479,9 @@ let () =
             test_single_text_turn_emits_lifecycle_and_final_messages;
           Alcotest.test_case "error stop_reason terminates the run" `Quick
             test_error_stop_reason_terminates_run;
+          Alcotest.test_case
+            "thinking blocks flow through the loop" `Quick
+            test_thinking_blocks_flow_through_loop;
         ] );
       ( "hooks",
         [

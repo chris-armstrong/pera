@@ -174,6 +174,22 @@ let test_read_offset_beyond_eof_returns_user_error () =
               Alcotest.(check bool) "is_user_error true" true e.is_user_error
           | Ok _ -> Alcotest.fail "expected Error for offset beyond EOF"))
 
+let test_read_missing_path_arg_returns_error () =
+  run_read_test (fun (module E) sw ->
+      let tool = Read_tool.read in
+      let args = `Assoc [] in
+      Eio.Cancel.sub (fun cancel ->
+          match
+            Tool.execute tool
+              ~ctx:(module E : Pera_env.Execution_env.S)
+              ~args ~sw ~cancel
+          with
+          | Error e ->
+              Alcotest.(check bool)
+                "error message is non-empty" true
+                (not (String.is_empty e.message))
+          | Ok _ -> Alcotest.fail "expected Error for missing path arg"))
+
 let () =
   Alcotest.run "read_tool"
     [
@@ -201,5 +217,7 @@ let () =
             test_read_truncates_at_line_limit;
           Alcotest.test_case "offset_beyond_eof_returns_user_error" `Quick
             test_read_offset_beyond_eof_returns_user_error;
+          Alcotest.test_case "missing_path_arg_returns_error" `Quick
+            test_read_missing_path_arg_returns_error;
         ] );
     ]

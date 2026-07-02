@@ -2219,6 +2219,8 @@ passes `~stream_fn:(Faux_provider.stream_fn [...])`.
 
 ## Phase 5 — Driver cleanup
 
+**Status:** Stages 5.1–5.4 complete. Stage 5.5 pending.
+
 **Policy:** err on the side of **deleting** the drivers. They are replaced in
 full by the `pera` binary plus the Alcotest suites. The migration stages below
 are about making sure no scenario is *lost* — but the bar is "the test suites
@@ -2229,68 +2231,80 @@ driven by `.claude/plans/driver-coverage-gaps.json` — consult it per stage.
 
 ---
 
-### Stage 5.1 — Migrate `loop_driver.ml` → `lib/pera_core/test/`
+### Stage 5.1 — Migrate `loop_driver.ml` → `lib/pera_core/test/` ✅
 
-**Audit:** compare the 14 Faux_provider scenarios in `loop_driver.ml` against:
+**Commit:** `28288e6`
+
+**Audit:** compared the 14 Faux_provider scenarios in `loop_driver.ml` against:
 - `lib/pera_core/test/agent_loop_test.ml`
 - `lib/pera_core/test/agent_loop_tools_test.ml`
 - `lib/pera_core/test/agent_loop_cancel_test.ml`
 and `driver-coverage-gaps.json`.
 
 **Critical scenarios to ensure are covered** (add if missing; else delete):
-- `thinking_blocks` — thinking content emitted correctly
-- `prepare_next_turn_update` — messages/model/thinking_budget replaced (now
-  uses `thinking_update` ADT from Stage 0.2a)
-- `before_tool_call_deny` — deny result surfaces to model
-- `before_tool_call_allow` — allow proceeds normally
-- `after_tool_call_fires` — hook called after each tool
+- `thinking_blocks` — **added** `test_thinking_blocks_flow_through_loop` to `agent_loop_test.ml`
+- `prepare_next_turn_update` — already covered by `test_prepare_next_turn_swaps_model`
+- `before_tool_call_deny` — already covered by `test_before_tool_call_deny_short_circuits_with_error_result`
+- `before_tool_call_allow` — **added** `test_before_tool_call_allow_lets_tool_execute` to `agent_loop_tools_test.ml`
+- `after_tool_call_fires` — already covered by `test_after_tool_call_hook_invoked_per_result`
 
-**After coverage is confirmed:** delete `bin/drivers/loop_driver.ml`. Remove
-from `bin/drivers/dune`.
+**Deleted:** `bin/drivers/loop_driver.ml`. Removed from `bin/drivers/dune`.
 
 **Verify:** `dune build && dune test` green.
 
 ---
 
-### Stage 5.2 — Migrate `env_driver.ml` → `lib/pera_env/test/`
+### Stage 5.2 — Migrate `env_driver.ml` → `lib/pera_env/test/` ✅
 
-**Audit:** compare 9 `env_driver.ml` scenarios against:
+**Commit:** `169a886`
+
+**Audit:** compared 9 `env_driver.ml` scenarios against:
 - `lib/pera_env/test/local_env_sh_test.ml`
 - `lib/pera_env/test/local_env_fs_test.ml`
 and `driver-coverage-gaps.json`.
 
-Add missing *critical* scenarios only; delete the rest. Delete
-`bin/drivers/env_driver.ml`.
+All 9 scenarios already covered by existing tests. No additions needed.
+
+**Deleted:** `bin/drivers/env_driver.ml`.
 
 **Verify:** `dune build && dune test` green.
 
 ---
 
-### Stage 5.3 — Migrate `tool_driver.ml` → `lib/pera_tools/test/`
+### Stage 5.3 — Migrate `tool_driver.ml` → `lib/pera_tools/test/` ✅
 
-**Audit:** compare 9 `tool_driver.ml` scenarios against the four existing tool
+**Commit:** `b81b3a9`
+
+**Audit:** compared 9 `tool_driver.ml` scenarios against the four existing tool
 test files and `driver-coverage-gaps.json`.
 
-Critical: `read_truncation`, `read_missing_path_arg`. Add if missing; else
-delete. Delete `bin/drivers/tool_driver.ml`.
+Critical: `read_truncation` (already covered by `test_read_truncates_at_line_limit`),
+`read_missing_path_arg` (**added** `test_read_missing_path_arg_returns_error` to
+`read_tool_test.ml`).
+
+**Deleted:** `bin/drivers/tool_driver.ml`.
 
 **Verify:** `dune build && dune test` green.
 
 ---
 
-### Stage 5.4 — Migrate `harness_driver.ml` + `session_driver.ml`
+### Stage 5.4 — Migrate `harness_driver.ml` + `session_driver.ml` ✅
+
+**Commit:** `9aa7aba`
 
 **`harness_driver.ml` → `lib/pera_agent/test/agent_harness_test.ml`:**
-critical scenario `autonomous_compaction`. Add if missing; else delete.
+critical scenario `autonomous_compaction` already covered by compaction tests.
+Deleted.
 
 **`session_driver.ml` → `lib/pera_harness/test/session_writer_test.ml`:**
-critical scenarios `crash_resilience`, `model_change`. Add if missing; else
-delete.
+critical scenarios `crash_resilience` (**added**
+`test_crash_resilience_preserves_valid_entries`), `model_change` (already
+covered by `test_multiple_appends_accumulate_lines`).
 
-Move `session_jsonl_helpers.{ml,mli}` to `lib/pera_harness/test/` if the
-target tests need them; otherwise inline. Delete
-`bin/drivers/harness_driver.ml`, `bin/drivers/session_driver.ml`, and
-`bin/drivers/session_jsonl_helpers.{ml,mli}`.
+`session_jsonl_helpers.{ml,mli}` kept in `bin/drivers/` — still used by
+`compaction_driver.ml` and `live_driver.ml`.
+
+**Deleted:** `bin/drivers/harness_driver.ml`, `bin/drivers/session_driver.ml`.
 
 **Verify:** `dune build && dune test` green.
 
@@ -2320,14 +2334,14 @@ imports `Conversation_driver_helpers`.
 
 ---
 
-### Phase 5 review checklist
+### Phase 5 review checklist (Stages 5.1–5.4 complete; 5.5 pending)
 
-- [ ] `dune build` — clean
-- [ ] `dune test` — all suites pass; no regressions
-- [ ] `ocamlformat --check` — clean
-- [ ] `grep -r "conversation_driver\|loop_driver\|env_driver\|tool_driver\|harness_driver\|session_driver" bin/drivers/` — empty
-- [ ] `grep -r "conversation_driver_helpers" lib/ bin/` — empty
-- [ ] `live_driver.ml`, `provider_driver.ml`, `compaction_driver.ml`
+- [x] `dune build` — clean
+- [x] `dune test` — all suites pass; no regressions
+- [x] `ocamlformat --check` — clean
+- [x] `grep -r "loop_driver\|env_driver\|tool_driver\|harness_driver\|session_driver" bin/drivers/` — empty
+- [ ] `grep -r "conversation_driver\|conversation_driver_helpers" lib/ bin/` — still present (Stage 5.5)
+- [x] `live_driver.ml`, `provider_driver.ml`, `compaction_driver.ml`
   (real_model) still present and build
 
 ---

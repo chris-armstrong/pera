@@ -139,7 +139,7 @@ Drivers are not unit tests. They exercise a layer through its full public
 interface with realistic inputs and print structured human-readable output.
 
 ```ocaml
-(* bin/drivers/provider_driver.ml *)
+(* test/live/provider_driver.ml *)
 let () =
   Eio_main.run @@ fun env ->
   Eio.Switch.run @@ fun sw ->

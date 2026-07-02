@@ -1,0 +1,51 @@
+(executables
+ (names provider_driver)
+ (modules
+  provider_driver
+  driver_log
+  markdown_renderer)
+ (libraries
+  usage_status
+  pera_core
+  pera_core_test_util
+  pera_connector
+  pera_types
+  eio_main
+  containers
+  logs
+  logs.fmt
+  cmarkit))
+
+(executable
+ (name compaction_driver)
+ (modules compaction_driver session_jsonl_helpers)
+ (libraries
+  pera_harness
+  pera_core
+  pera_core_test_util
+  pera_connector
+  pera_env
+  pera_types
+  eio
+  eio_main
+  eio_linux
+  containers
+  yojson
+  unix))
+
+(executable
+ (name live_driver)
+ (modules live_driver session_jsonl_helpers)
+ (libraries
+  usage_status
+  pera_agent
+  pera_core
+  pera_connector
+  pera_env
+  pera_types
+  eio
+  eio_main
+  eio_linux
+  containers
+  yojson
+  unix))
