@@ -80,6 +80,9 @@ let test_parsed_args () : Pera_cli.Cli_args.parsed_args =
     show_thinking = false;
     quiet = false;
     json = false;
+    input = None;
+    input_file = None;
+    list_models = false;
   }
 
 (** Build a [Config_resolver.resolve_inputs] from the test fixtures. *)

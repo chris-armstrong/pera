@@ -1,3 +1,16 @@
+open Containers [@@warning "-33"]
+
+let () =
+  let level =
+    match Sys.getenv_opt "PERA_LOG" with
+    | Some "debug" -> Logs.Debug
+    | Some "info" -> Logs.Info
+    | Some "error" -> Logs.Error
+    | _ -> Logs.Warning
+  in
+  Logs.set_reporter (Logs_fmt.reporter ());
+  Logs.set_level (Some level)
+
 module Cli = Pera_cli.Make (struct
   type ctx = (module Pera_env.Execution_env.S)
 

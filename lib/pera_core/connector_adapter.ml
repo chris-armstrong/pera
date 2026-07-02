@@ -10,12 +10,12 @@ type t = entry list
     per connector from [api_keys] so each provider receives its own
     credential (e.g. the OpenAI connector gets the OpenAI key, not the
     Anthropic one). A connector with no key in [api_keys] is skipped. *)
-let build_entry ~api_keys ~env ~sw
+let build_entry ~api_keys ~base_url ~env ~sw
     (api_name, (module P : Pera_connector.Connector.S)) =
   match List.assoc_opt ~eq:String.equal api_name api_keys with
   | None -> None
   | Some api_key ->
-      let inst = P.create ~api_key ~env ~sw in
+      let inst = P.create ~api_key ~base_url ~env ~sw in
       let fn ~model ~context ~options ~sw =
         P.stream_simple inst ~model ~context ~options ~sw
       in
@@ -29,9 +29,9 @@ let error_stream ~sw api_name =
       Pera_connector.Event_stream.close_internal_error stream msg);
   stream
 
-let create ~registry ~api_keys ~env ~sw =
+let create ~registry ~api_keys ~base_url ~env ~sw =
   let providers = Pera_connector.Connector_registry.to_list registry in
-  List.filter_map (build_entry ~api_keys ~env ~sw) providers
+  List.filter_map (build_entry ~api_keys ~base_url ~env ~sw) providers
 
 let stream_fn adapter =
  fun ~model ~context ~options ~sw ->

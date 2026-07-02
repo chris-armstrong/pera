@@ -4,7 +4,7 @@ open Pera_connector
 let run_create () =
   Eio_main.run @@ fun env ->
   Eio.Switch.run @@ fun sw ->
-  Openai_completions_connector.create_from_env ~env ~sw |> Result.get_exn
+  Openai_completions_connector.create_from_env ~base_url:"http://localhost" ~env ~sw |> Result.get_exn
 
 let expect_create_failure () =
   match run_create () with

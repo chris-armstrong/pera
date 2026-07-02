@@ -200,7 +200,7 @@ let scenario_real_model ~env =
   let result =
     Eio.Switch.run @@ fun sw ->
     let adapter =
-      Connector_adapter.create ~registry ~api_keys ~env ~sw
+      Connector_adapter.create ~registry ~api_keys ~base_url:"https://api.anthropic.com" ~env ~sw
     in
     let stream_fn = Connector_adapter.stream_fn adapter in
     Pera_harness.Compaction.compact ~stream_fn ~model ~options ~messages
@@ -252,10 +252,14 @@ let () =
         let total = List.length all_verdicts in
         Printf.printf "%d/%d scenarios passed.\n" passed total;
         if passed = total then 0 else 1
-      with e ->
-        Printf.eprintf "compaction_driver crashed: %s\n%!"
-          (Printexc.to_string e);
-        1
+      with
+      | Failure msg ->
+          Printf.eprintf "compaction_driver: %s\n%!" msg;
+          2
+      | exn ->
+          Printf.eprintf "compaction_driver crashed: %s\n%!"
+            (Printexc.to_string exn);
+          1
     in
     result
   in

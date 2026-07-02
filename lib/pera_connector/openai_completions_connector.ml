@@ -91,36 +91,27 @@ let do_request ~provider ~model ~context ~options ~sw:_ stream =
   let request_body_str = Yojson.Safe.to_string request_body in
   let full_url = provider.compat.base_url ^ "/v1/chat/completions" in
   Log.info (fun m -> m "POST %s  model=%s" full_url model.Types.id);
-  if log_chunks then
-    Log.debug (fun m -> m "request body: %s" request_body_str);
+  if log_chunks then Log.debug (fun m -> m "request body: %s" request_body_str);
   let headers = build_headers provider.api_key in
   let on_chunk, finalise = process_chunks stream ~compat:provider.compat in
   let http_result =
     Http_client.post_stream ~client:provider.client ~headers
-      ~body:request_body_str ~on_chunk "/v1/chat/completions"
+      ~body:request_body_str ~on_chunk "/chat/completions"
   in
   match http_result with
-  | Error http_err ->
-      let stop_err =
-        match http_err.status with
-        | Some code -> Pera_types.Types.Http { status = code }
-        | None -> Pera_types.Types.Transport
-      in
+  | Error (Http_client.Transport_error te) ->
+      Event_stream.close_error stream te.message Pera_types.Types.Transport
+  | Error (Http_client.Http_error he) ->
       Event_stream.close_error stream
-        (Http_client.error_to_string http_err)
-        stop_err
+        (Http_client.request_error_to_string (Http_client.Http_error he))
+        (Pera_types.Types.Http { status = he.status })
   | Ok () -> finalise ()
 
-let create ~api_key ~env ~sw =
+let create ~api_key ~base_url ~env ~sw =
   let base_compat =
     match Sys.getenv_opt "OPENAI_COMPAT" with
     | Some preset -> Openai_completions_request.compat_of_string preset
     | None -> Openai_completions_request.default_compat
-  in
-  let base_url =
-    match Sys.getenv_opt "OPENAI_BASE_URL" with
-    | Some url -> url
-    | None -> base_compat.base_url
   in
   let compat = { base_compat with base_url } in
   Log.debug (fun m ->
@@ -133,12 +124,13 @@ let create ~api_key ~env ~sw =
     | Error e ->
         failwith
           (Printf.sprintf "Openai_completions_connector.create: %s"
-             (Http_client.error_to_string e))
+             (Http_client.request_error_to_string e))
   in
   { client; api_key; compat }
 
-let create_from_env ~env ~sw =
-  Connector.create_from_env_var ~var_name:"OPENAI_API_KEY" ~create ~env ~sw
+let create_from_env ~base_url ~env ~sw =
+  Connector.create_from_env_var ~var_name:"OPENAI_API_KEY" ~create ~base_url
+    ~env ~sw
 
 let stream_simple provider ~model ~context ~options ~sw =
   let stream :

@@ -20,6 +20,9 @@ type parsed_args = {
   show_thinking : bool;
   quiet : bool;
   json : bool;
+  input : string option;
+  input_file : string option;
+  list_models : bool;
 }
 
 let effort_conv =
@@ -174,9 +177,27 @@ let parse ~argv =
     Arg.(
       value & flag & info [ "json" ] ~doc:"Emit newline-delimited JSON events.")
   in
+  let input =
+    opt_string
+      (Arg.info [ "input" ] ~docv:"TEXT"
+         ~doc:"Run a single prompt non-interactively and exit.")
+  in
+  let input_file =
+    opt_string
+      (Arg.info [ "input-file" ] ~docv:"PATH"
+         ~doc:"Read prompt from file, run non-interactively and exit.")
+  in
+  let list_models =
+    Arg.(
+      value & flag
+      & info [ "list-models" ]
+          ~doc:"List all available providers and models with their API key \
+                 environment variables, then exit.")
+  in
   let build_args model api_key api_key_file api_key_command effort max_tokens
       cache_policy cache_ttl session session_dir cwd system system_file
-      no_compact compact_threshold compact_tail show_thinking quiet json =
+      no_compact compact_threshold compact_tail show_thinking quiet json input
+      input_file list_models =
     let () =
       let count =
         List.length
@@ -200,6 +221,14 @@ let parse ~argv =
           exit 1
       | _ -> ()
     in
+    let () =
+      match (input, input_file) with
+      | Some _, Some _ ->
+          Printf.eprintf
+            "[pera] --input and --input-file are mutually exclusive\n%!";
+          exit 1
+      | _ -> ()
+    in
     {
       model;
       api_key;
@@ -220,6 +249,9 @@ let parse ~argv =
       show_thinking;
       quiet;
       json;
+      input;
+      input_file;
+      list_models;
     }
   in
   let term =
@@ -227,7 +259,8 @@ let parse ~argv =
       const build_args $ model $ api_key $ api_key_file $ api_key_command
       $ effort $ max_tokens $ cache_policy $ cache_ttl $ session $ session_dir
       $ cwd $ system $ system_file $ no_compact $ compact_threshold
-      $ compact_tail $ show_thinking $ quiet $ json)
+      $ compact_tail $ show_thinking $ quiet $ json $ input $ input_file
+      $ list_models)
   in
   let info = Cmdliner.Cmd.info "pera" ~version:"dev" ~doc:"Pera coding agent" in
   let cmd = Cmdliner.Cmd.v info term in

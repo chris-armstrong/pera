@@ -44,7 +44,11 @@ module type S = sig
   val name : string
 
   val create :
-    api_key:string -> env:Eio_unix.Stdenv.base -> sw:Eio.Switch.t -> t
+    api_key:string ->
+    base_url:string ->
+    env:Eio_unix.Stdenv.base ->
+    sw:Eio.Switch.t ->
+    t
 
   val stream_simple :
     t ->
@@ -58,8 +62,8 @@ end
 (** Shared helper for connectors that read their API key from a single
     environment variable. Parameterised over [create] so it works for any
     connector satisfying {!S}; the error-message format lives in one place. *)
-let create_from_env_var ~var_name ~create ~env ~sw =
+let create_from_env_var ~var_name ~create ~base_url ~env ~sw =
   match Sys.getenv_opt var_name with
-  | Some k -> Ok (create ~api_key:k ~env ~sw)
+  | Some k -> Ok (create ~api_key:k ~base_url ~env ~sw)
   | None ->
       Error (Fmt.str "%s environment variable is not set" var_name)

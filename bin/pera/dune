@@ -3,4 +3,4 @@
  (public_name pera)
  (package pera-cli)
  (libraries pera_cli pera_env pera_tools pera_agent containers cstruct eio
-   eio_main))
+   eio_main logs logs.fmt))
