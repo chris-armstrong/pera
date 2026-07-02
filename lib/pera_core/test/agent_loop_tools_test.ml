@@ -410,6 +410,58 @@ let test_before_tool_call_deny_short_circuits_with_error_result () =
     "result contains 'nope'" true
     (String.find ~sub:"nope" result_str >= 0)
 
+(** {1 Test 6b: before_tool_call Allow lets the tool execute normally} *)
+
+let test_before_tool_call_allow_lets_tool_execute () =
+  Eio_main.run @@ fun _env ->
+  Eio.Switch.run @@ fun sw ->
+  Faux_provider.reset_recorded ();
+  let execute_count = ref 0 in
+  let tool =
+    make_simple_tool "some_tool" (fun ~ctx:_ ~args:_ ~sw:_ ~cancel:_ ->
+        incr execute_count;
+        Ok (Agent_types.Tool_text "ok"))
+  in
+  let before_tool_call =
+    Some
+      (fun (_ctx : unit Agent_loop.before_tool_call_ctx) ->
+        Agent_types.Allow)
+  in
+  let tc = make_tool_call "c1" "some_tool" (`Assoc []) in
+  let script1 = make_tool_use_turn_script [ tc ] in
+  let script2 = make_text_turn_script "done" in
+  let stream_fn = Faux_provider.stream_fn_of_scripts [ script1; script2 ] in
+  let config = make_config ~before_tool_call [ tool ] stream_fn in
+  let loop_stream =
+    Agent_loop.run config ~messages:[ make_user_agent_message "go" ] ~sw
+  in
+  let events, _result = collect_agent_events loop_stream in
+  (* execute WAS called *)
+  Alcotest.(check int) "execute called (Allow)" 1 !execute_count;
+  (* tool_execution_end fired with is_error=false *)
+  let end_events =
+    List.filter_map
+      (fun e ->
+        match e with
+        | Agent_types.AE_tool_execution_end { is_error; _ } -> Some is_error
+        | _ -> None)
+      events
+  in
+  Alcotest.(check int) "one tool_execution_end" 1 (List.length end_events);
+  let is_error =
+    List.nth_opt end_events 0 |> Option.get_exn_or "expected tool_execution_end"
+  in
+  Alcotest.(check bool) "is_error=false" false is_error;
+  (* agent_end was emitted *)
+  let agent_end_events =
+    List.filter
+      (fun e -> match e with Agent_types.AE_agent_end _ -> true | _ -> false)
+      events
+  in
+  Alcotest.(check int)
+    "agent_end emitted (run completed)" 1
+    (List.length agent_end_events)
+
 (** {1 Test 7: tool raising is caught as error result} *)
 
 let test_tool_raising_is_caught_as_error_result () =
@@ -513,6 +565,9 @@ let () =
           Alcotest.test_case
             "before_tool_call Deny short-circuits with error result" `Quick
             test_before_tool_call_deny_short_circuits_with_error_result;
+          Alcotest.test_case
+            "before_tool_call Allow lets the tool execute normally" `Quick
+            test_before_tool_call_allow_lets_tool_execute;
           Alcotest.test_case "tool raising is caught as error result" `Quick
             test_tool_raising_is_caught_as_error_result;
           Alcotest.test_case "after_tool_call hook invoked per result" `Quick
