@@ -1221,7 +1221,7 @@ runtime including Eio. Provides `Xdg.config_home`, `Xdg.state_home`,
 
 ## Driver cleanup
 
-Building `pera` makes several `bin/drivers/` binaries obsolete. Each falls into one of three categories.
+Building `pera` makes several `test/live/` binaries obsolete. Each falls into one of three categories.
 
 ### Delete outright — pure CLI prototypes superseded by `pera`
 

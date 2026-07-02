@@ -1,9 +1,7 @@
 (executables
- (names provider_driver conversation_driver)
+ (names provider_driver)
  (modules
   provider_driver
-  conversation_driver
-  conversation_driver_helpers
   driver_log
   markdown_renderer)
  (libraries

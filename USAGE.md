@@ -1,6 +1,6 @@
 # Driver Usage
 
-The `bin/drivers/` directory contains five executable drivers for exercising the provider, agent, harness, and tool layers during development. None of them is a production CLI — they are test harnesses.
+The `test/live/` directory contains live integration test executables for exercising the provider, agent, harness, and tool layers during development. None of them is a production CLI — they are test harnesses.
 
 Build everything first:
 
@@ -42,7 +42,7 @@ Exercises the **Anthropic provider** directly (no agent loop). Sends one user me
 
 ```bash
 ANTHROPIC_API_KEY=sk-ant-... \
-  ./_build/default/bin/drivers/provider_driver.exe [model_id [prompt [max_tokens]]]
+  ./_build/default/test/live/provider_driver.exe [model_id [prompt [max_tokens]]]
 ```
 
 **Arguments** (all optional, positional):
@@ -57,7 +57,7 @@ ANTHROPIC_API_KEY=sk-ant-... \
 
 ```bash
 ANTHROPIC_API_KEY=sk-ant-... \
-  ./_build/default/bin/drivers/provider_driver.exe claude-opus-4-8 "Summarise the water cycle"
+  ./_build/default/test/live/provider_driver.exe claude-opus-4-8 "Summarise the water cycle"
 ```
 
 Output is one line per SSE event (`[text_delta]`, `[tool_call_start]`, `[done]`, etc.), followed by a summary line.
@@ -71,15 +71,15 @@ Exercises the **provider layer** (not the agent loop) through a suite of multi-t
 ```bash
 # Run all scenarios with the first registered provider
 ANTHROPIC_API_KEY=sk-ant-... \
-  ./_build/default/bin/drivers/conversation_driver.exe
+  ./_build/default/test/live/conversation_driver.exe
 
 # Specify a provider (anthropic | openai-completions)
 ANTHROPIC_API_KEY=sk-ant-... \
-  ./_build/default/bin/drivers/conversation_driver.exe anthropic
+  ./_build/default/test/live/conversation_driver.exe anthropic
 
 # Run one named scenario
 OPENAI_API_KEY=... OPENAI_COMPAT=go \
-  ./_build/default/bin/drivers/conversation_driver.exe openai-completions simple_text
+  ./_build/default/test/live/conversation_driver.exe openai-completions simple_text
 ```
 
 **Argument 1 — provider** (optional):
@@ -106,7 +106,7 @@ Output is a per-scenario `PASS` / `FAIL` summary. Exit code is 0 if all pass.
 ```bash
 OPENAI_API_KEY=<zen-api-key> \
 OPENAI_COMPAT=go \
-  ./_build/default/bin/drivers/conversation_driver.exe openai-completions
+  ./_build/default/test/live/conversation_driver.exe openai-completions
 ```
 
 ---
@@ -117,10 +117,10 @@ Exercises the **agent loop** (`pera_core`) end-to-end using a faux provider (no 
 
 ```bash
 # Run all scenarios
-./_build/default/bin/drivers/loop_driver.exe
+./_build/default/test/live/loop_driver.exe
 
 # Run one named scenario
-./_build/default/bin/drivers/loop_driver.exe parallel_tool_calls
+./_build/default/test/live/loop_driver.exe parallel_tool_calls
 ```
 
 No API keys are required — the faux provider is configured inline.
@@ -147,7 +147,7 @@ Exercises the **harness layer** (`pera_harness`) standalone against a real OS. T
 
 ```bash
 # Run all scenarios
-./_build/default/bin/drivers/env_driver.exe
+./_build/default/test/live/env_driver.exe
 ```
 
 No API keys are required.
@@ -171,7 +171,7 @@ Output is a per-scenario `PASS` / `FAIL` / `SKIP` summary. Exit code is 0 if all
 Exercises `Session_writer` directly (no agent loop). Writes sequences of session entries to a temp JSONL file and verifies structure and content chain integrity.
 
 ```bash
-./_build/default/bin/drivers/session_driver.exe
+./_build/default/test/live/session_driver.exe
 ```
 
 No API keys are required.
@@ -197,7 +197,7 @@ Output is a per-scenario `PASS` / `FAIL` summary. Exit code is 0 if all pass.
 Exercises the **full harness** (`pera_agent`) end-to-end using a faux provider and a real local filesystem. Runs all scenarios sequentially and writes session files to a temporary directory.
 
 ```bash
-./_build/default/bin/drivers/harness_driver.exe
+./_build/default/test/live/harness_driver.exe
 ```
 
 No API keys are required.
@@ -220,7 +220,7 @@ Output is a per-scenario `PASS` / `FAIL` summary. Exit code is 0 if all pass.
 Exercises the **`Compaction` module** (`pera_harness`) directly — the §12 layer test for the compaction algorithm without instantiating a full harness. Useful both as a regression guard and as a prompt-tuning tool (the `real_model` scenario prints the produced summary).
 
 ```bash
-./_build/default/bin/drivers/compaction_driver.exe
+./_build/default/test/live/compaction_driver.exe
 ```
 
 **Scenarios:**
@@ -234,10 +234,10 @@ The `real_model` scenario is skipped (not failed) when `ANTHROPIC_API_KEY` is ab
 
 ```bash
 # Offline only
-./_build/default/bin/drivers/compaction_driver.exe
+./_build/default/test/live/compaction_driver.exe
 
 # With real summarisation
-ANTHROPIC_API_KEY=sk-ant-... ./_build/default/bin/drivers/compaction_driver.exe
+ANTHROPIC_API_KEY=sk-ant-... ./_build/default/test/live/compaction_driver.exe
 ```
 
 Output is a per-scenario `PASS` / `FAIL` / `SKIP` summary. Exit code is 0 if all non-skipped scenarios pass.
@@ -250,7 +250,7 @@ Exercises the **tool layer** (`pera_tools`) against a real OS using the harness.
 
 ```bash
 # Run all scenarios
-./_build/default/bin/drivers/tool_driver.exe
+./_build/default/test/live/tool_driver.exe
 ```
 
 No API keys are required. A temporary directory is created for the test run and cleaned up afterward.

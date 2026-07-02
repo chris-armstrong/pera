@@ -288,11 +288,11 @@
   (alcotest (and (>= 1.7) :with-test))))
 
 (package
- (name pera_drivers)
- (synopsis "Driver executables for Pera")
+ (name pera_live_tests)
+ (synopsis "Live integration test executables for Pera")
  (allow_empty)
  (description
-   "Driver executables for Pera - examples of how to use the Pera AI agent framework")
+   "Live integration test executables for Pera - exercise the full stack against real APIs")
  (depends 
   (cmarkit (>= 0.4.0))
   (logs
