@@ -34,19 +34,6 @@
   fpath))
 
 (executable
- (name env_driver)
- (libraries
-  pera_env
-  pera_types
-  eio
-  eio_main
-  eio_linux
-  containers
-  fpath
-  cstruct
-  unix))
-
-(executable
  (name session_driver)
  (modules session_driver session_jsonl_helpers)
  (libraries
