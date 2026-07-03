@@ -1,8 +1,8 @@
 # Sandbox Execution Environment — Planning Document
 
-**Status**: Research / pre-proposal  
-**Date**: 2026-07-01 (revised 2026-07-02)  
-**Branch**: bridge-cse_01Qyur6Fg8v7neexJujzV8V1
+**Status**: Stage 0 planned  
+**Date**: 2026-07-01 (revised 2026-07-03)  
+**Branch**: bridge-cse_01MY3dfGCqYK38hRssgyFdfV
 
 ---
 
@@ -21,7 +21,8 @@ Add a sandbox execution environment: a long-running shell process (inside a name
 
 ### Phasing
 
-- **Phase 1 (ships first)**: refactor `Execution_env.S` construction so `Fs` is **substitutable** without changing the interface; ship an **identity** `Fs` (host paths, no remapping) with the **containment gate**; persistent shell as default; `--sandbox`/`--no-sandbox` bool; hard-fail.
+- **Stage 0 (MVP, ships first)**: persistent shell as the default execution env (`/bin/bash` only, no OS sandbox); `is_stateful` flag on `SHELL`; cwd-override fix in tools; post-command state snapshot for crash recovery; SIGINT+grace timeout; `Shell_restarted` event. Zero new OS dependencies.
+- **Phase 1 (after Stage 0)**: refactor `Execution_env.S` construction so `Fs` is **substitutable** without changing the interface; ship an **identity** `Fs` (host paths, no remapping) with the **containment gate**; `--sandbox`/`--no-sandbox` bool; OS backends (bwrap on Linux, sandbox-exec on macOS); hard-fail on missing backend.
 - **Phase 2 (later, additive)**: path remapping (`workdir_mount = At sandbox_path`) via a drop-in `Path_mapping_fs` wrapper. Because Phase 1 routes all `Fs` access through a swappable module, Phase 2 is purely "provide a different `Fs` impl" — no changes to tools, `S` assembly, or `bash_tool`/`grep_tool`.
 
 ---
@@ -597,6 +598,92 @@ type credential_provider = {
 (* Add to sandbox_config: *)
   credential_providers : credential_provider list;  [@sexp.default []]
 ```
+
+---
+
+## Stage 0 — MVP: Persistent Shell
+
+**Goal**: ship a usable persistent shell with no new OS dependencies. The single biggest gap today is that `cd` does not survive between tool calls. This stage fixes that.
+
+### What it delivers
+
+- The agent can `cd` to a directory and subsequent bash/grep tool calls run there.
+- `export`, shell functions, and aliases persist across tool calls within a session.
+- Works on any host where `/bin/bash` exists (Linux and macOS with no extra packages).
+- Shell crash (e.g. agent types `exit`, script calls `exit 0`) is detected, the shell is restarted, state is replayed from the last snapshot, and a `Shell_restarted` event is surfaced to the agent so it knows to re-establish anything that was not snapshotted.
+- `--persistent-shell=false` reverts to the current stateless `/bin/sh -c` model (CI / debug escape hatch).
+
+### What is deferred
+
+- OS kernel sandbox (bwrap, sandbox-exec) — Phase 1.
+- `Fs` substitution / containment gate — agents can still escape the workdir via tools until Phase 1. Accepted risk for Stage 0.
+- `--sandbox` / `--no-sandbox` flag — nothing backs it yet; added in Phase 1.
+- Secret injection mechanisms (`env_passthrough` allowlist enforcement, secrets tmpfs, `refresh_credentials`) — Phase 1 / later.
+- Path remapping — Phase 2.
+
+### Sentinel protocol
+
+Each `exec` call communicates with the persistent bash over its stdin/stdout pipes:
+
+1. Generate a unique per-call sentinel: `SENTINEL = "PERA_DONE_" ^ uuidv4_hex ()`.
+2. Write to shell stdin:
+   ```
+   ( <user_command> ) 2>&1
+   printf '\n'
+   echo "$? $SENTINEL"
+   ```
+3. Read stdout **line by line** until a line matches `"<exit_code> <SENTINEL>"`.
+4. Everything before that line is the combined stdout+stderr output; that line provides the exit code.
+5. Strip the sentinel line and return output + exit code as `exec_result`.
+
+Wrapping in `( ... )` makes the subshell exit code reflect `<user_command>`. `2>&1` inside the subshell merges stderr into stdout, matching current `bash_tool` behaviour. The UUID sentinel makes collisions with command output astronomically unlikely.
+
+**Streaming (exit plan):** the line-by-line reader already has the right structure for streaming — for MVP, lines are accumulated into a buffer and returned at end. To enable streaming later, call `on_stdout` immediately for each non-sentinel line instead of accumulating. Zero interface change: `Persistent_shell.exec` takes `?on_stdout` from day one (matching the `SHELL.exec` signature), but the callback is optional and buffered for now. **Constraint to document**: because `2>&1` merges stderr into stdout inside the wrapper, `on_stderr` is always empty with a persistent shell; callers should not rely on it.
+
+### Timeout: SIGINT + grace
+
+On timeout expiry:
+1. Send **SIGINT** to the shell's process group (stops the running subprocess; shell itself typically survives).
+2. Continue reading the sentinel loop for a **5 s grace period**.
+3. If the sentinel arrives within grace → return the (interrupted) result normally.
+4. If grace expires without a sentinel → send **SIGKILL** to the shell process and enter the crash-restart path (see below).
+
+This means a timeout does not necessarily kill the shell — SIGINT may stop only the running child command while the shell remains alive and stateful.
+
+### State snapshot and crash recovery
+
+**Snapshot (post-command):** after every command's sentinel is received, capture shell state via one extra stdin/stdout round-trip:
+
+```bash
+declare -px ; declare -f ; alias -p ; shopt -p ; set +o ; pwd
+```
+
+The result is stored **in pera-cli memory only** (never written to a file the agent can read). For Stage 0, the snapshot captures all exported vars without filtering; tighten to the `env_passthrough` allowlist when `--sandbox` lands in Phase 1 (before that, there is no security boundary to protect).
+
+**What the snapshot does NOT cover** (documented gap, kept simple by design):
+- Traps (`trap`), background jobs, directory stack (`pushd`/`popd`), `PIPESTATUS`, `BASH_REMATCH`.
+- `source` invocations: replaying source scripts has unpredictable side effects (network calls, interactive auth, venv creation). We do **not** replay them — the agent receives `Shell_restarted` and can re-source manually. This is the right long-term decision: replay should stay dumb.
+- State accumulated since the last completed command (in-flight commands lost on crash).
+
+**Restart procedure:**
+1. Detect EOF on stdout (shell died) or SIGKILL after grace expiry.
+2. Spawn a fresh bash.
+3. Source the last-known snapshot into it (sets env, functions, aliases, options, cwd).
+4. Emit `Shell_restarted { state_restored : bool }` agent event via the existing `Agent_harness.subscribe` fan-out. `state_restored = true` if a snapshot existed; `false` if the shell died before any snapshot was captured.
+5. Return an `Error execution_error` for the command that was in flight at crash time.
+
+### Files and seams
+
+| File | Change |
+|---|---|
+| `lib/pera_env/execution_env.mli` | Add `val is_stateful : bool` to `SHELL` sig |
+| `lib/pera_env/local_env.ml` | `Sh.is_stateful = false` (no behaviour change) |
+| `lib/pera_env/persistent_shell.{ml,mli}` | **New** — spawn bash; sentinel exec loop with `?on_stdout`; post-command state snapshot; SIGINT+grace timeout; crash detection → restart → snapshot replay; `close` |
+| `lib/pera_tools/bash_tool.ml` | Drop `?cwd:(Some E.cwd)` override when `E.Sh.is_stateful` |
+| `lib/pera_tools/grep_tool.ml` | Same |
+| `lib/pera_cli/pera_config.ml` | Add `persistent_shell : bool` field (default `true`) |
+| `lib/pera_cli/pera_cli.ml` | Wire `Persistent_shell`-backed env when `persistent_shell = true`; pass `Local_env` when `false` |
+| `lib/pera_types/types.ml` | Add `Shell_restarted of { state_restored : bool }` variant to `agent_event` |
 
 ---
 
