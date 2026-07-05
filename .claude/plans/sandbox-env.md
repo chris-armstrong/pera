@@ -169,28 +169,32 @@ Persistent model: one long-lived shell process (bash). Each tool call sends a co
 
 State preserved between calls: cwd, exported env vars, shell functions, history, jobs (if not backgrounded).
 
-### Protocol: stdin/stdout with sentinel
+### Protocol: three independent channels, no stream merging
 
-No slave binary needed for local sandboxes. We communicate directly with the shell over its stdin/stdout pipes.
+No slave binary needed for local sandboxes. We communicate directly with the shell over three pipes set up at spawn time: **stdout** (fd 1), **stderr** (fd 2), and a private **state** channel (fd 3) that user commands never see or touch.
+
+**Revised from an earlier draft** that merged stdout/stderr with `2>&1` so a single sentinel could mark completion. That merge happens *inside the shell*, before the harness ever sees two streams — it throws away the stream tag permanently and forecloses ever separating them later without redesigning the protocol (see "stdout/stderr merging" discussion in the design notes). Splitting them costs nothing extra: a real interactive shell already has stdout and stderr as distinct fds — `2>&1` was the artificial step we were adding, not a natural default. Eio supports arbitrary fd mapping on process spawn (mirrors `Types.Exec.exec`'s `?fds:redirect list` in the `merry` survey), so a third fd is straightforward.
 
 **Per-command protocol:**
 
 1. Generate a unique per-call sentinel: `SENTINEL = "PERA_DONE_" + uuidv4_hex()`
 2. Write to shell stdin:
    ```
-   ( <user_command> ) 2>&1
-   printf '\n'
-   echo "$? $SENTINEL"
+   ( <user_command> )
+   printf '\n' 1>&1; printf '\n' 1>&2
+   echo "$? $SENTINEL" 1>&1
+   echo "$SENTINEL" 1>&2
    ```
-3. Read stdout lines until a line matches `"<exit_code> <SENTINEL>"`.
-4. Everything before that line is the command's combined stdout+stderr output.
-5. Strip the sentinel line; return output and exit code.
+3. Read stdout and stderr **concurrently**, one Eio fiber per fd, each terminating on its own sentinel line. Because bash only reaches the `echo ... $SENTINEL` lines after the subshell (and everything it forked) has fully exited, and pipe writes/reads are ordered per-fd, seeing a fd's sentinel guarantees all of that command's output on that fd has already been delivered — no merge needed to know when you're done.
+4. The harness timestamps every line as it is read (`Eio.Time.now`), independent of the shell — zero protocol coordination required for this part. Each captured line is conceptually `(stream, timestamp, content)`.
+5. `exec_result` still exposes flattened `stdout : string` / `stderr : string` for compatibility, plus an ordered list of timestamped, tagged chunks. Tools can merge-sort by timestamp to reconstruct **true wall-clock interleaving** without ever forcing both streams through one fd — strictly better than shell-side `2>&1`, which is also only an approximation of interleaving and destroys the tag to get it. Default tool output becomes this order-correct merge; "stdout only" (for machine-parsed output like `--json`/`--porcelain` flags) and per-line timing (useful for spotting hangs/slow steps) both become available without extra shell round-trips.
+
+**Known limitation (documented, accepted, not new):** many programs fully block-buffer stdio when fd 1/2 is a pipe rather than a tty, so a timestamp means "when the harness received the flushed chunk," not the instant it was produced. This is true of today's `Local_env` pipe capture too — not introduced by this change, and not being solved now (pty allocation, e.g. via `openpty`/`script`, is a possible future improvement, out of scope for Stage 0).
 
 **Why this works:**
-- UUID sentinel is unique per call — collisions with command output are astronomically unlikely.
+- UUID sentinel is unique per call — collisions with command output are astronomically unlikely, on either stream.
 - Wrapping in `( ... )` makes the exit code of the subshell reflect `<user_command>`.
-- `2>&1` inside the subshell redirects stderr to stdout (matching current bash_tool behavior).
-- `printf '\n'` ensures a clean newline before the sentinel even if command output ended without one.
+- `printf '\n'` on both fds ensures a clean newline before each sentinel even if the command's output on that fd ended without one.
 
 **Cancellation and timeout:**
 - A separate Eio fiber monitors `Eio.Cancel.t`; if cancelled, sends SIGINT to the shell process (not SIGKILL — allows the shell to clean up).
@@ -294,7 +298,13 @@ val exec :
   ?timeout:float ->
   cancel:Eio.Cancel.t ->
   (Execution_env.exec_result, Pera_types.Types.execution_error) result
-(** Sends [command] to the persistent shell and reads back the result. *)
+(** Sends [command] to the persistent shell and reads back the result.
+    Internally spawns two reader fibers (stdout, stderr), each waiting on its
+    own sentinel, plus a third fiber draining the fd-3 state channel. Every
+    line is timestamped as it is read; [exec_result] carries the flattened
+    [stdout]/[stderr] strings for compatibility plus the ordered, timestamped,
+    tagged chunks so callers can reconstruct true interleaving without the
+    shell ever merging the two streams. *)
 
 val close : t -> unit
 (** Sends 'exit' to the shell and waits for it to terminate. *)
@@ -405,6 +415,9 @@ CLI flags: `--sandbox` / `--no-sandbox` (equivalently `--sandbox=true|false`), a
 5. **Changing `bash_tool`/`grep_tool` cwd behaviour now** — Yes, now. The fix is **removal**: drop the `?cwd:(Some E.cwd)` override when `E.Sh.is_stateful`.
 6. **Remote/VM sandbox slave protocol** — **Deferred**. Local-first design must not preclude it later.
 7. **Default** — Sandboxing is **opt-in** (`--sandbox`). Without it, pera runs as today (but persistent-shell by default per #4).
+8. **State-capture mechanism** — Stay with a **real bash subprocess** as the executor, controlled via the enriched sentinel protocol above (three fds, harness-side timestamps). Two alternatives were considered and rejected for now:
+   - **Embedding a shell interpreter as a library** (surveyed: [merry](https://tangled.org/patrick.sirref.org/merry), an OCaml shell library with immutable/introspectable state — would eliminate the text snapshot/replay round-trip entirely). Rejected: not complete enough to depend on — no working job control (`fg`/`bg`/`jobs` are reserved words with no implementation), background jobs (`&`) are explicitly disabled/broken per its own TODO, and its POSIX `State`/`Exec` reference implementation was deleted from its tree the day before this evaluation (single-maintainer, pre-alpha, `dune build` fails out of the box). Job control is a hard minimum for a shell substitute. Revisit only if/when it stabilizes — it would carry its own dependency lifecycle risk regardless.
+   - **Platform-specific introspection** (Linux `/proc/<pid>/environ` reads instead of `declare -px`; bash loadable builtins via `enable -f` reporting state over a C-level side-channel). Rejected: pera's cross-platform bar is macOS + Linux (a hard requirement — see "5. macOS + Linux support" above, and the goal of being a general-purpose starting point for agentic dev on both), and both alternatives are Linux-only or require maintaining compiled platform-specific shims (a bash `.so` per OS/arch, notarization concerns on macOS) for a benefit — avoiding one `declare -px` round-trip — that the fd-3 side-channel above already captures without any platform-specific code, since it's pure Eio pipe plumbing on both OSes.
 
 ---
 
@@ -610,6 +623,7 @@ type credential_provider = {
 - The agent can `cd` to a directory and subsequent bash/grep tool calls run there.
 - `export`, shell functions, and aliases persist across tool calls within a session.
 - Works on any host where `/bin/bash` exists (Linux and macOS with no extra packages).
+- stdout and stderr are captured on genuinely separate fds (not shell-side `2>&1`) and timestamped per line by the harness, so tool output can be reconstructed in true wall-clock order, filtered to one stream when needed (e.g. machine-parseable `--json` output), and carries per-command timing for spotting hangs/slow steps — without any platform-specific code, since it's pure Eio pipe plumbing on both macOS and Linux.
 - Shell crash (e.g. agent types `exit`, script calls `exit 0`) is detected, the shell is restarted, state is replayed from the last snapshot, and a `Shell_restarted` event is surfaced to the agent so it knows to re-establish anything that was not snapshotted.
 - `--persistent-shell=false` reverts to the current stateless `/bin/sh -c` model (CI / debug escape hatch).
 
@@ -621,44 +635,49 @@ type credential_provider = {
 - Secret injection mechanisms (`env_passthrough` allowlist enforcement, secrets tmpfs, `refresh_credentials`) — Phase 1 / later.
 - Path remapping — Phase 2.
 
-### Sentinel protocol
+### Sentinel protocol: three channels, harness-side timestamps
 
-Each `exec` call communicates with the persistent bash over its stdin/stdout pipes:
+Each `exec` call communicates with the persistent bash over three pipes set up at spawn time: stdout (fd 1), stderr (fd 2), and a private state channel (fd 3) that user commands never touch.
 
 1. Generate a unique per-call sentinel: `SENTINEL = "PERA_DONE_" ^ uuidv4_hex ()`.
 2. Write to shell stdin:
    ```
-   ( <user_command> ) 2>&1
-   printf '\n'
-   echo "$? $SENTINEL"
+   ( <user_command> )
+   printf '\n' 1>&1; printf '\n' 1>&2
+   echo "$? $SENTINEL" 1>&1
+   echo "$SENTINEL" 1>&2
    ```
-3. Read stdout **line by line** until a line matches `"<exit_code> <SENTINEL>"`.
-4. Everything before that line is the combined stdout+stderr output; that line provides the exit code.
-5. Strip the sentinel line and return output + exit code as `exec_result`.
+3. Read stdout and stderr **concurrently**, one fiber per fd, each **line by line** until its own sentinel line arrives (`"<exit_code> <SENTINEL>"` on stdout; bare `"<SENTINEL>"` on stderr). Bash only reaches the `echo ... $SENTINEL` lines after the subshell and everything it forked has fully exited, and pipe writes/reads are ordered per fd, so seeing a fd's sentinel guarantees that fd's output for this command is fully drained — no merge required to know completion.
+4. As each line is read off either fd, the harness timestamps it (`Eio.Time.now`) independently of the shell.
+5. Strip the sentinel lines and return `exec_result` with flattened `stdout : string` / `stderr : string` (for compatibility) plus an ordered list of `(stream, timestamp, line)` chunks that callers can merge-sort to reconstruct true wall-clock interleaving without ever forcing both streams through one fd.
 
-Wrapping in `( ... )` makes the subshell exit code reflect `<user_command>`. `2>&1` inside the subshell merges stderr into stdout, matching current `bash_tool` behaviour. The UUID sentinel makes collisions with command output astronomically unlikely.
+Wrapping in `( ... )` makes the subshell exit code reflect `<user_command>`. The UUID sentinel makes collisions with command output astronomically unlikely, on either stream.
 
-**Streaming (exit plan):** the line-by-line reader already has the right structure for streaming — for MVP, lines are accumulated into a buffer and returned at end. To enable streaming later, call `on_stdout` immediately for each non-sentinel line instead of accumulating. Zero interface change: `Persistent_shell.exec` takes `?on_stdout` from day one (matching the `SHELL.exec` signature), but the callback is optional and buffered for now. **Constraint to document**: because `2>&1` merges stderr into stdout inside the wrapper, `on_stderr` is always empty with a persistent shell; callers should not rely on it.
+**Why not `2>&1` + a single sentinel (rejected):** merging at the shell level throws away the stream tag before the harness ever sees two streams, and forecloses separating them later without redesigning the protocol. It also isn't necessary — a real interactive shell already keeps stdout/stderr as distinct fds; `2>&1` was the artificial addition, not the default. The known cost of true separation (knowing when *both* streams are done, not just one) is solved by sentinel-per-fd, not by merging.
+
+**Streaming (exit plan):** the per-fd line readers already have the right structure for streaming — for MVP, lines are accumulated into buffers and returned at end. To enable streaming later, call `on_stdout`/`on_stderr` immediately for each non-sentinel line instead of accumulating; both callbacks receive real content now (no `2>&1` constraint to document, unlike the earlier draft).
+
+**Known limitation (documented, accepted, not new):** many programs fully block-buffer stdio when writing to a pipe rather than a tty, so a captured timestamp means "when the harness received the flushed chunk," not the instant it was produced. True of today's `Local_env` pipe capture too; not solved here (pty allocation is a possible future improvement, out of scope for Stage 0).
 
 ### Timeout: SIGINT + grace
 
 On timeout expiry:
 1. Send **SIGINT** to the shell's process group (stops the running subprocess; shell itself typically survives).
-2. Continue reading the sentinel loop for a **5 s grace period**.
-3. If the sentinel arrives within grace → return the (interrupted) result normally.
-4. If grace expires without a sentinel → send **SIGKILL** to the shell process and enter the crash-restart path (see below).
+2. Continue reading **both** sentinel loops (stdout and stderr) for a **5 s grace period**.
+3. If **both** sentinels arrive within grace → return the (interrupted) result normally.
+4. If either is still missing when grace expires → send **SIGKILL** to the shell process and enter the crash-restart path (see below).
 
-This means a timeout does not necessarily kill the shell — SIGINT may stop only the running child command while the shell remains alive and stateful.
+This means a timeout does not necessarily kill the shell — SIGINT may stop only the running child command while the shell remains alive and stateful. Waiting on both fds (rather than one) matters now that stdout/stderr aren't merged: a command could finish writing to one stream well before the other.
 
 ### State snapshot and crash recovery
 
-**Snapshot (post-command):** after every command's sentinel is received, capture shell state via one extra stdin/stdout round-trip:
+**Snapshot (out-of-band, same round-trip, fd 3):** rather than a second stdin/stdout exchange after every command (doubling latency and reusing the channel a command just used), the snapshot capture rides the private state channel opened at spawn time, appended to the *same* wrapper send as the command itself:
 
 ```bash
-declare -px ; declare -f ; alias -p ; shopt -p ; set +o ; pwd
+{ declare -px ; declare -f ; alias -p ; shopt -p ; set +o ; pwd ; echo "$SENTINEL" ; } 1>&3
 ```
 
-The result is stored **in pera-cli memory only** (never written to a file the agent can read). For Stage 0, the snapshot captures all exported vars without filtering; tighten to the `env_passthrough` allowlist when `--sandbox` lands in Phase 1 (before that, there is no security boundary to protect).
+The fd-3 reader is its own fiber and does **not** gate the tool call's return to the agent — the result comes back as soon as the stdout/stderr sentinels land; the snapshot updates shortly after, once its own sentinel arrives on fd 3. The result is stored **in pera-cli memory only** (never written to a file the agent can read, and never sandbox-readable). For Stage 0, the snapshot captures all exported vars without filtering; tighten to the `env_passthrough` allowlist when `--sandbox` lands in Phase 1 (before that, there is no security boundary to protect).
 
 **What the snapshot does NOT cover** (documented gap, kept simple by design):
 - Traps (`trap`), background jobs, directory stack (`pushd`/`popd`), `PIPESTATUS`, `BASH_REMATCH`.
@@ -666,7 +685,7 @@ The result is stored **in pera-cli memory only** (never written to a file the ag
 - State accumulated since the last completed command (in-flight commands lost on crash).
 
 **Restart procedure:**
-1. Detect EOF on stdout (shell died) or SIGKILL after grace expiry.
+1. Detect EOF on stdout, stderr, or fd 3 (shell died) or SIGKILL after grace expiry.
 2. Spawn a fresh bash.
 3. Source the last-known snapshot into it (sets env, functions, aliases, options, cwd).
 4. Emit `Shell_restarted { state_restored : bool }` agent event via the existing `Agent_harness.subscribe` fan-out. `state_restored = true` if a snapshot existed; `false` if the shell died before any snapshot was captured.
@@ -678,7 +697,7 @@ The result is stored **in pera-cli memory only** (never written to a file the ag
 |---|---|
 | `lib/pera_env/execution_env.mli` | Add `val is_stateful : bool` to `SHELL` sig |
 | `lib/pera_env/local_env.ml` | `Sh.is_stateful = false` (no behaviour change) |
-| `lib/pera_env/persistent_shell.{ml,mli}` | **New** — spawn bash; sentinel exec loop with `?on_stdout`; post-command state snapshot; SIGINT+grace timeout; crash detection → restart → snapshot replay; `close` |
+| `lib/pera_env/persistent_shell.{ml,mli}` | **New** — spawn bash with 3 fds (stdout/stderr/state); per-fd sentinel exec loop with `?on_stdout`/`?on_stderr` and harness-side per-line timestamps; state snapshot via fd 3 (same round-trip, non-gating); SIGINT+grace timeout waiting on both stdout+stderr sentinels; crash detection (EOF on any of the 3 fds) → restart → snapshot replay; `close` |
 | `lib/pera_tools/bash_tool.ml` | Drop `?cwd:(Some E.cwd)` override when `E.Sh.is_stateful` |
 | `lib/pera_tools/grep_tool.ml` | Same |
 | `lib/pera_cli/pera_config.ml` | Add `persistent_shell : bool` field (default `true`) |
