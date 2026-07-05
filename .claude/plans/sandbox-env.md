@@ -714,3 +714,64 @@ The fd-3 reader is its own fiber and does **not** gate the tool call's return to
 - **Tmpdir home cleanup**: The fresh home directory under `$TMPDIR` should be cleaned up at session end. Can be done with a resource cleanup via Eio Switch.
 - **`find_executable` inside sandbox**: Currently `Local_env.Sh.find_executable` searches the host's `PATH`. For sandbox env, this is fine since we inherit `PATH` (or pass through it). No change needed.
 - **Init script approach**: A startup shell script (user-configured) sourced by the persistent shell at startup (via bash's `--init-file` flag or source in first command). This is how you'd set up tools, PATH additions, etc.
+
+---
+
+## Appendix: Integration test strategy for shell persistence (2026-07-05)
+
+### Prior art surveyed
+
+**pexpect's `replwrap.py`** is the closest existing analogue to the sentinel protocol above — it wraps a REPL by rewriting its prompt to a unique sentinel and reading until the sentinel reappears. Notable for pera:
+- It has to **special-case bash vs zsh** even though both are "just shells": bash needs the sentinel wrapped in `\[...\]` non-printable markers (so line-editing doesn't miscount it), zsh needs `%(!..)` conditional syntax instead. This previews what would bite pera if the persistent-shell backend is ever generalized past bash — **the sentinel-emission snippet is not portable shell syntax**.
+- It disables paging (`PAGER=cat`) at REPL init — same class of problem pera's fd-3 snapshot step (`declare -px`, etc.) will have if a command invokes a pager or `$EDITOR` mid-session.
+
+**OSC 133 "semantic prompt" shell integration** (used by VSCode, iTerm2, kitty, ghostty, wezterm) solves the same "detect a command boundary/exit code" problem, across the same shell set pera cares about:
+- **bash**: hooks via `PROMPT_COMMAND`/`PS0`/`PS1` string injection — structurally similar to pera's approach.
+- **zsh**: uses `precmd`/`preexec` functions and opens a **dedicated fd to the tty** so marks still emit even when stdout is redirected — a fundamentally different mechanism than string-based prompts.
+- **fish**: uses **event hooks** (`fish_prompt`, `fish_postexec`), not PS1 manipulation at all — fish's prompt isn't a plain string, so a bash-style "marker in PS1" trick doesn't transfer.
+- fish-shell issue [#8832](https://github.com/fish-shell/fish-shell/issues/8832) documents that even fish's own idiomatic mechanism for this has known gaps: the `fish_prompt` event doesn't fire after a cancelled command or syntax error. Concrete evidence that "detect command completion in a shell-agnostic way" is a genuinely hard, previously-mis-solved problem, not a solved one.
+
+**oils-for-unix (`oilshell/oils`) spec test suite** is the best model for *methodology* (not protocol): thousands of small shell snippets run through `bash`, `dash`, `zsh`, `mksh` (and `osh`) via a `compare_shells` directive, with explicit per-shell **qualifiers** for known divergence rather than an expectation of uniform output. This is the right shape for a pera cross-shell fixture suite if the persistent-shell backend ever becomes multi-shell.
+
+**ShellSpec** (BDD framework for bash/ksh/zsh/dash/POSIX) is worth noting as an existing "write once, run across shells" test runner, though it tests shell *scripts*, not a wrapper's IPC protocol.
+
+Sources: [pexpect replwrap](https://github.com/pexpect/pexpect/blob/master/pexpect/replwrap.py), [oils Spec Tests wiki](https://github.com/oils-for-unix/oils/wiki/Spec-Tests), [ghostty OSC 133 docs](https://deepwiki.com/ghostty-org/ghostty/9.3-osc-133-prompt-marking), [fish-shell #8832](https://github.com/fish-shell/fish-shell/issues/8832), [ShellSpec](https://shellspec.info/).
+
+### Two test axes (important scope split)
+
+Stage 0 only ever spawns **bash** (falling back to `/bin/sh`) as the *outer* persistent process — zsh/dash/fish are never the wrapper's own interpreter in the current design. "Test across bash/zsh/dash/fish" therefore splits into two axes with different payoff and different failure modes:
+
+1. **Outer-shell axis** (forward-looking; only matters if the wrapper is ever made to run the user's `$SHELL` instead of a hardcoded bash). Does the sentinel-emission snippet even parse in the candidate shell? `dash` is POSIX-strict — fine, the snippet is POSIX. `zsh` is bash-compatible enough — fine. **`fish` is not a POSIX shell**: `( cmd )` in fish means command substitution, not a subshell; `$?` doesn't exist (`$status` does); `echo "$? $SENTINEL"` is invalid fish syntax outright. If outer-shell choice is ever exposed, the emission snippet needs a fish-specific variant, mirroring the OSC 133 finding above.
+2. **Inner/nested-shell axis** (relevant *today*, bash-only). The agent's *commands*, run inside the one persistent bash, can themselves invoke `zsh -c`, `fish -c`, `dash script.sh`, subshells, background jobs, another REPL, `ssh`, etc. This is where "concurrency, subshells, interference" actually bites Stage 0, and is the higher-priority axis to build coverage for first.
+
+### Reflection: no PTY is a correctness risk, not just a timestamp-fidelity footnote
+
+The plan currently documents block-buffering under pipe capture as a "known limitation, accepted, not new." Absence of a PTY is broader than that — it changes whether whole classes of commands *work at all*, not just how precisely their output is timestamped:
+
+- Programs that branch on `isatty(1)`/`isatty(0)` change behavior under a pipe: `git` drops color/pager, progress bars (`pip`, `npm`, `docker pull`) degrade or spam newlines, interactive installers (`npm init`, `gh auth login`, `aws configure sso`) may refuse to run or hang waiting on input that can never arrive.
+- `sudo` (with `requiretty`), `ssh` password prompts, and `gpg`/`pinentry` **deliberately refuse piped stdin** for credential entry — these hang until timeout rather than failing fast.
+- No controlling tty means no `SIGWINCH`/window size (`stty: standard input: Inappropriate ioctl for device`) and no real job-control signal semantics (`Ctrl-Z`/`SIGTSTP`, `fg`/`bg`).
+- This touches the secret-injection SSO flow above: the plan correctly routes `aws sso login` through a dedicated harness-side tool "outside the sandbox," not through `Sh.exec` — good, that sidesteps the issue for the built-in flow. But nothing stops an agent from independently running `aws sso login` or `gh auth login` directly in the persistent shell; that path *will* hang with no pty.
+
+**Recommendation:** promote "requires a tty" to a named, tested failure class for Stage 0 (test that it hangs *safely* and is recovered by the existing SIGINT+grace+timeout path, not that it's supported), and reprioritize pty allocation (`openpty`) from "possible future improvement" to an early Phase 1 candidate — it changes usability of whole workflows (interactive auth, editors, REPLs left running), not just timestamp precision.
+
+### Proposed test matrix
+
+| Category | Scenarios | Why it can break the wrapper |
+|---|---|---|
+| Sentinel correctness | output containing a string matching the `PERA_DONE_*` pattern (adversarial echo); partial line then hang; no trailing newline before exit; empty/whitespace-only command | False sentinel match ends the read early, or never matches |
+| Subshells & grouping | `( cd /tmp && pwd )` (must not leak cwd to parent); `{ cmd; }` group; `cmd1; cmd2 &` background job outliving the sentinel; `nohup long &`; `disown` | A backgrounded job can inherit the write end of stdout/stderr and keep the pipe open past the sentinel line — the single most common real-world failure mode for this design (hung read on next call) |
+| Nested interpreters | `python3` left running (agent forgets to exit) then next `Sh.exec`; `zsh -c`, `fish -c`, `dash script.sh`; `ssh host 'cmd'` | Confirms the sentinel-on-stdin design is agnostic to what runs underneath, and that a wedged nested process surfaces as a timeout, not corruption of the next command's read |
+| Concurrency / reentrancy | two `Sh.exec` calls issued back-to-back without awaiting the first; cancellation of call N while call N+1 is queued; fd-3 snapshot fiber racing the next command's stdin write | Confirms the harness actually serializes access to the shared stdin/fds rather than allowing interleaving |
+| Signals / timeout | `sleep 100` timeout → SIGINT → grace → shell survives, next command runs in same cwd; command that traps and ignores SIGINT; orphaned grandchild that ignores SIGINT | Validates "SIGINT stops the child, shell survives," including the SIGKILL fallback path |
+| Crash & restart | bare `exit`; `exit 0` inside a sourced script; `kill -SEGV` on the shell pid; `kill -9` mid-command | `Shell_restarted` fires, snapshot replay works, the in-flight command surfaces as `Error`, not a hang |
+| Snapshot fidelity | export/function/alias/`shopt`/`set -o` survive crash+restart; **negative case**: a `trap` set before crash is *not* restored — assert it's actually gone, not flaky | Confirms documented gaps are real gaps, not intermittently-working |
+| cwd/env override removal | `bash_tool`/`grep_tool` no longer pass `?cwd` when `is_stateful`; `cd` in one call then a relative-path command in the next resolves correctly; `cd` into then `rm -rf` the cwd itself | Direct regression test for the Stage-0 core fix |
+| Buffering / streaming / interleaving | alternating stdout/stderr writes with sleeps between (timestamp-based merge reconstructs true order); fully-buffered vs line-buffered program; multi-MB output on one fd while the other is idle (no pipe-backpressure deadlock) | Validates the three-fd concurrent-reader design under backpressure, not just the happy path |
+| TTY-dependent hangs | `read -p` with nothing on stdin; `sudo -S` with no password piped; `ssh` awaiting host-key confirmation; anything invoking `$PAGER`/`$EDITOR` | Confirms these degrade to hang → timeout → recover, not an unrecoverable wedge or corrupted next-command state |
+| Cross-shell emission snippet (axis 1, smoke-level) | run the sentinel-emission snippet verbatim through `dash` and `zsh` even though neither is wired as a backend yet | Cheap insurance against the fish-incompatibility trap if outer-shell choice is ever generalized |
+
+### Suggested structure
+
+- Unit-level alcotest coverage (a new `persistent_shell_test.ml` alongside the existing `local_env_sh_test.ml`/`bash_tool_test.ml` pattern) for the concurrency/signal/crash/snapshot categories — these need Eio control, not just shell scripts.
+- For the cross-shell axis, borrow oils' approach directly: a small directory of fixture snippets with expected `(stdout, stderr, exit_code)` tuples, run through whichever shell binaries are present in CI (`which dash zsh fish || skip`), with per-shell "known divergence" annotations rather than requiring identical output everywhere.
