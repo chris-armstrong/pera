@@ -1,7 +1,7 @@
 (library
  (name pera_env)
  (public_name pera-env)
- (modules execution_env local_env)
+ (modules execution_env local_env persistent_shell)
  (libraries pera_types eio eio_main eio_linux unix containers fpath)
  (preprocess
   (pps ppx_deriving.eq ppx_deriving.show)))
