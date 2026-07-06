@@ -18,10 +18,31 @@ type file_info = {
 }
 (** Metadata about a filesystem entry. *)
 
+type output_stream = Stdout | Stderr
+(** Which stream an output chunk originated from. *)
+
+type output_chunk = {
+  stream : output_stream;
+      (** The stream this chunk was read from. *)
+  timestamp : float;
+      (** [Eio.Time.now] value when the chunk was read (host-side receive
+          time, not the instant the subprocess produced it — see the
+          persistent-shell plan for the PTY limitation). *)
+  line : string;
+      (** The chunk content. For [Local_env] this is a raw pipe-read chunk;
+          for [Persistent_shell] this is a single line (without the trailing
+          newline). *)
+}
+(** A single output chunk with stream tag and read-time timestamp. *)
+
 type exec_result = {
-  stdout : string;  (** Standard output content. *)
-  stderr : string;  (** Standard error content. *)
+  stdout : string;  (** Standard output content (flattened, back-compat). *)
+  stderr : string;  (** Standard error content (flattened, back-compat). *)
   exit_code : int;  (** Process exit code. *)
+  chunks : output_chunk list;
+      (** Ordered per-stream chunks. Merge-sort by [timestamp] for
+          wall-clock interleaving reconstruction. Empty for providers that
+          do not support chunk-level capture. *)
 }
 (** Result of a shell command execution. *)
 
@@ -115,7 +136,7 @@ module type SHELL = sig
     cancel:Eio.Cancel.t ->
     (exec_result, Pera_types.Types.execution_error) result
   (** [exec ~command ~sw ~cancel] executes a shell command. Returns the captured
-      stdout, stderr, and exit code. *)
+      stdout, stderr, exit code, and timestamped output chunks. *)
 
   val find_executable : name:string -> string option
   (** [find_executable ~name] searches PATH for an executable named [name].

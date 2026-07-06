@@ -88,13 +88,16 @@ let create ~env ~cwd =
             Some candidate
           with Unix.Unix_error _ -> None)
 
-    let read_stream src buf cb =
+    let read_stream ~clock ~stream src buf cb chunks =
       let tmp = Cstruct.create 4096 in
       let rec loop () =
         match Eio.Flow.single_read src tmp with
         | n when n > 0 ->
             let str = Cstruct.to_string (Cstruct.sub tmp 0 n) in
             Buffer.add_string buf str;
+            let timestamp = Eio.Time.now clock in
+            chunks :=
+              { Execution_env.stream; timestamp; line = str } :: !chunks;
             Option.iter (fun f -> f str) cb;
             loop ()
         | _ -> ()
@@ -152,12 +155,21 @@ let create ~env ~cwd =
             Eio.Resource.close stdout_sink;
             Eio.Resource.close stderr_sink;
             let result = ref None in
+            let stdout_chunks = ref [] in
+            let stderr_chunks = ref [] in
             Eio.Fiber.all
               [
-                (fun () -> read_stream stdout_src stdout_buf on_stdout);
-                (fun () -> read_stream stderr_src stderr_buf on_stderr);
+                (fun () ->
+                  read_stream ~clock ~stream:Stdout stdout_src stdout_buf
+                    on_stdout stdout_chunks);
+                (fun () ->
+                  read_stream ~clock ~stream:Stderr stderr_src stderr_buf
+                    on_stderr stderr_chunks);
                 (fun () -> await_process proc result);
               ];
+            let chunks =
+              List.rev !stdout_chunks @ List.rev !stderr_chunks
+            in
             match !result with
             | Some (Ok code) ->
                 Ok
@@ -165,6 +177,7 @@ let create ~env ~cwd =
                     Execution_env.stdout = Buffer.contents stdout_buf;
                     stderr = Buffer.contents stderr_buf;
                     exit_code = code;
+                    chunks;
                   }
             | Some (Error n) ->
                 Error
