@@ -37,13 +37,15 @@ val close_error :
     the result promise with [Error (msg, stop_err)]. *)
 
 val close_provider_error : ('event, 'result) t -> string -> unit
-(** [close_provider_error t msg] is [close_error t msg (Provider {message=msg})].
-    Use for provider-specific protocol errors (malformed response, unknown stop
-    reason, content filter, missing terminal event). *)
+(** [close_provider_error t msg] is
+    [close_error t msg (Provider {message=msg})]. Use for provider-specific
+    protocol errors (malformed response, unknown stop reason, content filter,
+    missing terminal event). *)
 
 val close_internal_error : ('event, 'result) t -> string -> unit
-(** [close_internal_error t msg] is [close_error t msg (Internal {message=msg})].
-    Use for programming/configuration errors (unknown API, unexpected exception). *)
+(** [close_internal_error t msg] is
+    [close_error t msg (Internal {message=msg})]. Use for
+    programming/configuration errors (unknown API, unexpected exception). *)
 
 val take :
   ('event, 'result) t ->
@@ -70,8 +72,7 @@ val iter :
     Blocks until all events have been consumed and the stream is closed. *)
 
 val result :
-  ('event, 'result) t ->
-  ('result, string * Pera_types.Types.stop_error) result
+  ('event, 'result) t -> ('result, string * Pera_types.Types.stop_error) result
 (** [result t] awaits and returns the final result of the stream.
 
     Blocks until [close] or [close_error] has been called. *)

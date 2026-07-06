@@ -352,10 +352,10 @@ let parse_finish_reason = function
   | "tool_calls" -> Types.ToolUse
   | "length" -> Types.MaxTokens
   | "content_filter" ->
-      Types.Error
-        (Types.Provider { message = "finish_reason content_filter" })
+      Types.Error (Types.Provider { message = "finish_reason content_filter" })
   | other ->
-      Types.Error (Types.Provider { message = "unknown finish_reason: " ^ other })
+      Types.Error
+        (Types.Provider { message = "unknown finish_reason: " ^ other })
 
 (** Finalise a single active tool call, parsing its accumulated JSON arguments.
 
@@ -421,7 +421,8 @@ let extract_usage json =
           in
           let cost_usd =
             match List.assoc_opt ~eq:String.equal "cost" u with
-            | Some (`Float f) -> Some (Decimal.of_string (Printf.sprintf "%g" f))
+            | Some (`Float f) ->
+                Some (Decimal.of_string (Printf.sprintf "%g" f))
             | Some (`Int n) -> Some (Decimal.of_string (string_of_int n))
             | _ -> None
           in

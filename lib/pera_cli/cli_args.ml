@@ -191,8 +191,9 @@ let parse ~argv =
     Arg.(
       value & flag
       & info [ "list-models" ]
-          ~doc:"List all available providers and models with their API key \
-                 environment variables, then exit.")
+          ~doc:
+            "List all available providers and models with their API key \
+             environment variables, then exit.")
   in
   let build_args model api_key api_key_file api_key_command effort max_tokens
       cache_policy cache_ttl session session_dir cwd system system_file

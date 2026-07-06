@@ -93,8 +93,8 @@ module type S = sig
     t
   (** [create ~api_key ~base_url ~env ~sw] initialises a connector instance
       bound to [sw] with the given [api_key] and [base_url]. Establishes any
-      persistent connections needed for {!stream_simple} calls. The instance
-      is valid for the lifetime of [sw]. *)
+      persistent connections needed for {!stream_simple} calls. The instance is
+      valid for the lifetime of [sw]. *)
 
   val stream_simple :
     t ->
@@ -120,16 +120,17 @@ module type S = sig
 end
 
 val create_from_env_var :
-     var_name:string
-  -> create:(api_key:string
-                -> base_url:string
-                -> env:Eio_unix.Stdenv.base
-                -> sw:Eio.Switch.t
-                -> 't)
-  -> base_url:string
-  -> env:Eio_unix.Stdenv.base
-  -> sw:Eio.Switch.t
-  -> ('t, string) result
+  var_name:string ->
+  create:
+    (api_key:string ->
+    base_url:string ->
+    env:Eio_unix.Stdenv.base ->
+    sw:Eio.Switch.t ->
+    't) ->
+  base_url:string ->
+  env:Eio_unix.Stdenv.base ->
+  sw:Eio.Switch.t ->
+  ('t, string) result
 (** [create_from_env_var ~var_name ~create ~env ~sw] reads [var_name] from the
     environment and, if present, passes it to [create ~api_key]; otherwise
     returns [Error] with a uniform message. Shared by connectors that source

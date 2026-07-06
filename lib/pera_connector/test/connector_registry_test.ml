@@ -59,7 +59,9 @@ let run_provider_and_get_events provider_mod =
   let module P = (val provider_mod : Connector.S) in
   Eio_main.run @@ fun env ->
   Eio.Switch.run @@ fun sw ->
-  let inst = P.create ~api_key:"test-key" ~base_url:"http://localhost" ~env ~sw in
+  let inst =
+    P.create ~api_key:"test-key" ~base_url:"http://localhost" ~env ~sw
+  in
   let context = Connector.{ system = ""; messages = []; tools = [] } in
   let options =
     {
@@ -73,7 +75,11 @@ let run_provider_and_get_events provider_mod =
   let stream =
     P.stream_simple inst
       ~model:
-        { Pera_types.Types.id = "test"; protocol = "faux"; context_window = 200_000 }
+        {
+          Pera_types.Types.id = "test";
+          protocol = "faux";
+          context_window = 200_000;
+        }
       ~context ~options ~sw
   in
   let events, result = collect_events stream [] in

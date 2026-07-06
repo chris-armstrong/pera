@@ -28,7 +28,10 @@ let object_ ?description ~properties ~required () =
 
 let string ?description () = String { description }
 let number ?description () = Number { description }
-let integer ?description ?minimum ?maximum () = Integer { description; minimum; maximum }
+
+let integer ?description ?minimum ?maximum () =
+  Integer { description; minimum; maximum }
+
 let boolean ?description () = Boolean { description }
 let array ?description ~items () = Array { items; description }
 let enum ?description values = Enum { values; description }
@@ -51,8 +54,8 @@ let sort_assoc_pairs pairs =
     stable regardless of declaration order, which is required for Anthropic
     byte-level prompt-cache hits.
 
-    Callers serialising canonical output should use [Yojson.Safe.to_string],
-    not [Yojson.Safe.pretty_to_string]. *)
+    Callers serialising canonical output should use [Yojson.Safe.to_string], not
+    [Yojson.Safe.pretty_to_string]. *)
 let rec canonicalise_json = function
   | `Assoc pairs ->
       let sorted =
@@ -215,7 +218,7 @@ let rec validate (schema : t) (value : Yojson.Safe.t) : (unit, string) result =
   | Number _ ->
       let coerced = apply_type_coercion value "number" in
       check_type coerced "number"
-  | Integer { minimum; maximum; _ } ->
+  | Integer { minimum; maximum; _ } -> (
       let coerced = apply_type_coercion value "integer" in
       let open Result.Syntax in
       let* () = check_type coerced "integer" in
@@ -226,7 +229,7 @@ let rec validate (schema : t) (value : Yojson.Safe.t) : (unit, string) result =
             Error (Fmt.str "value %d is less than minimum %d" i lo)
         | _ -> Ok ()
       in
-      (match maximum with
+      match maximum with
       | Some hi when i > hi ->
           Error (Fmt.str "value %d is greater than maximum %d" i hi)
       | _ -> Ok ())

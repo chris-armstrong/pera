@@ -81,8 +81,8 @@ val to_json : t -> Yojson.Safe.t
     The output is canonical: every JSON object has its keys sorted
     alphabetically (recursively), and object [required] lists are sorted
     alphabetically. Two schemas with the same logical content therefore produce
-    identical serialised bytes regardless of declaration order. This stability is
-    required for Anthropic prompt caching, which matches request prefixes at
+    identical serialised bytes regardless of declaration order. This stability
+    is required for Anthropic prompt caching, which matches request prefixes at
     the byte level.
 
     Callers should serialise the result with [Yojson.Safe.to_string], not

@@ -65,5 +65,4 @@ end
 let create_from_env_var ~var_name ~create ~base_url ~env ~sw =
   match Sys.getenv_opt var_name with
   | Some k -> Ok (create ~api_key:k ~base_url ~env ~sw)
-  | None ->
-      Error (Fmt.str "%s environment variable is not set" var_name)
+  | None -> Error (Fmt.str "%s environment variable is not set" var_name)

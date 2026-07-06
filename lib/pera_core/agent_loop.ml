@@ -64,7 +64,8 @@ let empty_assistant_message =
     {
       content = [];
       stop_reason = EndTurn;
-      provenance = { protocol = ""; provider = ""; model = ""; error_message = None };
+      provenance =
+        { protocol = ""; provider = ""; model = ""; error_message = None };
       usage =
         {
           input_tokens = 0;
@@ -153,7 +154,8 @@ let consume_provider_stream ~provider_stream out_stream =
     Agent_types.Real
       (Pera_connector.Connector.AssistantMessage empty_assistant_message)
   in
-  push_event out_stream (Agent_types.AE_message_start { message = initial_agent_msg });
+  push_event out_stream
+    (Agent_types.AE_message_start { message = initial_agent_msg });
   (try
      let _iter_result =
        Pera_connector.Event_stream.iter provider_stream ~f:(fun event ->

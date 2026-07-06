@@ -178,7 +178,8 @@ let content_block_start_thinking_event ?(index = 0) () =
        [
          ("type", `String "content_block_start");
          ("index", `Int index);
-         ("content_block", `Assoc [ ("type", `String "thinking"); ("thinking", `String "") ]);
+         ( "content_block",
+           `Assoc [ ("type", `String "thinking"); ("thinking", `String "") ] );
        ])
 
 let content_block_delta_thinking_event ?(index = 0) text =
@@ -188,7 +189,9 @@ let content_block_delta_thinking_event ?(index = 0) text =
          ("type", `String "content_block_delta");
          ("index", `Int index);
          ( "delta",
-           `Assoc [ ("type", `String "thinking_delta"); ("thinking", `String text) ] );
+           `Assoc
+             [ ("type", `String "thinking_delta"); ("thinking", `String text) ]
+         );
        ])
 
 (** An Anthropic [signature_delta] event carrying a fragment of the thinking
@@ -201,8 +204,10 @@ let content_block_delta_signature_event ?(index = 0) signature =
          ("index", `Int index);
          ( "delta",
            `Assoc
-             [ ("type", `String "signature_delta"); ("signature", `String signature) ]
-         );
+             [
+               ("type", `String "signature_delta");
+               ("signature", `String signature);
+             ] );
        ])
 
 let message_delta_event ?(input_tokens = 12) ?(output_tokens = 5)
@@ -491,17 +496,19 @@ let test_thinking_stream_captures_signature () =
   in
   let events = run_interpreter framed_events in
   let done_event =
-    match List.find_opt (function Types.AME_done _ -> true | _ -> false) events with
+    match
+      List.find_opt (function Types.AME_done _ -> true | _ -> false) events
+    with
     | Some (Types.AME_done { message }) -> message
     | _ -> Alcotest.fail "expected an AME_done event"
   in
-  (match done_event.content with
-   | [ Types.AThinking { text; signature } ] ->
-       Alcotest.(check string) "thinking text accumulated" "reasoning..." text;
-       Alcotest.(check (option string))
-         "signature accumulated from both fragments"
-         (Some "sig-fragment-1sig-fragment-2") signature
-   | _ -> Alcotest.fail "expected a single AThinking block in the final message")
+  match done_event.content with
+  | [ Types.AThinking { text; signature } ] ->
+      Alcotest.(check string) "thinking text accumulated" "reasoning..." text;
+      Alcotest.(check (option string))
+        "signature accumulated from both fragments"
+        (Some "sig-fragment-1sig-fragment-2") signature
+  | _ -> Alcotest.fail "expected a single AThinking block in the final message"
 
 (* ── Test runner ── *)
 

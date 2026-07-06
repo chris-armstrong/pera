@@ -111,7 +111,9 @@ let run_default_scenario ~model_id ~prompt_text ~max_tokens =
   Eio_main.run @@ fun env ->
   Eio.Switch.run @@ fun sw ->
   let provider =
-    Anthropic_connector.create_from_env ~base_url:"https://api.anthropic.com" ~env ~sw |> Result.get_exn
+    Anthropic_connector.create_from_env ~base_url:"https://api.anthropic.com"
+      ~env ~sw
+    |> Result.get_exn
   in
   let stream =
     Anthropic_connector.stream_simple provider ~model ~context ~options ~sw
@@ -135,7 +137,11 @@ let run_default_scenario ~model_id ~prompt_text ~max_tokens =
 let run_thinking_scenario () =
   let model =
     Types.
-      { id = "claude-sonnet-4-5"; protocol = "anthropic"; context_window = 200_000 }
+      {
+        id = "claude-sonnet-4-5";
+        protocol = "anthropic";
+        context_window = 200_000;
+      }
   in
   let user_msg =
     Types.
@@ -168,7 +174,9 @@ let run_thinking_scenario () =
   Eio_main.run @@ fun env ->
   Eio.Switch.run @@ fun sw ->
   let provider =
-    Anthropic_connector.create_from_env ~base_url:"https://api.anthropic.com" ~env ~sw |> Result.get_exn
+    Anthropic_connector.create_from_env ~base_url:"https://api.anthropic.com"
+      ~env ~sw
+    |> Result.get_exn
   in
   let stream =
     Anthropic_connector.stream_simple provider ~model ~context ~options ~sw

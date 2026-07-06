@@ -5,8 +5,7 @@ open Pera_types
 let stop_error_testable : Types.stop_error Alcotest.testable =
   Alcotest.testable Types.pp_stop_error Types.equal_stop_error
 
-let result_testable =
-  Alcotest.(result string (pair string stop_error_testable))
+let result_testable = Alcotest.(result string (pair string stop_error_testable))
 
 (* Test 1: producer fibre pushes 3 events and closes; consumer collects via iter *)
 let test_producer_consumer_fibre () =
@@ -37,8 +36,7 @@ let test_close_error_propagates () =
   in
   Eio.Fiber.fork ~sw (fun () ->
       Event_stream.push stream "e1";
-      Event_stream.close_error stream "something went wrong"
-        Types.Transport);
+      Event_stream.close_error stream "something went wrong" Types.Transport);
   let collected = ref [] in
   let final_result =
     Event_stream.iter stream ~f:(fun e -> collected := e :: !collected)

@@ -5,8 +5,8 @@
 type t
 
 val create : output:Pera_config.output_config -> json:bool -> t
-(** Create a new renderer. [output] controls thinking and quiet modes.
-    [json] enables NDJSON output. *)
+(** Create a new renderer. [output] controls thinking and quiet modes. [json]
+    enables NDJSON output. *)
 
 val render : t -> Pera_core.Agent_types.agent_event -> string list
 (** Render an agent event to zero or more output lines.

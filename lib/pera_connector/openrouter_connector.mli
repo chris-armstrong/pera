@@ -4,7 +4,8 @@
     ([https://openrouter.ai/api/v1]) which speaks the OpenAI chat-completions
     wire format with a few extensions:
 
-    - Reasoning content uses the ["reasoning"] field (not ["reasoning_content"]).
+    - Reasoning content uses the ["reasoning"] field (not
+      ["reasoning_content"]).
     - Errors may be returned as HTTP 200 with a JSON [{"error": {...}}] body.
     - Optional [HTTP-Referer] and [X-Title] headers for leaderboard ranking.
 
@@ -33,8 +34,8 @@ val create_from_env :
   sw:Eio.Switch.t ->
   (t, string) result
 (** [create_from_env ~base_url ~env ~sw] reads [OPENROUTER_API_KEY] from the
-    environment and calls {!create}. Returns [Error] if the variable is not
-    set. *)
+    environment and calls {!create}. Returns [Error] if the variable is not set.
+*)
 
 val stream_simple :
   t ->

@@ -114,8 +114,7 @@ let build_registry () =
     Connector_registry.register r ~name:"openai-completions"
       (module Openai_completions_connector)
   in
-  Connector_registry.register r ~name:"openrouter"
-    (module Openrouter_connector)
+  Connector_registry.register r ~name:"openrouter" (module Openrouter_connector)
 
 let build_stream_fn ~env ~sw ~api_key ~base_url ~protocol =
   let registry = build_registry () in
@@ -304,43 +303,43 @@ module Make (Cli_env : Env) = struct
         Printf.eprintf "[pera] session error: %s\n%!" e.Pera_types.Types.message;
         exit 1
 
-(* Resolve the base URL for a provider. Priority:
+  (* Resolve the base URL for a provider. Priority:
    1. [api_env] env var from provider spec (if set)
    2. [api] field from provider spec *)
-let resolve_base_url ~getenv_opt (spec : Models_config.provider_spec) =
-  match spec.Models_config.api_env with
-  | Some var -> (
-      match getenv_opt var with
-      | Some url -> Some url
-      | None -> spec.Models_config.api)
-  | None -> spec.Models_config.api
+  let resolve_base_url ~getenv_opt (spec : Models_config.provider_spec) =
+    match spec.Models_config.api_env with
+    | Some var -> (
+        match getenv_opt var with
+        | Some url -> Some url
+        | None -> spec.Models_config.api)
+    | None -> spec.Models_config.api
 
-let run_with ?stream_fn inputs =
-  Eio_main.run (fun env ->
-      Eio.Switch.run (fun sw ->
-          let rc = resolve_config inputs in
-          let api_key = get_api_key ~env ~sw rc in
-          let stream_fn =
-            match stream_fn with
-            | Some fn -> fn
-            | None ->
-                let base_url =
-                  match
-                    resolve_base_url
-                      ~getenv_opt:inputs.Config_resolver.getenv_opt
-                      rc.Config_resolver.provider_spec
-                  with
-                  | Some url -> url
-                  | None ->
-                      Printf.eprintf
-                        "[pera] no API URL configured for provider %s\n%!"
-                        rc.Config_resolver.provider_spec.Models_config.name;
-                      exit 1
-                in
-                build_stream_fn ~env ~sw ~api_key ~base_url
-                  ~protocol:
-                    rc.Config_resolver.provider_spec.Models_config.protocol
-          in
+  let run_with ?stream_fn inputs =
+    Eio_main.run (fun env ->
+        Eio.Switch.run (fun sw ->
+            let rc = resolve_config inputs in
+            let api_key = get_api_key ~env ~sw rc in
+            let stream_fn =
+              match stream_fn with
+              | Some fn -> fn
+              | None ->
+                  let base_url =
+                    match
+                      resolve_base_url
+                        ~getenv_opt:inputs.Config_resolver.getenv_opt
+                        rc.Config_resolver.provider_spec
+                    with
+                    | Some url -> url
+                    | None ->
+                        Printf.eprintf
+                          "[pera] no API URL configured for provider %s\n%!"
+                          rc.Config_resolver.provider_spec.Models_config.name;
+                        exit 1
+                  in
+                  build_stream_fn ~env ~sw ~api_key ~base_url
+                    ~protocol:
+                      rc.Config_resolver.provider_spec.Models_config.protocol
+            in
             let cwd, ctx, shell_tools = resolve_exec_env ~env ~sw rc in
             let system_prompt = resolve_system_prompt ~env rc in
             if not (List.is_empty rc.Config_resolver.mcp_servers) then
@@ -355,15 +354,17 @@ let run_with ?stream_fn inputs =
             in
             subscribe_renderer harness renderer;
             Log.debug (fun f -> f "starting session");
-            (match
-               ( inputs.Config_resolver.parsed_args.Cli_args.input,
-                 inputs.Config_resolver.parsed_args.Cli_args.input_file )
+            match
+              ( inputs.Config_resolver.parsed_args.Cli_args.input,
+                inputs.Config_resolver.parsed_args.Cli_args.input_file )
             with
-            | Some text, None ->
-                Pera_agent.Agent_harness.send harness text
+            | Some text, None -> Pera_agent.Agent_harness.send harness text
             | None, Some path -> (
                 match
-                  try Ok (Stdlib.In_channel.with_open_text path Stdlib.In_channel.input_all)
+                  try
+                    Ok
+                      (Stdlib.In_channel.with_open_text path
+                         Stdlib.In_channel.input_all)
                   with Sys_error msg -> Error msg
                 with
                 | Ok text -> Pera_agent.Agent_harness.send harness text
@@ -377,7 +378,7 @@ let run_with ?stream_fn inputs =
                   ~info_stats:(fun () -> Event_renderer.stats renderer)
                   ~compact_fn:(fun () ->
                     Printf.eprintf "[pera] /compact not yet wired\n%!")
-                  ~env)))
+                  ~env))
 
   let run () =
     let parsed_args = Cli_args.parse ~argv:Sys.argv in
@@ -421,28 +422,27 @@ let run_with ?stream_fn inputs =
       in
       Models_loader.load ~packaged_path ~user_path |> or_die
     in
-    (if parsed_args.Cli_args.list_models then
-       let max_name_len = ref 0 in
-       let entries =
-         List.concat_map
-           (fun (p : Models_config.provider_spec) ->
-              let env_vars = String.concat ", " p.Models_config.api_key_env in
-              let env_str =
-                if String.is_empty env_vars then "(none)" else env_vars
-              in
-              List.map
-                (fun (m : Models_config.model_spec) ->
-                   let full = p.Models_config.name ^ "/" ^ m.Models_config.name in
-                   max_name_len := max !max_name_len (String.length full);
-                   (full, env_str))
-                p.Models_config.models)
-           models_file.Models_config.providers
-       in
-       List.iter
-         (fun (name, env) ->
-            Printf.printf "%-*s  %s\n" !max_name_len name env)
-         entries;
-       exit 0);
+    if parsed_args.Cli_args.list_models then (
+      let max_name_len = ref 0 in
+      let entries =
+        List.concat_map
+          (fun (p : Models_config.provider_spec) ->
+            let env_vars = String.concat ", " p.Models_config.api_key_env in
+            let env_str =
+              if String.is_empty env_vars then "(none)" else env_vars
+            in
+            List.map
+              (fun (m : Models_config.model_spec) ->
+                let full = p.Models_config.name ^ "/" ^ m.Models_config.name in
+                max_name_len := max !max_name_len (String.length full);
+                (full, env_str))
+              p.Models_config.models)
+          models_file.Models_config.providers
+      in
+      List.iter
+        (fun (name, env) -> Printf.printf "%-*s  %s\n" !max_name_len name env)
+        entries;
+      exit 0);
     let user_config =
       let path =
         Fpath.(v (Xdg.config_dir xdg) / "pera" / "config.sexp")

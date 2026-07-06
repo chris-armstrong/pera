@@ -83,8 +83,8 @@ type stop_reason =
 
 and stop_error =
   | Transport
-      (** DNS failure, connection timeout, TLS error, connection reset —
-          the request never reached the server. Always retryable. *)
+      (** DNS failure, connection timeout, TLS error, connection reset — the
+          request never reached the server. Always retryable. *)
   | Http of { status : http_status }
       (** The server responded with a non-2xx HTTP status code. *)
   | Provider of { message : string }
@@ -93,23 +93,21 @@ and stop_error =
   | Internal of { message : string }
       (** Internal programming or configuration error. Not retryable. *)
 
+and http_status = int
 (** HTTP status code. An open [int] rather than a closed variant so new codes
     (e.g. 529) don't require type changes. Use {!is_retryable} to classify. *)
-and http_status = int
 
 val equal_stop_reason : stop_reason -> stop_reason -> bool
 val pp_stop_reason : Format.formatter -> stop_reason -> unit
 val show_stop_reason : stop_reason -> string
-
 val equal_stop_error : stop_error -> stop_error -> bool
 val pp_stop_error : Format.formatter -> stop_error -> unit
 val show_stop_error : stop_error -> string
 
 val is_retryable : stop_error -> bool
 (** [is_retryable e] is [true] when the error is likely transient and a retry
-    may succeed. [Transport] is always retryable. [Http 5xx] and [Http 429]
-    are retryable. [Http 4xx] (except 429), [Provider], and [Internal] are
-    not. *)
+    may succeed. [Transport] is always retryable. [Http 5xx] and [Http 429] are
+    retryable. [Http 4xx] (except 429), [Provider], and [Internal] are not. *)
 
 type usage = {
   input_tokens : int;
@@ -128,8 +126,7 @@ val show_usage : usage -> string
 
 type provenance = {
   protocol : string;
-      (** Connector protocol, e.g. ["anthropic"] or ["openai-completions"].
-      *)
+      (** Connector protocol, e.g. ["anthropic"] or ["openai-completions"]. *)
   provider : string;  (** Human-readable provider name. *)
   model : string;  (** Model identifier as given to the API. *)
   error_message : string option;
@@ -283,16 +280,20 @@ val show_model : model -> string
 
 (** {1 Cache control} *)
 
+(** Time-to-live for Anthropic prompt cache entries. The same TTL is applied to
+    every breakpoint in a request. *)
 type cache_ttl =
   | Five_minutes  (** Ephemeral cache with default 5-minute TTL. *)
   | One_hour  (** Ephemeral cache with extended 1-hour TTL. *)
-(** Time-to-live for Anthropic prompt cache entries. The same TTL is applied to
-    every breakpoint in a request. *)
 
 val equal_cache_ttl : cache_ttl -> cache_ttl -> bool
 val pp_cache_ttl : Format.formatter -> cache_ttl -> unit
 val show_cache_ttl : cache_ttl -> string
 
+(** Controls where [cache_control: ephemeral] markers are placed in Anthropic
+    API requests. Has no effect on non-Anthropic providers.
+
+    Default for all new code paths is [No_cache] — opt-in everywhere. *)
 type cache_policy =
   | No_cache  (** Do not emit any [cache_control] markers. *)
   | Conversation
@@ -301,12 +302,8 @@ type cache_policy =
           prefix. *)
   | SystemAndToolsOnly
       (** Emit markers on the system block and last tool only — no
-          message-history breakpoint. Appropriate for one-shot batch agents
-          that share system+tools across many independent requests. *)
-(** Controls where [cache_control: ephemeral] markers are placed in Anthropic
-    API requests. Has no effect on non-Anthropic providers.
-
-    Default for all new code paths is [No_cache] — opt-in everywhere. *)
+          message-history breakpoint. Appropriate for one-shot batch agents that
+          share system+tools across many independent requests. *)
 
 val equal_cache_policy : cache_policy -> cache_policy -> bool
 val pp_cache_policy : Format.formatter -> cache_policy -> unit

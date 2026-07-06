@@ -31,7 +31,8 @@ let model_of_argv () =
   if Array.length Sys.argv > 1 then
     (* TODO: accept --context-window from the CLI; 200K is wrong for 1M Claude
        variants and for non-Anthropic models passed via this driver. *)
-    Types.{ id = Sys.argv.(1); protocol = "anthropic"; context_window = 200_000 }
+    Types.
+      { id = Sys.argv.(1); protocol = "anthropic"; context_window = 200_000 }
   else default_model
 
 (* ── Session content helpers ──────────────────────────────────────────────── *)
@@ -167,8 +168,10 @@ let build_anthropic_registry () =
 (** The per-connector API-key list for the Anthropic-only registry built by
     {!build_anthropic_registry}. *)
 let anthropic_api_keys () =
-  [ ("anthropic",
-     Option.get_exn_or "ANTHROPIC_API_KEY" (Sys.getenv_opt "ANTHROPIC_API_KEY"))
+  [
+    ( "anthropic",
+      Option.get_exn_or "ANTHROPIC_API_KEY" (Sys.getenv_opt "ANTHROPIC_API_KEY")
+    );
   ]
 
 (* ── Scenarios ────────────────────────────────────────────────────────────── *)
@@ -207,10 +210,8 @@ let scenario_bash_echo ~model ~tmpdir ~env ~registry =
   let session_path = Filename.concat tmpdir "bash_echo.jsonl" in
   let sentinel = "pera_echo_42" in
   let adapter =
-    Connector_adapter.create ~registry
-      ~api_keys:(anthropic_api_keys ())
-      ~base_url:"https://api.anthropic.com"
-      ~env ~sw
+    Connector_adapter.create ~registry ~api_keys:(anthropic_api_keys ())
+      ~base_url:"https://api.anthropic.com" ~env ~sw
   in
   let stream_fn = Connector_adapter.stream_fn adapter in
   let exec_env = Pera_env.Local_env.create ~env ~cwd:tmpdir in
@@ -240,10 +241,8 @@ let scenario_read_preseeded ~model ~tmpdir ~env ~registry =
   Eio.Switch.run @@ fun sw ->
   let session_path = Filename.concat tmpdir "read_preseeded.jsonl" in
   let adapter =
-    Connector_adapter.create ~registry
-      ~api_keys:(anthropic_api_keys ())
-      ~base_url:"https://api.anthropic.com"
-      ~env ~sw
+    Connector_adapter.create ~registry ~api_keys:(anthropic_api_keys ())
+      ~base_url:"https://api.anthropic.com" ~env ~sw
   in
   let stream_fn = Connector_adapter.stream_fn adapter in
   let exec_env = Pera_env.Local_env.create ~env ~cwd:tmpdir in
@@ -272,10 +271,8 @@ let scenario_multi_turn ~model ~tmpdir ~env ~registry =
   let data_file = Filename.concat tmpdir "mt_data.txt" in
   let sentinel = "pera_token_789" in
   let adapter =
-    Connector_adapter.create ~registry
-      ~api_keys:(anthropic_api_keys ())
-      ~base_url:"https://api.anthropic.com"
-      ~env ~sw
+    Connector_adapter.create ~registry ~api_keys:(anthropic_api_keys ())
+      ~base_url:"https://api.anthropic.com" ~env ~sw
   in
   let stream_fn = Connector_adapter.stream_fn adapter in
   let exec_env = Pera_env.Local_env.create ~env ~cwd:tmpdir in

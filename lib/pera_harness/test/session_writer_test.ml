@@ -306,8 +306,7 @@ let read_jsonl_lines_lenient env path =
   String.split_on_char '\n' content
   |> List.filter (fun s -> not (String.is_empty s))
   |> List.filter_map (fun line ->
-      try Some (Yojson.Safe.from_string line)
-      with Yojson.Json_error _ -> None)
+      try Some (Yojson.Safe.from_string line) with Yojson.Json_error _ -> None)
 
 let test_crash_resilience_preserves_valid_entries env () =
   let dir = Harness_test_util.make_temp_dir env in
@@ -347,9 +346,10 @@ let test_crash_resilience_preserves_valid_entries env () =
   let oc =
     Stdlib.Out_channel.open_gen [ Open_append; Open_binary ] 0o644 path
   in
-  Fun.protect ~finally:(fun () -> Stdlib.Out_channel.close oc) (fun () ->
-      Stdlib.Out_channel.output_string oc
-        "{\"id\":\"partial-line-no-closing");
+  Fun.protect
+    ~finally:(fun () -> Stdlib.Out_channel.close oc)
+    (fun () ->
+      Stdlib.Out_channel.output_string oc "{\"id\":\"partial-line-no-closing");
   (* Read with lenient parser *)
   let entries = read_jsonl_lines_lenient env path in
   (* Verify exactly 4 valid entries *)

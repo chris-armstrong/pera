@@ -4,7 +4,8 @@ open Pera_core_test_util
 (* ── Helpers ──────────────────────────────────────────────────────────────── *)
 
 let test_model =
-  Pera_types.Types.{ id = "test-model"; protocol = "faux"; context_window = 200_000 }
+  Pera_types.Types.
+    { id = "test-model"; protocol = "faux"; context_window = 200_000 }
 
 let test_options =
   Pera_connector.Connector.

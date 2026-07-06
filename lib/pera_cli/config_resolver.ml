@@ -45,8 +45,7 @@ let built_in_defaults : Pera_config.config =
     session = None;
     compaction =
       Some { enabled = Some true; threshold = Some 70; tail = Some 4 };
-    output =
-      Some { show_thinking = Some false; quiet = Some false };
+    output = Some { show_thinking = Some false; quiet = Some false };
     commands = [];
     tools = [];
     mcp_servers = [];
@@ -109,9 +108,9 @@ let resolve_api_key_source ~parsed_args ~merged ~provider_spec ~getenv_opt =
               match
                 List.find_map
                   (fun env_var ->
-                     match getenv_opt env_var with
-                     | Some k -> Some (Pera_config.Key k)
-                     | None -> None)
+                    match getenv_opt env_var with
+                    | Some k -> Some (Pera_config.Key k)
+                    | None -> None)
                   provider_spec.Models_config.api_key_env
               with
               | Some key -> Some key

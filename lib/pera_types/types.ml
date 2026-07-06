@@ -43,8 +43,8 @@ type stop_reason =
 
 and stop_error =
   | Transport
-      (** DNS failure, connection timeout, TLS error, connection reset —
-          the request never reached the server. Always retryable. *)
+      (** DNS failure, connection timeout, TLS error, connection reset — the
+          request never reached the server. Always retryable. *)
   | Http of { status : http_status }
       (** The server responded with a non-2xx status code. *)
   | Provider of { message : string }
@@ -53,11 +53,9 @@ and stop_error =
   | Internal of { message : string }
       (** Internal programming or configuration error. Not retryable. *)
 
+and http_status = int [@@deriving eq, show]
 (** HTTP status code. An open [int] rather than a closed variant so new codes
     (e.g. 529) don't require type changes. Use {!is_retryable} to classify. *)
-and http_status = int
-
-[@@deriving eq, show]
 
 (** Classify a [stop_error] as retryable.
     - [Transport]: always retryable (never reached the server).
@@ -143,13 +141,7 @@ type tool_error = { message : string; is_user_error : bool }
 type model = { id : string; protocol : string; context_window : int }
 [@@deriving eq, show]
 
-type cache_ttl =
-  | Five_minutes
-  | One_hour
-[@@deriving eq, show]
+type cache_ttl = Five_minutes | One_hour [@@deriving eq, show]
 
-type cache_policy =
-  | No_cache
-  | Conversation
-  | SystemAndToolsOnly
+type cache_policy = No_cache | Conversation | SystemAndToolsOnly
 [@@deriving eq, show]

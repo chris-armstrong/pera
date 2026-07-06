@@ -67,20 +67,21 @@ let assistant_content_to_json_list content =
     (function
       | Types.AText text ->
           `Assoc [ ("type", `String "text"); ("text", `String text) ]
-      | Types.AThinking { text; signature } ->
+      | Types.AThinking { text; signature } -> (
           (* The [signature] is required by Anthropic when replaying thinking
              blocks on later turns. Omit it entirely when absent so the
              first-turn (no-signature-yet) wire bytes are unchanged. *)
-          (match signature with
-           | None ->
-               `Assoc [ ("type", `String "thinking"); ("thinking", `String text) ]
-           | Some sig_value ->
-               `Assoc
-                 [
-                   ("type", `String "thinking");
-                   ("thinking", `String text);
-                   ("signature", `String sig_value);
-                 ])
+          match signature with
+          | None ->
+              `Assoc
+                [ ("type", `String "thinking"); ("thinking", `String text) ]
+          | Some sig_value ->
+              `Assoc
+                [
+                  ("type", `String "thinking");
+                  ("thinking", `String text);
+                  ("signature", `String sig_value);
+                ])
       | Types.AToolCall { id; name; arguments } ->
           `Assoc
             [
@@ -185,10 +186,10 @@ let tag_last_tool marker tools = tag_last_assoc marker tools
     marker. The last rendered message is expected to be a user message at turn
     start (the harness appends user/tool-result messages before each call).
 
-    A resumed or compacted session whose final entry is an assistant message is a
-    legitimate runtime condition, not an invariant violation: in that case there
-    is no trailing user message to tag, so the cache breakpoint is simply skipped
-    and the messages are returned unchanged. *)
+    A resumed or compacted session whose final entry is an assistant message is
+    a legitimate runtime condition, not an invariant violation: in that case
+    there is no trailing user message to tag, so the cache breakpoint is simply
+    skipped and the messages are returned unchanged. *)
 let tag_last_user_message marker messages =
   let update_message (`Assoc fields) =
     let content =
