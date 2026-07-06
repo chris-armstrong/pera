@@ -25,6 +25,16 @@ let trim_trailing_newline s =
   if String.ends_with ~suffix:"\n" s then String.sub s 0 (String.length s - 1)
   else s
 
+let contains_substring ~substring s =
+  let sub_len = String.length substring in
+  let s_len = String.length s in
+  let rec loop i =
+    if i + sub_len > s_len then false
+    else if String.equal (String.sub s i sub_len) substring then true
+    else loop (i + 1)
+  in
+  loop 0
+
 (** {1 Test cases} *)
 
 (** Verify that executing a simple command captures stdout. *)
@@ -83,8 +93,7 @@ let test_cwd_persistence ~env ~sw ~cwd =
       | Ok result ->
           let pwd = trim_trailing_newline result.stdout in
           if not (String.equal pwd "/") then
-            Alcotest.failf
-              "expected cwd to be '/', got '%S' (exit_code=%d)" pwd
+            Alcotest.failf "expected cwd to be '/', got '%S' (exit_code=%d)" pwd
               result.exit_code;
           Alcotest.(check int) "exit code" 0 result.exit_code)
 
@@ -140,29 +149,35 @@ let test_chunks_have_stream_tags ~env ~sw ~cwd =
           let has_stdout =
             List.exists
               (fun (c : Execution_env.output_chunk) ->
-                try
-                  let _ = String.index c.line 'o' in
-                  let _ = String.index c.line 'u' in
-                  let _ = String.index c.line 't' in
-                  true
-                with Not_found -> false)
+                contains_substring ~substring:"out" c.line)
               stdout_chunks
           in
           let has_stderr =
             List.exists
               (fun (c : Execution_env.output_chunk) ->
-                try
-                  let _ = String.index c.line 'e' in
-                  let _ = String.index c.line 'r' in
-                  let _ = String.index c.line 'r' in
-                  true
-                with Not_found -> false)
+                contains_substring ~substring:"err" c.line)
               stderr_chunks
           in
           if not has_stdout then
             Alcotest.fail "expected stdout chunk with 'out'";
           if not has_stderr then
             Alcotest.fail "expected stderr chunk with 'err'")
+
+(** Verify that chunks are sorted by read-time timestamp. *)
+let test_chunks_sorted_by_timestamp ~env ~sw ~cwd =
+  Eio.Cancel.sub (fun cancel ->
+      let shell = make_shell ~env ~sw ~cwd in
+      match exec_cmd ~sw ~cancel ~command:"echo out; echo err 1>&2" shell with
+      | Error e -> Alcotest.failf "exec failed: %s" e.message
+      | Ok result ->
+          let timestamps =
+            List.map
+              (fun (c : Execution_env.output_chunk) -> c.timestamp)
+              result.chunks
+          in
+          let sorted = List.sort Float.compare timestamps in
+          if not (List.equal Float.equal sorted timestamps) then
+            Alcotest.fail "chunks are not sorted by timestamp")
 
 (** {1 Suite registration} *)
 
@@ -188,5 +203,7 @@ let () =
               test_exec_timeout_returns_error ~env ~sw ~cwd);
           Alcotest.test_case "chunks_have_stream_tags" `Quick (fun () ->
               test_chunks_have_stream_tags ~env ~sw ~cwd);
+          Alcotest.test_case "chunks_sorted_by_timestamp" `Quick (fun () ->
+              test_chunks_sorted_by_timestamp ~env ~sw ~cwd);
         ] );
     ]

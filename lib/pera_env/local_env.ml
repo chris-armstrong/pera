@@ -96,8 +96,7 @@ let create ~env ~cwd =
             let str = Cstruct.to_string (Cstruct.sub tmp 0 n) in
             Buffer.add_string buf str;
             let timestamp = Eio.Time.now clock in
-            chunks :=
-              { Execution_env.stream; timestamp; line = str } :: !chunks;
+            chunks := { Execution_env.stream; timestamp; line = str } :: !chunks;
             Option.iter (fun f -> f str) cb;
             loop ()
         | _ -> ()
@@ -168,7 +167,8 @@ let create ~env ~cwd =
                 (fun () -> await_process proc result);
               ];
             let chunks =
-              List.rev !stdout_chunks @ List.rev !stderr_chunks
+              Execution_env.sort_chunks_by_timestamp
+                (List.rev !stdout_chunks @ List.rev !stderr_chunks)
             in
             match !result with
             | Some (Ok code) ->
@@ -297,6 +297,7 @@ let create ~env ~cwd =
   end in
   (module struct
     let cwd = cwd
+
     module Fs = Fs
     module Sh = Sh
   end : Execution_env.S)

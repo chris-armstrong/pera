@@ -11,12 +11,7 @@ type file_info = {
 }
 
 type output_stream = Stdout | Stderr
-
-type output_chunk = {
-  stream : output_stream;
-  timestamp : float;
-  line : string;
-}
+type output_chunk = { stream : output_stream; timestamp : float; line : string }
 
 type exec_result = {
   stdout : string;
@@ -24,6 +19,9 @@ type exec_result = {
   exit_code : int;
   chunks : output_chunk list;
 }
+
+let sort_chunks_by_timestamp chunks =
+  List.sort (fun a b -> Float.compare a.timestamp b.timestamp) chunks
 
 module type FILESYSTEM = sig
   val read_text_file :
@@ -87,6 +85,5 @@ module type S = sig
   val cwd : string
 
   module Fs : FILESYSTEM
-
   module Sh : SHELL
 end

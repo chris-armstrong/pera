@@ -18,19 +18,19 @@ type file_info = {
 }
 (** Metadata about a filesystem entry. *)
 
-type output_stream = Stdout | Stderr
-(** Which stream an output chunk originated from. *)
+type output_stream =
+  | Stdout
+  | Stderr  (** Which stream an output chunk originated from. *)
 
 type output_chunk = {
-  stream : output_stream;
-      (** The stream this chunk was read from. *)
+  stream : output_stream;  (** The stream this chunk was read from. *)
   timestamp : float;
-      (** [Eio.Time.now] value when the chunk was read (host-side receive
-          time, not the instant the subprocess produced it — see the
-          persistent-shell plan for the PTY limitation). *)
+      (** [Eio.Time.now] value when the chunk was read (host-side receive time,
+          not the instant the subprocess produced it — see the persistent-shell
+          plan for the PTY limitation). *)
   line : string;
-      (** The chunk content. For [Local_env] this is a raw pipe-read chunk;
-          for [Persistent_shell] this is a single line (without the trailing
+      (** The chunk content. For [Local_env] this is a raw pipe-read chunk; for
+          [Persistent_shell] this is a single line (without the trailing
           newline). *)
 }
 (** A single output chunk with stream tag and read-time timestamp. *)
@@ -40,11 +40,16 @@ type exec_result = {
   stderr : string;  (** Standard error content (flattened, back-compat). *)
   exit_code : int;  (** Process exit code. *)
   chunks : output_chunk list;
-      (** Ordered per-stream chunks. Merge-sort by [timestamp] for
-          wall-clock interleaving reconstruction. Empty for providers that
-          do not support chunk-level capture. *)
+      (** Chunks sorted by read-time [timestamp] for wall-clock interleaving
+          reconstruction. Empty for providers that do not support chunk-level
+          capture. *)
 }
 (** Result of a shell command execution. *)
+
+val sort_chunks_by_timestamp : output_chunk list -> output_chunk list
+(** [sort_chunks_by_timestamp chunks] returns [chunks] sorted by their
+    [timestamp] field, enabling wall-clock interleaving reconstruction of
+    stdout/stderr output. *)
 
 (** {1 Filesystem module type} *)
 
@@ -151,8 +156,8 @@ end
     current working directory. *)
 module type S = sig
   val cwd : string
-  (** The working directory this env is rooted at. Pass to [Sh.exec ~cwd]
-      to run subprocesses in the agent's cwd regardless of the process cwd. *)
+  (** The working directory this env is rooted at. Pass to [Sh.exec ~cwd] to run
+      subprocesses in the agent's cwd regardless of the process cwd. *)
 
   module Fs : FILESYSTEM
   (** Filesystem operations. *)

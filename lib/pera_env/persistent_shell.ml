@@ -3,15 +3,11 @@ open Containers
 (** {1 Sentinel generation} *)
 
 let sentinel_prefix = "PERA_DONE_"
-
-let next_sentinel_id =
-  let counter = ref 0 in
-  fun () ->
-    incr counter;
-    !counter
+let sentinel_rng = Random.State.make_self_init ()
 
 let generate_sentinel () =
-  Printf.sprintf "%s%d" sentinel_prefix (next_sentinel_id ())
+  let uuid = Uuidm.v4_gen sentinel_rng () in
+  sentinel_prefix ^ Uuidm.to_string uuid
 
 (** {1 Shell detection} *)
 
@@ -20,10 +16,14 @@ let find_shell () =
   else if Sys.file_exists "/bin/sh" then "/bin/sh"
   else failwith "persistent_shell: neither /bin/bash nor /bin/sh found"
 
+(** {1 Shell-safe string interpolation} *)
+
+let shell_quote = Filename.quote
+
 (** {1 Line-based reading with sentinel detection} *)
 
-let read_until_sentinel ~clock ~stream ~sentinel:_ ~is_sentinel_line ~on_line src
-    =
+let read_until_sentinel ~clock ~stream ~sentinel:_ ~is_sentinel_line ~on_line
+    src =
   let tmp = Cstruct.create 4096 in
   let buf = Buffer.create 1024 in
   let chunks = ref [] in
@@ -38,9 +38,8 @@ let read_until_sentinel ~clock ~stream ~sentinel:_ ~is_sentinel_line ~on_line sr
         Buffer.clear buf;
         Buffer.add_string buf rest;
         let timestamp = Eio.Time.now clock in
-        if is_sentinel_line line then begin
-          sentinel_line := Some line
-        end else begin
+        if is_sentinel_line line then sentinel_line := Some line
+        else begin
           chunks := { Execution_env.stream; timestamp; line } :: !chunks;
           Option.iter (fun f -> f (line ^ "\n")) on_line;
           process_buffer ()
@@ -58,7 +57,8 @@ let read_until_sentinel ~clock ~stream ~sentinel:_ ~is_sentinel_line ~on_line sr
         let remaining = Buffer.contents buf in
         if not (String.is_empty remaining) then begin
           let timestamp = Eio.Time.now clock in
-          if not (is_sentinel_line remaining) then
+          if is_sentinel_line remaining then sentinel_line := Some remaining
+          else
             chunks :=
               { Execution_env.stream; timestamp; line = remaining } :: !chunks
         end
@@ -74,7 +74,7 @@ let parse_stdout_sentinel ~sentinel line =
     let exit_str =
       String.sub line 0 (String.length line - String.length suffix)
     in
-    Int.of_string exit_str
+    int_of_string_opt exit_str
   else None
 
 let is_stderr_sentinel ~sentinel line = String.equal line sentinel
@@ -82,8 +82,9 @@ let is_stderr_sentinel ~sentinel line = String.equal line sentinel
 (** {1 Command wrapper}
 
     Sends the user command followed by exit code capture and sentinel echoes.
-    Does NOT wrap in a subshell so that state-changing commands like [cd]
-    and [export] affect the persistent shell's environment. *)
+    Commands are intentionally NOT wrapped in a subshell: [cd], [export] and
+    other state-changing commands must affect the persistent shell's environment
+    directly. *)
 
 let build_command_wrapper ~command ~sentinel =
   let buf = Buffer.create (String.length command + 128) in
@@ -99,83 +100,99 @@ let build_command_wrapper ~command ~sentinel =
 
 type t = {
   proc : [ `Process | `Platform of [ `Generic | `Unix ] ] Eio.Resource.t;
-  stdin : [ `W | `Flow | `Close ] Eio.Resource.t;
-  stdout : [ `R | `Flow | `Close ] Eio.Resource.t;
-  stderr : [ `R | `Flow | `Close ] Eio.Resource.t;
+  stdin : [ `W | `Flow | `Close | `Unix_fd ] Eio.Resource.t;
+  stdout : [ `R | `Flow | `Close | `Unix_fd ] Eio.Resource.t;
+  stderr : [ `R | `Flow | `Close | `Unix_fd ] Eio.Resource.t;
+  state : [ `R | `Flow | `Close | `Unix_fd ] Eio.Resource.t;
   clock : float Eio.Time.clock_ty Eio.Resource.t;
   mutable closed : bool;
   mutex : Eio.Mutex.t;
   process_group : bool;
 }
 
+(** {1 Cleanup helpers}
+
+    These intentionally swallow close/write errors: they run during cleanup when
+    the underlying switch or process may already be gone. *)
+
+let safe_close r = try Eio.Resource.close r with _ -> ()
+
+let wait_shell t =
+  try ignore (Eio.Process.await t.proc : [ `Exited of int | `Signaled of int ])
+  with _ -> ()
+
 (** {1 Close}
 
-    If process group tracking is enabled, kills the entire process group
-    (shell + all background jobs). Otherwise, sends ["exit\\n"] to the shell
-    and waits — background tasks survive as orphaned processes. *)
+    If process group tracking is enabled, kills the entire process group (shell
+    \+ all background jobs). Otherwise, sends ["exit"] to the shell and waits —
+    background tasks survive as orphaned processes. *)
 
 let close t =
   if not t.closed then begin
     t.closed <- true;
-    if t.process_group then begin
-      (* Kill background jobs first, then exit the shell.
-         Uses bash's jobs -p to list background PIDs. *)
-      (try
-         Eio.Flow.write t.stdin
-           [ Cstruct.of_string
-               ("kill $(jobs -p) 2>/dev/null\nexit\n") ];
-         (try let _ = Eio.Process.await t.proc in () with _ -> ())
-       with _ -> ())
-    end else begin
-      (* Send exit and wait — background jobs survive *)
-      (try
-         Eio.Flow.write t.stdin [ Cstruct.of_string "exit\n" ];
-         (try let _ = Eio.Process.await t.proc in () with _ -> ())
-       with _ -> ())
-    end;
-    (try Eio.Resource.close t.stdin with _ -> ());
-    (try Eio.Resource.close t.stdout with _ -> ());
-    (try Eio.Resource.close t.stderr with _ -> ())
+    let cmd =
+      if t.process_group then "kill $(jobs -p) 2>/dev/null\nexit\n"
+      else "exit\n"
+    in
+    (try Eio.Flow.write t.stdin [ Cstruct.of_string cmd ] with _ -> ());
+    wait_shell t;
+    safe_close t.stdin;
+    safe_close t.stdout;
+    safe_close t.stderr;
+    safe_close t.state
   end
 
 (** {1 Create} *)
 
 let create ~proc_mgr ~clock ~sw ~env ~cwd ?(process_group = true) () =
-  let stdin_src, stdin_sink = Eio.Process.pipe ~sw proc_mgr in
-  let stdout_src, stdout_sink = Eio.Process.pipe ~sw proc_mgr in
-  let stderr_src, stderr_sink = Eio.Process.pipe ~sw proc_mgr in
+  let stdin_src, stdin_sink = Eio_unix.pipe sw in
+  let stdout_src, stdout_sink = Eio_unix.pipe sw in
+  let stderr_src, stderr_sink = Eio_unix.pipe sw in
+  let state_src, state_sink = Eio_unix.pipe sw in
   let shell_path = find_shell () in
+  let stdin_src_fd = Eio_unix.Resource.fd stdin_src in
+  let stdout_sink_fd = Eio_unix.Resource.fd stdout_sink in
+  let stderr_sink_fd = Eio_unix.Resource.fd stderr_sink in
+  let state_sink_fd = Eio_unix.Resource.fd state_sink in
   let proc =
-    Eio.Process.spawn ~sw proc_mgr ~stdin:stdin_src ~stdout:stdout_sink
-      ~stderr:stderr_sink ~env
+    Eio_unix.Process.spawn_unix ~sw proc_mgr ~env
+      ~fds:
+        [
+          (0, stdin_src_fd, `Blocking);
+          (1, stdout_sink_fd, `Blocking);
+          (2, stderr_sink_fd, `Blocking);
+          (3, state_sink_fd, `Blocking);
+        ]
+      ~executable:shell_path
       [ shell_path; "--norc"; "--noprofile" ]
   in
-  Eio.Resource.close stdin_src;
-  Eio.Resource.close stdout_sink;
-  Eio.Resource.close stderr_sink;
+  safe_close stdin_src;
+  safe_close stdout_sink;
+  safe_close stderr_sink;
+  safe_close state_sink;
   let t =
     {
       proc;
       stdin = stdin_sink;
       stdout = stdout_src;
       stderr = stderr_src;
+      state = state_src;
       clock;
       closed = false;
       mutex = Eio.Mutex.create ();
       process_group;
     }
   in
-  (* Startup handshake: send a simple command and wait for its output.
-     Uses printf to avoid any quoting issues with echo. *)
+  (* Startup handshake: send a simple command and wait for its output. *)
   let startup_sentinel = generate_sentinel () in
   let startup_cmd =
-    Printf.sprintf "printf '%%s\\n' \"%s\"\n" startup_sentinel
+    Printf.sprintf "printf '%%s\n' %s\n" (shell_quote startup_sentinel)
   in
-  Eio.Flow.write stdin_sink [ Cstruct.of_string startup_cmd ];
+  Eio.Flow.write t.stdin [ Cstruct.of_string startup_cmd ];
   let startup_tmp = Cstruct.create 4096 in
   let startup_buf = Buffer.create 64 in
   let rec wait_for_startup () =
-    match Eio.Flow.single_read stdout_src startup_tmp with
+    match Eio.Flow.single_read t.stdout startup_tmp with
     | n when n > 0 ->
         Buffer.add_string startup_buf
           (Cstruct.to_string (Cstruct.sub startup_tmp 0 n));
@@ -184,30 +201,31 @@ let create ~proc_mgr ~clock ~sw ~env ~cwd ?(process_group = true) () =
           let lines = String.split_on_char '\n' s in
           if List.exists (String.equal startup_sentinel) lines then ()
           else wait_for_startup ()
-        end else wait_for_startup ()
-    | _ ->
-        failwith "persistent_shell: shell exited during startup handshake"
+        end
+        else wait_for_startup ()
+    | _ -> failwith "persistent_shell: shell exited during startup handshake"
   in
   wait_for_startup ();
   (* cd to initial working directory *)
   let cd_sentinel = generate_sentinel () in
   let cd_cmd =
-    Printf.sprintf "cd %s && printf '%%s\\n' \"%s\"\n" cwd cd_sentinel
+    Printf.sprintf "cd %s && printf '%%s\n' %s\n" (shell_quote cwd)
+      (shell_quote cd_sentinel)
   in
-  Eio.Flow.write stdin_sink [ Cstruct.of_string cd_cmd ];
+  Eio.Flow.write t.stdin [ Cstruct.of_string cd_cmd ];
   let cd_tmp = Cstruct.create 4096 in
   let cd_buf = Buffer.create 64 in
   let rec wait_for_cd () =
-    match Eio.Flow.single_read stdout_src cd_tmp with
+    match Eio.Flow.single_read t.stdout cd_tmp with
     | n when n > 0 ->
-        Buffer.add_string cd_buf
-          (Cstruct.to_string (Cstruct.sub cd_tmp 0 n));
+        Buffer.add_string cd_buf (Cstruct.to_string (Cstruct.sub cd_tmp 0 n));
         let s = Buffer.contents cd_buf in
         if String.contains s '\n' then begin
           let lines = String.split_on_char '\n' s in
           if List.exists (String.equal cd_sentinel) lines then ()
           else wait_for_cd ()
-        end else wait_for_cd ()
+        end
+        else wait_for_cd ()
     | _ -> failwith "persistent_shell: shell exited during cd"
   in
   wait_for_cd ();
@@ -219,8 +237,9 @@ let create ~proc_mgr ~clock ~sw ~env ~cwd ?(process_group = true) () =
 let exec t ~command ?on_stdout ?on_stderr ?timeout ~sw:_ ~cancel () =
   Eio.Cancel.check cancel;
   Eio.Mutex.lock t.mutex;
-  Eio.Cancel.protect (fun () ->
-    let result =
+  Fun.protect
+    ~finally:(fun () -> Eio.Cancel.protect (fun () -> Eio.Mutex.unlock t.mutex))
+    (fun () ->
       if t.closed then
         Error
           {
@@ -261,17 +280,16 @@ let exec t ~command ?on_stdout ?on_stderr ?timeout ~sw:_ ~cancel () =
                     stderr_sentinel := sentinel_line);
                 ];
               let chunks =
-                List.rev !stdout_chunks @ List.rev !stderr_chunks
+                Execution_env.sort_chunks_by_timestamp
+                  (List.rev !stdout_chunks @ List.rev !stderr_chunks)
               in
               let stdout_text =
-                !stdout_chunks
-                |> List.rev
+                !stdout_chunks |> List.rev
                 |> List.map (fun (c : Execution_env.output_chunk) -> c.line)
                 |> String.concat "\n"
               in
               let stderr_text =
-                !stderr_chunks
-                |> List.rev
+                !stderr_chunks |> List.rev
                 |> List.map (fun (c : Execution_env.output_chunk) -> c.line)
                 |> String.concat "\n"
               in
@@ -291,23 +309,19 @@ let exec t ~command ?on_stdout ?on_stderr ?timeout ~sw:_ ~cancel () =
                   chunks;
                 })
         in
-        (try
-           match timeout with
-           | None -> run_in_switch ()
-           | Some timeout_sec -> (
-               try
-                 Eio.Time.with_timeout_exn t.clock timeout_sec run_in_switch
-               with Eio.Time.Timeout ->
-                 Error
-                   {
-                     Pera_types.Types.code = Timeout;
-                     message =
-                       Printf.sprintf "Command timed out after %.1f seconds"
-                         timeout_sec;
-                   })
-         with Eio.Cancel.Cancelled _ ->
-           Error
-             { Pera_types.Types.code = Aborted; message = "Operation cancelled" })
-    in
-    Eio.Mutex.unlock t.mutex;
-    result)
+        try
+          match timeout with
+          | None -> run_in_switch ()
+          | Some timeout_sec -> (
+              try Eio.Time.with_timeout_exn t.clock timeout_sec run_in_switch
+              with Eio.Time.Timeout ->
+                Error
+                  {
+                    Pera_types.Types.code = Timeout;
+                    message =
+                      Printf.sprintf "Command timed out after %.1f seconds"
+                        timeout_sec;
+                  })
+        with Eio.Cancel.Cancelled _ ->
+          Error
+            { Pera_types.Types.code = Aborted; message = "Operation cancelled" })
