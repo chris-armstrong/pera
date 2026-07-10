@@ -13,10 +13,10 @@ let has_key json key =
 
 let fake_model =
   Pera_types.Types.
-    { id = "test-model"; api = "anthropic"; context_window = 200_000 }
+    { id = "test-model"; protocol = "anthropic"; context_window = 200_000 }
 
 let fake_user_message =
-  Pera_provider.Provider.UserMessage
+  Pera_connector.Connector.UserMessage
     Pera_types.Types.{ role = "user"; content = [ UText "hello" ] }
 
 (* Read all JSONL lines from a file and parse each as JSON *)
@@ -174,7 +174,7 @@ let test_multiple_appends_accumulate_lines env () =
   Result.get_exn
     (Session_writer.write_model_change t
        Pera_types.Types.
-         { id = "new-model"; api = "anthropic"; context_window = 200_000 });
+         { id = "new-model"; protocol = "anthropic"; context_window = 200_000 });
   let lines = read_jsonl_lines env path in
   Alcotest.(check int) "four lines" 4 (List.length lines);
   List.iteri
@@ -258,7 +258,7 @@ let test_compaction_then_synthetic_then_leaf_chain env () =
   Result.get_exn (Session_writer.write_session_info t);
   Result.get_exn (Session_writer.write_message t fake_user_message);
   let second_user_message =
-    Pera_provider.Provider.UserMessage
+    Pera_connector.Connector.UserMessage
       Pera_types.Types.{ role = "user"; content = [ UText "ack" ] }
   in
   Result.get_exn (Session_writer.write_message t second_user_message);
@@ -297,6 +297,97 @@ let test_compaction_then_synthetic_then_leaf_chain env () =
       lines
   in
   Alcotest.(check bool) "leaf is childless" false leaf_is_parent
+
+(* ── Crash resilience test ────────────────────────────────────────────────── *)
+
+(** Lenient JSONL reader: skips lines that are not valid JSON. *)
+let read_jsonl_lines_lenient env path =
+  let content = Eio.Path.load Eio.Path.(env#fs / path) in
+  String.split_on_char '\n' content
+  |> List.filter (fun s -> not (String.is_empty s))
+  |> List.filter_map (fun line ->
+      try Some (Yojson.Safe.from_string line) with Yojson.Json_error _ -> None)
+
+let test_crash_resilience_preserves_valid_entries env () =
+  let dir = Harness_test_util.make_temp_dir env in
+  let path = Filename.concat dir "session.jsonl" in
+  let t =
+    Result.get_exn (Session_writer.create ~path ~env ~model:fake_model ~cwd:dir)
+  in
+  (* Write 4 valid entries *)
+  Result.get_exn (Session_writer.write_session_info t);
+  Result.get_exn (Session_writer.write_message t fake_user_message);
+  let assistant_msg =
+    Pera_connector.Connector.AssistantMessage
+      Pera_types.Types.
+        {
+          content = [ AText "world" ];
+          stop_reason = EndTurn;
+          provenance =
+            {
+              protocol = "test";
+              provider = "test";
+              model = "test";
+              error_message = None;
+            };
+          usage =
+            {
+              input_tokens = 0;
+              output_tokens = 0;
+              cache_read_tokens = 0;
+              cache_write_tokens = 0;
+              cost_usd = None;
+            };
+        }
+  in
+  Result.get_exn (Session_writer.write_message t assistant_msg);
+  Result.get_exn (Session_writer.write_leaf t);
+  (* Simulate a crash mid-write: append a partial JSON line *)
+  let oc =
+    Stdlib.Out_channel.open_gen [ Open_append; Open_binary ] 0o644 path
+  in
+  Fun.protect
+    ~finally:(fun () -> Stdlib.Out_channel.close oc)
+    (fun () ->
+      Stdlib.Out_channel.output_string oc "{\"id\":\"partial-line-no-closing");
+  (* Read with lenient parser *)
+  let entries = read_jsonl_lines_lenient env path in
+  (* Verify exactly 4 valid entries *)
+  Alcotest.(check int) "4 valid entries" 4 (List.length entries);
+  (* Verify types are correct *)
+  let types = List.map (fun e -> get_str e "type") entries in
+  let expected = [ "session_info"; "message"; "message"; "leaf" ] in
+  Alcotest.(check (list string)) "entry types" expected types;
+  (* Verify chain: each entry's parent_id matches previous entry's id *)
+  let rec check_chain prev = function
+    | [] -> true
+    | entry :: rest ->
+        let id = get_str entry "id" in
+        let parent_ok =
+          match prev with
+          | None -> true
+          | Some prev_id -> String.equal prev_id (get_str entry "parent_id")
+        in
+        parent_ok && check_chain (Some id) rest
+  in
+  Alcotest.(check bool) "chain is intact" true (check_chain None entries);
+  (* Verify no entry has a leaf as parent *)
+  let leaf_ids =
+    List.filter_map
+      (fun e ->
+        match get_str e "type" with
+        | "leaf" -> Some (get_str e "id")
+        | _ -> None)
+      entries
+  in
+  let leaf_is_parent =
+    List.exists
+      (fun e ->
+        has_key e "parent_id"
+        && List.mem ~eq:String.equal (get_str e "parent_id") leaf_ids)
+      entries
+  in
+  Alcotest.(check bool) "no entry has leaf as parent" false leaf_is_parent
 
 (* ── Runner ──────────────────────────────────────────────────────────────── *)
 
@@ -350,5 +441,11 @@ let () =
               Alcotest.test_case "compaction then synthetic then leaf chain"
                 `Quick
                 (test_compaction_then_synthetic_then_leaf_chain env);
+            ] );
+          ( "crash_resilience",
+            [
+              Alcotest.test_case
+                "partial trailing line does not corrupt valid entries" `Quick
+                (test_crash_resilience_preserves_valid_entries env);
             ] );
         ])

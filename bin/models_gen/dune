@@ -1,0 +1,5 @@
+(executable
+ (name main)
+ (public_name pera-models-gen)
+ (package pera-cli)
+ (libraries pera_cli yojson containers decimal sexplib))

@@ -13,7 +13,7 @@ depends: [
   "pera-types" {= version}
   "pera-env" {= version}
   "pera-core" {= version}
-  "pera-provider" {= version}
+  "pera-connector" {= version}
   "pera-harness" {= version}
   "pera-tools" {= version}
   "containers" {>= "3.0"}

@@ -97,15 +97,9 @@ lib/
     ├── tool_util.{ml,mli}        # Shared tool helpers (schema builders, text splitting)
     └── tools.{ml,mli}            # Assembly: all tool schemas + dispatch
 
-bin/drivers/              # Thin drivers / CLI entry points
-  conversation_driver.ml  # Interactive conversation loop
-  loop_driver.ml          # Non-interactive agent loop
+test/live/              # Live integration test executables
   provider_driver.ml      # Raw provider streaming test
-  env_driver.ml           # Execution environment smoke test
-  tool_driver.ml          # Individual tool smoke test
-  harness_driver.ml       # Full harness integration test (includes autonomous compaction scenario)
-  session_driver.ml       # Session JSONL inspection (includes compaction entry scenario)
-  compaction_driver.ml    # Compaction module layer test (offline faux + optional real-model)
+  compaction_driver.ml    # Compaction module layer test (real-model only)
   live_driver.ml          # Live agent with terminal UI
 ```
 
@@ -214,6 +208,8 @@ These are part of the project's workflow, not runtime code.
 |----------|---------------|
 | `SPECIFICATION.md` | Full architectural specification (layers, data model, provider layer, agent core, harness, compaction, tools, CLI) |
 | `USAGE.md` | How to run the development drivers (`provider_driver`, `conversation_driver`, `loop_driver`, `env_driver`, `tool_driver`) |
+| `docs/usage/cli.md` | Pera CLI usage (options, interactive mode, configuration, environment variables) |
+| `docs/usage/models-gen.md` | Model database generator (`pera-models-gen`) — converting models.dev JSON to `models.sexp` |
 | `docs/guidelines/index.md` | Mandatory coding guidelines index |
 | `dune-project` | Package definitions and dependencies |
 

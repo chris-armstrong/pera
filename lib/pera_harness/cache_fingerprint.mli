@@ -15,7 +15,7 @@ val compute : system:string -> tools:'ctx Pera_core.Agent_types.tool list -> t
 
     Each tool is serialised to the same canonical JSON shape the Anthropic
     provider emits on the wire, so declaration order in the underlying
-    {!Pera_provider.Json_schema.t} does not affect the per-tool bytes. Tool
+    {!Pera_connector.Json_schema.t} does not affect the per-tool bytes. Tool
     order in [tools] is preserved: re-ordering the tool list changes the prefix
     and therefore the fingerprint. *)
 

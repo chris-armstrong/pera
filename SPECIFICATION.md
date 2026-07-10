@@ -20,11 +20,11 @@ This port preserves that shape. The OCaml version is functor-heavy where pi is i
 
 ## 1. Scope
 
-**In scope.** A headless coding agent. Two providers — Anthropic native API and the OpenAI chat-completions API, the latter configured for OpenCode Zen and OpenCode Go. A pluggable execution environment over filesystem and shell. Append-only session logging. Context compaction sufficient for long sessions. Four tools (read, write, bash, grep). Stdin/stdout CLI.
+**In scope.** A headless coding agent. Two providers — Anthropic native API and the OpenAI chat-completions API, the latter configured for OpenCode Zen and OpenCode Go. A pluggable execution environment over filesystem and shell. Append-only session logging. Context compaction sufficient for long sessions. Four tools (read, write, bash, grep). Stdin/stdout CLI. Anthropic prompt-cache markers and cache-stability guarantees (cache policy/TTL types, `cache_control` breakpoint placement, canonical tool-schema serialisation, dynamic-content linting, session-level prefix fingerprinting).
 
-**Designed around** (postponed but the architecture must not preclude). Resuming or branching previously-logged sessions. OAuth-refreshed auth. Alternative execution environments (SSH, Irmin, sandbox). Image input. The `edit` tool. Auto-invoked skills. User-customisable prompt templates. Streaming compaction. MCP servers, extensions.
+**Designed around** (postponed but the architecture must not preclude). Resuming or branching previously-logged sessions. OAuth-refreshed auth. Alternative execution environments (SSH, Irmin, sandbox). Image input. The `edit` tool. Auto-invoked skills. User-customisable prompt templates. Streaming compaction. MCP servers, extensions. A `pera-cli` library layer enabling custom binaries with non-default execution environments and tool sets.
 
-**Out of scope** (will not influence the design). TUI. HTTP proxy. Prompt-cache markers and vision content blocks. Branch summarisation (the abandoned-branch labelling subsystem).
+**Out of scope** (will not influence the design). TUI. HTTP proxy. Vision content blocks. Branch summarisation (the abandoned-branch labelling subsystem).
 
 ---
 
@@ -149,6 +149,28 @@ This is why the format must be a tree from day one. Even if v1 never reads the f
 
 Entry IDs are standard, non-truncated UUIDv7 strings (the full 36-character representation). UUIDv7's timestamp prefix means lexicographic id order matches creation order across processes. The full representation is used rather than a truncated form: it guarantees uniqueness without an allocation-time collision check, which truncation to 8 characters would have required. Clock non-monotonicity within a millisecond is not a practical concern for session ordering and is documented at the generator.
 
+### Cache policy
+
+Two types govern prompt-cache behaviour, both in `pera_types`:
+
+```ocaml
+type cache_ttl =
+  | Five_minutes   (* default *)
+  | One_hour
+
+type cache_policy =
+  | No_cache           (* default — no cache_control markers emitted *)
+  | Conversation       (* system block + last tool + last user message *)
+  | SystemAndToolsOnly (* system block + last tool; no message-history marker *)
+```
+
+`cache_policy` controls which positions in the request receive Anthropic
+`cache_control` markers. `cache_ttl` is orthogonal — the same TTL applies to
+every marker in a given request. The default is `No_cache` so caching is
+opt-in; nothing is cached unless the caller enables it. Both types thread
+through `simple_stream_options` to the provider layer; only `Anthropic_provider`
+acts on them (the OpenAI-completions provider ignores them).
+
 ### Errors
 
 Three error families. `file_error` (code, path, message) — every filesystem call returns this on failure. `execution_error` (code, message) — shell execution failures. `tool_error` (message, is_user_error) — tool execution failures; the boolean distinguishes "the LLM passed bad arguments" from "the tool itself failed". Codes are closed sums so handler code can pattern-match without a catchall.
@@ -257,9 +279,31 @@ The provider resolves a key for each LLM call. The agent core threads an optiona
 
 ### Anthropic and OpenAI-completions
 
-**Anthropic.** Native API at `/v1/messages`. SSE events as above. Tool calls arrive as JSON fragments in `content_block_delta` for `tool_use` blocks; the interpreter concatenates by block index and parses JSON at `content_block_stop`. Skipped in v1: prompt caching, vision, ping events (ignored).
+**Anthropic.** Native API at `/v1/messages`. SSE events as above. Tool calls arrive as JSON fragments in `content_block_delta` for `tool_use` blocks; the interpreter concatenates by block index and parses JSON at `content_block_stop`. Ping events are ignored. Vision is deferred. Prompt caching is implemented — see "Cache-stability guarantees" below.
 
-**OpenAI-completions.** A single provider implementation targeting any endpoint speaking the chat completions API. Per-endpoint differences (which field carries reasoning content, whether tool-result messages require a `name` field, max-tokens field name, etc.) are encoded in a `compat` record selected by base URL. OpenCode Zen and OpenCode Go differ in base URL and in one field name — both configured by `compat`, not by separate provider modules. New endpoints with similar quirks are accommodated by adding flags; provider code is shared.
+**OpenAI-completions.** A single provider implementation targeting any endpoint speaking the chat completions API. Per-endpoint differences (which field carries reasoning content, whether tool-result messages require a `name` field, max-tokens field name, etc.) are encoded in a `compat` record selected by base URL. OpenCode Zen and OpenCode Go differ in base URL and in one field name — both configured by `compat`, not by separate provider modules. New endpoints with similar quirks are accommodated by adding flags; provider code is shared. The OpenAI-completions provider surfaces `cached_tokens` from `prompt_tokens_details` in the usage response.
+
+### Cache-stability guarantees
+
+Anthropic's cache hashes the exact request bytes. Anything that perturbs the serialised bytes — key ordering in a tool's JSON Schema, a timestamp embedded in a description, a tool conditionally absent this turn — silently invalidates the cache and re-bills at 1.25× base input rate. This section documents the mechanisms pera uses to make cache hits reliable by default.
+
+**Canonical tool serialisation.** `Json_schema.to_json` sorts every `Assoc` key list alphabetically, recursively, including the top-level tool wrapper fields (`description`, `input_schema`, `name`). Source declaration order is preserved inside `Json_schema.t` for readability; sorting happens only at serialisation time. Two `Json_schema.t` values with the same structure but different field declaration orders produce identical bytes. The `required` list within object schemas is also sorted. This means tool wire JSON is stable across independent constructions.
+
+**Opaque `Tool.t`.** The tool type is opaque — constructed only through `Tool.create`. This prevents callers from constructing tool records directly, which would bypass the canonical serialiser.
+
+**Dynamic-content linter.** `Cache_lint.warn_if_dynamic` is called at `Tool.create` time and at system-prompt construction. It runs a set of heuristic regex patterns (ISO 8601 timestamps, RFC 3339 dates, UUID v4, long digit runs ≥10 digits) against the `description` and system prompt text. Matches emit `Logs.warn`; the linter is warn-only and never blocks construction. A `~quiet:true` flag suppresses warnings (useful in tests that intentionally pass date strings).
+
+**Session-level prefix fingerprint.** `Cache_fingerprint` (in `pera_harness`) hashes the concatenation of canonical tool JSON bytes and the system prompt text at session creation. Before each request, the fingerprint is recomputed; if it differs from the stored value and `cache_policy ≠ No_cache`, a `Logs.warn` is emitted: "prefix changed since last turn; previous cache writes invalidated." This surfaces mid-session cache-busting — e.g. a tool description edited between sends — that would otherwise be invisible.
+
+**Breakpoint placement.** `Anthropic_request` places `cache_control: {type: "ephemeral", ttl?}` markers according to `cache_policy`:
+
+| Policy | System block | Last tool | Last user message |
+|---|---|---|---|
+| `No_cache` | — | — | — |
+| `Conversation` | ✓ | ✓ | ✓ |
+| `SystemAndToolsOnly` | ✓ | ✓ | — |
+
+Three of Anthropic's four allowed breakpoints are used; one is reserved for future use (e.g. a 20-block-lookback mitigation for long tool chains). TTL: `Five_minutes` emits `{type: "ephemeral"}` (no `ttl` field); `One_hour` emits `{type: "ephemeral", ttl: "1h"}`.
 
 ---
 
@@ -644,9 +688,9 @@ M5 plus compaction at Level 3 (autonomous). Sessions of any length terminate gra
 
 ### M7 — Operable agent
 
-M6 plus compaction Level 4 plus skills loading plus configuration surface (compaction model swap, tail size, threshold). The CLI is feature-complete enough for steady use.
+M6 plus: compaction Level 4 (retry on overshoot, configurable compaction model); skills loading (agentskills.io spec, XDG data directories, model-loadable and user-only modes); the full `pera` CLI binary with the `pera-cli` library layer underneath it; and the complete configuration surface — cache policy, cache TTL, compaction model/tail/threshold, skills availability. The CLI is feature-complete enough for steady use.
 
-**Property:** the agent is operationally tunable without code changes. Failure recovery during compaction is automatic.
+**Property:** the agent is operationally tunable without code changes. Failure recovery during compaction is automatic. Users with alternative execution environments can build a custom binary by linking against `pera-cli` and supplying their own `Env` implementation.
 
 **What this validates:** the compaction subsystem is stable under stress. The configuration surface is adequate for ops.
 
@@ -672,7 +716,7 @@ A failing driver is more informative than a failing end-to-end run. "The provide
 
 A driver is a small program (typically 50–200 lines) that:
 
-- Lives in the codebase as a persistent artifact (`bin/drivers/<layer>_driver.ml` or similar).
+- Lives in the codebase as a persistent artifact (`test/live/<layer>_driver.ml` or similar).
 - Takes its inputs from argv, stdin, or hardcoded scenarios; not from a test framework.
 - Prints structured human-readable output.
 - Returns a meaningful exit code.

@@ -43,7 +43,7 @@ Pera-specific reminders:
 - IO functions return `Result`, never raise on expected failures
 - Fibres under a switch, not detached
 
-Driver executable reminders (applies to any file in `bin/drivers/`):
+Driver executable reminders (applies to any file in `test/live/`):
 - Each scenario runs under its own `Eio.Switch.run` so one scenario's fibre crash does not abort the suite
 - Shared JSONL/file inspection helpers go in a shared module — do not copy helpers across driver files
 

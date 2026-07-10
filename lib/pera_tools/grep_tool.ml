@@ -11,21 +11,21 @@ let rg_install_msg =
   \  - Nix/NixOS: nix-env -iA nixpkgs.ripgrep"
 
 let grep_schema =
-  Pera_provider.Json_schema.object_ ~required:[ "pattern" ]
+  Pera_connector.Json_schema.object_ ~required:[ "pattern" ]
     ~properties:
       [
         ( "pattern",
-          Pera_provider.Json_schema.string
+          Pera_connector.Json_schema.string
             ~description:"Search pattern (regular expression)." () );
         ( "path",
-          Pera_provider.Json_schema.optional
-            (Pera_provider.Json_schema.string
+          Pera_connector.Json_schema.optional
+            (Pera_connector.Json_schema.string
                ~description:
                  "File or directory to search (default: current directory)."
                ()) );
         ( "glob",
-          Pera_provider.Json_schema.optional
-            (Pera_provider.Json_schema.string
+          Pera_connector.Json_schema.optional
+            (Pera_connector.Json_schema.string
                ~description:"Filter files by glob pattern (e.g. '*.ml')." ()) );
       ]
     ()
@@ -77,68 +77,51 @@ let handle_grep_output ~exit_code ~stdout_str ~stderr_str =
       let msg = if String.is_empty stderr_str then stdout_str else stderr_str in
       Error { Pera_types.Types.message = msg; is_user_error = false }
 
-let grep (env : (module Pera_env.Execution_env.S)) =
-  let module E = (val env : Pera_env.Execution_env.S) in
-  (* Memoised rg path: None = unchecked, Some None = not found,
-     Some (Some p) = found at p *)
-  let rg_path : string option option ref = ref None in
+let grep =
   Pera_core.Agent_types.Tool.create ~name:"grep"
     ~description:
       "Search for a regular expression pattern in files. Uses ripgrep (rg). \
        Results are in path:line:content format, up to 100 matches. No system \
        grep fallback; ripgrep must be installed."
     ~schema:grep_schema ~parallel_safe:true
-    ~execute:
-      (fun ~ctx:() ~args ~sw ~cancel ->
-        let open Result.Syntax in
-        let* pattern = Tool_util.get_string "pattern" args in
-        let path_opt = Tool_util.get_string_opt "path" args in
-        let glob_opt = Tool_util.get_string_opt "glob" args in
-        (* Resolve rg path with memoisation *)
-        let* rg =
-          match !rg_path with
-          | Some (Some p) -> Ok p
-          | Some None ->
-              Error
-                {
-                  Pera_types.Types.message = rg_install_msg;
-                  is_user_error = false;
-                }
-          | None -> (
-              match E.Sh.find_executable ~name:"rg" with
-              | Some p ->
-                  rg_path := Some (Some p);
-                  Ok p
-              | None ->
-                  rg_path := Some None;
-                  Error
-                    {
-                      Pera_types.Types.message = rg_install_msg;
-                      is_user_error = false;
-                    })
-        in
-        let cmd = build_rg_command ~rg ~pattern ~path_opt ~glob_opt in
-        (* Resolve the env's current working directory so Sh.exec runs ripgrep
-           in the correct directory (the env's cwd, not the parent process cwd). *)
-        let* cwd =
-          E.Fs.absolute_path "."
-          |> Result.map_error Tool_util.file_error_to_tool_error
-        in
-        let stdout_buf = Buffer.create 1024 in
-        let stderr_buf = Buffer.create 1024 in
-        let on_stdout chunk = Buffer.add_string stdout_buf chunk in
-        let on_stderr chunk = Buffer.add_string stderr_buf chunk in
-        match
-          E.Sh.exec ~command:cmd ~on_stdout ~on_stderr ~cwd
-            ?env:(None : (string * string) list option)
-            ?timeout:(None : float option)
-            ~sw ~cancel
-        with
-        | Error e ->
+    ~execute:(fun ~ctx ~args ~sw ~cancel ->
+      let module E = (val ctx : Pera_env.Execution_env.S) in
+      let open Result.Syntax in
+      let* pattern = Tool_util.get_string "pattern" args in
+      let path_opt = Tool_util.get_string_opt "path" args in
+      let glob_opt = Tool_util.get_string_opt "glob" args in
+      (* Resolve rg path *)
+      let* rg =
+        match E.Sh.find_executable ~name:"rg" with
+        | Some p -> Ok p
+        | None ->
             Error
-              { Pera_types.Types.message = e.message; is_user_error = false }
-        | Ok result ->
-            let exit_code = result.Pera_env.Execution_env.exit_code in
-            let stdout_str = Buffer.contents stdout_buf in
-            let stderr_str = Buffer.contents stderr_buf in
-            handle_grep_output ~exit_code ~stdout_str ~stderr_str)
+              {
+                Pera_types.Types.message = rg_install_msg;
+                is_user_error = false;
+              }
+      in
+      let cmd = build_rg_command ~rg ~pattern ~path_opt ~glob_opt in
+      (* Resolve the env's current working directory so Sh.exec runs ripgrep
+           in the correct directory (the env's cwd, not the parent process cwd). *)
+      let* cwd =
+        E.Fs.absolute_path "."
+        |> Result.map_error Tool_util.file_error_to_tool_error
+      in
+      let stdout_buf = Buffer.create 1024 in
+      let stderr_buf = Buffer.create 1024 in
+      let on_stdout chunk = Buffer.add_string stdout_buf chunk in
+      let on_stderr chunk = Buffer.add_string stderr_buf chunk in
+      match
+        E.Sh.exec ~command:cmd ~on_stdout ~on_stderr ~cwd
+          ?env:(None : (string * string) list option)
+          ?timeout:(None : float option)
+          ~sw ~cancel
+      with
+      | Error e ->
+          Error { Pera_types.Types.message = e.message; is_user_error = false }
+      | Ok result ->
+          let exit_code = result.Pera_env.Execution_env.exit_code in
+          let stdout_str = Buffer.contents stdout_buf in
+          let stderr_str = Buffer.contents stderr_buf in
+          handle_grep_output ~exit_code ~stdout_str ~stderr_str)

@@ -23,7 +23,7 @@ val summarise_prompt : string
     paths, decisions, and project understanding, while discarding superseded
     exploration and raw file contents. *)
 
-val render_messages_to_text : Pera_provider.Provider.message list -> string
+val render_messages_to_text : Pera_connector.Connector.message list -> string
 (** A plain-text transcript of [messages]: one block per message, role-labelled
     ([User:] / [Assistant:] / [Tool result:]), tool calls and results inlined as
     text.
@@ -34,7 +34,7 @@ val render_messages_to_text : Pera_provider.Provider.message list -> string
 val compact :
   stream_fn:Pera_core.Agent_types.stream_fn ->
   model:Pera_types.Types.model ->
-  options:Pera_provider.Provider.simple_stream_options ->
+  options:Pera_connector.Connector.simple_stream_options ->
   messages:Pera_core.Agent_types.agent_message list ->
   tail_size:int ->
   sw:Eio.Switch.t ->

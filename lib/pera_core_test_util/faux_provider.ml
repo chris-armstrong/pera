@@ -13,10 +13,17 @@ type error_script = {
 type script = Turn of turn_script | Error of error_script
 
 (** Module-level recording of all provider contexts received, in call order. *)
-let recorded : Pera_provider.Provider.context list ref = ref []
+let recorded : Pera_connector.Connector.context list ref = ref []
 
 let recorded_contexts () = List.rev !recorded
 let reset_recorded () = recorded := []
+
+(** Module-level recording of the API keys each [create] call received, in call
+    order. Used to verify per-connector key routing in [Connector_adapter]. *)
+let recorded_api_keys_ref : string list ref = ref []
+
+let recorded_api_keys () = List.rev !recorded_api_keys_ref
+let reset_recorded_api_keys () = recorded_api_keys_ref := []
 
 let stream_fn_of_scripts ?pause scripts =
   let scripts_ref = ref scripts in
@@ -29,31 +36,30 @@ let stream_fn_of_scripts ?pause scripts =
           scripts_ref := rest;
           s
     in
-    let stream = Pera_provider.Event_stream.create ~capacity:32 in
+    let stream = Pera_connector.Event_stream.create ~capacity:32 in
     Eio.Fiber.fork ~sw (fun () ->
         match
           match script with
           | Turn { events; final } ->
               List.iter
                 (fun event ->
-                  Pera_provider.Event_stream.push stream event;
+                  Pera_connector.Event_stream.push stream event;
                   Option.iter (fun f -> f ()) pause)
                 events;
-              Pera_provider.Event_stream.close stream final
+              Pera_connector.Event_stream.close stream final
           | Error { error_events; error_message } ->
               List.iter
                 (fun event ->
-                  Pera_provider.Event_stream.push stream event;
+                  Pera_connector.Event_stream.push stream event;
                   Option.iter (fun f -> f ()) pause)
                 error_events;
-              Pera_provider.Event_stream.close_error stream error_message
+              Pera_connector.Event_stream.close_error stream error_message
                 Pera_types.Types.Transport
         with
         | () -> ()
         | exception exn -> (
             let err_msg = Printexc.to_string exn in
-            try
-              Pera_provider.Event_stream.close_internal_error stream err_msg
+            try Pera_connector.Event_stream.close_internal_error stream err_msg
             with _ -> ()));
     stream
 
@@ -63,8 +69,11 @@ let as_provider scripts =
     type t = unit
 
     let name = "Faux"
-    let create ~env:_ ~sw:_ = ()
+
+    let create ~api_key:k ~base_url:_ ~env:_ ~sw:_ =
+      recorded_api_keys_ref := k :: !recorded_api_keys_ref;
+      ()
 
     let stream_simple () ~model ~context ~options ~sw =
       fn ~model ~context ~options ~sw
-  end : Pera_provider.Provider.S)
+  end : Pera_connector.Connector.S)

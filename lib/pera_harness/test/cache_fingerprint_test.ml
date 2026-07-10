@@ -37,7 +37,7 @@ let find_warning logs =
     logs
 
 let make_tool ~description name =
-  let schema = Pera_provider.Json_schema.string () in
+  let schema = Pera_connector.Json_schema.string () in
   Pera_core.Agent_types.Tool.create ~name ~description ~schema
     ~parallel_safe:true ~execute:(fun ~ctx:_ ~args:_ ~sw:_ ~cancel:_ ->
       Ok (Pera_core.Agent_types.Tool_text "ok"))
@@ -152,20 +152,20 @@ let make_tool_with_schema ~description name schema =
 
 let test_stable_despite_schema_property_order () =
   let schema_a =
-    Pera_provider.Json_schema.object_
+    Pera_connector.Json_schema.object_
       ~properties:
         [
-          ("alpha", Pera_provider.Json_schema.string ());
-          ("beta", Pera_provider.Json_schema.string ());
+          ("alpha", Pera_connector.Json_schema.string ());
+          ("beta", Pera_connector.Json_schema.string ());
         ]
       ~required:[ "alpha"; "beta" ] ()
   in
   let schema_b =
-    Pera_provider.Json_schema.object_
+    Pera_connector.Json_schema.object_
       ~properties:
         [
-          ("beta", Pera_provider.Json_schema.string ());
-          ("alpha", Pera_provider.Json_schema.string ());
+          ("beta", Pera_connector.Json_schema.string ());
+          ("alpha", Pera_connector.Json_schema.string ());
         ]
       ~required:[ "beta"; "alpha" ] ()
   in

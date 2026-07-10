@@ -14,7 +14,7 @@ let make_assistant_message ?(stop_reason = Pera_types.Types.EndTurn) content =
       stop_reason;
       provenance =
         {
-          api = "faux";
+          protocol = "faux";
           provider = "faux";
           model = "faux";
           error_message = None;
@@ -47,7 +47,7 @@ let make_tool_call id name arguments = Pera_types.Types.{ id; name; arguments }
     [UserMessage] with a single [UText] block. *)
 let make_user_agent_message text =
   let um = Pera_types.Types.{ role = "user"; content = [ UText text ] } in
-  Agent_types.Real (Pera_provider.Provider.UserMessage um)
+  Agent_types.Real (Pera_connector.Connector.UserMessage um)
 
 (** {1 Config defaults} *)
 
@@ -57,16 +57,18 @@ let default_convert_to_llm msgs = List.map Agent_types.to_provider_message msgs
 
 (** A model value for loop calls. *)
 let test_model =
-  Pera_types.Types.{ id = "test-model"; api = "faux"; context_window = 200_000 }
+  Pera_types.Types.
+    { id = "test-model"; protocol = "faux"; context_window = 200_000 }
 
 (** Simple stream options for loop calls. *)
 let test_options =
-  Pera_provider.Provider.
+  Pera_connector.Connector.
     {
       max_tokens = 1024;
       temperature = None;
       cache_policy = Pera_types.Types.No_cache;
       cache_ttl = Pera_types.Types.Five_minutes;
+      thinking_budget_tokens = None;
     }
 
 (** {1 Script builders} *)
@@ -117,12 +119,12 @@ let make_tool_use_turn_script tool_calls =
 
 (** A tool schema with no properties and no required fields. *)
 let empty_schema =
-  Pera_provider.Json_schema.object_ ~properties:[] ~required:[] ()
+  Pera_connector.Json_schema.object_ ~properties:[] ~required:[] ()
 
 (** A tool schema requiring a field named ["x"] of type integer. *)
 let int_field_schema =
-  Pera_provider.Json_schema.object_
-    ~properties:[ ("x", Pera_provider.Json_schema.integer ()) ]
+  Pera_connector.Json_schema.object_
+    ~properties:[ ("x", Pera_connector.Json_schema.integer ()) ]
     ~required:[ "x" ] ()
 
 (** {1 Event stream helpers} *)
@@ -132,7 +134,7 @@ let int_field_schema =
 let collect_agent_events stream =
   let buf = ref [] in
   let result =
-    Pera_provider.Event_stream.iter stream ~f:(fun e -> buf := e :: !buf)
+    Pera_connector.Event_stream.iter stream ~f:(fun e -> buf := e :: !buf)
   in
   (List.rev !buf, result)
 

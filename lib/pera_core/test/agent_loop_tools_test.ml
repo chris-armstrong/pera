@@ -102,9 +102,9 @@ let test_single_tool_call_executes_and_feeds_result_back () =
     List.exists
       (fun msg ->
         match msg with
-        | Pera_provider.Provider.ToolResultMessage _ -> true
+        | Pera_connector.Connector.ToolResultMessage _ -> true
         | _ -> false)
-      second_ctx.Pera_provider.Provider.messages
+      second_ctx.Pera_connector.Connector.messages
   in
   Alcotest.(check bool)
     "second turn context contains ToolResultMessage" true has_tool_result
@@ -127,28 +127,26 @@ let test_parallel_tool_results_appended_in_source_order () =
   let tool1 =
     Agent_types.Tool.create ~name:"tool1" ~description:"tool that waits"
       ~schema:empty_schema ~parallel_safe:true
-      ~execute:
-        (fun ~ctx:_ ~args:_ ~sw:_ ~cancel:_ ->
-          (* Wait until tool2 signals *)
-          Eio.Mutex.use_rw ~protect:false mutex (fun () ->
-              while not !tool2_done do
-                Eio.Condition.await cond mutex
-              done);
-          completion_order := !completion_order @ [ "tool1" ];
-          Ok (Agent_types.Tool_text "result1"))
+      ~execute:(fun ~ctx:_ ~args:_ ~sw:_ ~cancel:_ ->
+        (* Wait until tool2 signals *)
+        Eio.Mutex.use_rw ~protect:false mutex (fun () ->
+            while not !tool2_done do
+              Eio.Condition.await cond mutex
+            done);
+        completion_order := !completion_order @ [ "tool1" ];
+        Ok (Agent_types.Tool_text "result1"))
   in
   (* Tool 2: runs freely and signals tool 1 *)
   let tool2 =
     Agent_types.Tool.create ~name:"tool2" ~description:"fast tool"
       ~schema:empty_schema ~parallel_safe:true
-      ~execute:
-        (fun ~ctx:_ ~args:_ ~sw:_ ~cancel:_ ->
-          (* Signal tool1 to proceed *)
-          Eio.Mutex.use_rw ~protect:false mutex (fun () ->
-              tool2_done := true;
-              Eio.Condition.broadcast cond);
-          completion_order := !completion_order @ [ "tool2" ];
-          Ok (Agent_types.Tool_text "result2"))
+      ~execute:(fun ~ctx:_ ~args:_ ~sw:_ ~cancel:_ ->
+        (* Signal tool1 to proceed *)
+        Eio.Mutex.use_rw ~protect:false mutex (fun () ->
+            tool2_done := true;
+            Eio.Condition.broadcast cond);
+        completion_order := !completion_order @ [ "tool2" ];
+        Ok (Agent_types.Tool_text "result2"))
   in
   let tc1 = make_tool_call "call-1" "tool1" (`Assoc []) in
   let tc2 = make_tool_call "call-2" "tool2" (`Assoc []) in
@@ -187,9 +185,9 @@ let test_parallel_tool_results_appended_in_source_order () =
     List.filter_map
       (fun msg ->
         match msg with
-        | Pera_provider.Provider.ToolResultMessage tr -> Some tr
+        | Pera_connector.Connector.ToolResultMessage tr -> Some tr
         | _ -> None)
-      second_ctx.Pera_provider.Provider.messages
+      second_ctx.Pera_connector.Connector.messages
   in
   Alcotest.(check int)
     "two tool result messages" 2
@@ -218,18 +216,16 @@ let test_sequential_mode_runs_in_source_order () =
   let tool1 =
     Agent_types.Tool.create ~name:"tool1" ~description:"first tool"
       ~schema:empty_schema ~parallel_safe:false
-      ~execute:
-        (fun ~ctx:_ ~args:_ ~sw:_ ~cancel:_ ->
-          start_order := !start_order @ [ "tool1" ];
-          Ok (Agent_types.Tool_text "r1"))
+      ~execute:(fun ~ctx:_ ~args:_ ~sw:_ ~cancel:_ ->
+        start_order := !start_order @ [ "tool1" ];
+        Ok (Agent_types.Tool_text "r1"))
   in
   let tool2 =
     Agent_types.Tool.create ~name:"tool2" ~description:"second tool"
       ~schema:empty_schema ~parallel_safe:false
-      ~execute:
-        (fun ~ctx:_ ~args:_ ~sw:_ ~cancel:_ ->
-          start_order := !start_order @ [ "tool2" ];
-          Ok (Agent_types.Tool_text "r2"))
+      ~execute:(fun ~ctx:_ ~args:_ ~sw:_ ~cancel:_ ->
+        start_order := !start_order @ [ "tool2" ];
+        Ok (Agent_types.Tool_text "r2"))
   in
   let tc1 = make_tool_call "c1" "tool1" (`Assoc []) in
   let tc2 = make_tool_call "c2" "tool2" (`Assoc []) in
@@ -272,18 +268,16 @@ let test_per_tool_sequential_forces_batch_sequential () =
   let tool1 =
     Agent_types.Tool.create ~name:"tool1" ~description:"sequential tool"
       ~schema:empty_schema ~parallel_safe:false
-      ~execute:
-        (fun ~ctx:_ ~args:_ ~sw:_ ~cancel:_ ->
-          start_order := !start_order @ [ "tool1" ];
-          Ok (Agent_types.Tool_text "r1"))
+      ~execute:(fun ~ctx:_ ~args:_ ~sw:_ ~cancel:_ ->
+        start_order := !start_order @ [ "tool1" ];
+        Ok (Agent_types.Tool_text "r1"))
   in
   let tool2 =
     Agent_types.Tool.create ~name:"tool2" ~description:"parallel tool"
       ~schema:empty_schema ~parallel_safe:true
-      ~execute:
-        (fun ~ctx:_ ~args:_ ~sw:_ ~cancel:_ ->
-          start_order := !start_order @ [ "tool2" ];
-          Ok (Agent_types.Tool_text "r2"))
+      ~execute:(fun ~ctx:_ ~args:_ ~sw:_ ~cancel:_ ->
+        start_order := !start_order @ [ "tool2" ];
+        Ok (Agent_types.Tool_text "r2"))
   in
   let tc1 = make_tool_call "c1" "tool1" (`Assoc []) in
   let tc2 = make_tool_call "c2" "tool2" (`Assoc []) in
@@ -322,11 +316,9 @@ let test_schema_validation_failure_becomes_error_result_without_execute () =
   let tool =
     Agent_types.Tool.create ~name:"typed_tool"
       ~description:"tool with int schema" ~schema:int_field_schema
-      ~parallel_safe:true
-      ~execute:
-        (fun ~ctx:_ ~args:_ ~sw:_ ~cancel:_ ->
-          incr execute_count;
-          Ok (Agent_types.Tool_text "ok"))
+      ~parallel_safe:true ~execute:(fun ~ctx:_ ~args:_ ~sw:_ ~cancel:_ ->
+        incr execute_count;
+        Ok (Agent_types.Tool_text "ok"))
   in
   (* Pass a string that cannot be parsed as a number — should fail validation *)
   let bad_args = `Assoc [ ("x", `String "not-an-int") ] in
@@ -409,6 +401,57 @@ let test_before_tool_call_deny_short_circuits_with_error_result () =
   Alcotest.(check bool)
     "result contains 'nope'" true
     (String.find ~sub:"nope" result_str >= 0)
+
+(** {1 Test 6b: before_tool_call Allow lets the tool execute normally} *)
+
+let test_before_tool_call_allow_lets_tool_execute () =
+  Eio_main.run @@ fun _env ->
+  Eio.Switch.run @@ fun sw ->
+  Faux_provider.reset_recorded ();
+  let execute_count = ref 0 in
+  let tool =
+    make_simple_tool "some_tool" (fun ~ctx:_ ~args:_ ~sw:_ ~cancel:_ ->
+        incr execute_count;
+        Ok (Agent_types.Tool_text "ok"))
+  in
+  let before_tool_call =
+    Some
+      (fun (_ctx : unit Agent_loop.before_tool_call_ctx) -> Agent_types.Allow)
+  in
+  let tc = make_tool_call "c1" "some_tool" (`Assoc []) in
+  let script1 = make_tool_use_turn_script [ tc ] in
+  let script2 = make_text_turn_script "done" in
+  let stream_fn = Faux_provider.stream_fn_of_scripts [ script1; script2 ] in
+  let config = make_config ~before_tool_call [ tool ] stream_fn in
+  let loop_stream =
+    Agent_loop.run config ~messages:[ make_user_agent_message "go" ] ~sw
+  in
+  let events, _result = collect_agent_events loop_stream in
+  (* execute WAS called *)
+  Alcotest.(check int) "execute called (Allow)" 1 !execute_count;
+  (* tool_execution_end fired with is_error=false *)
+  let end_events =
+    List.filter_map
+      (fun e ->
+        match e with
+        | Agent_types.AE_tool_execution_end { is_error; _ } -> Some is_error
+        | _ -> None)
+      events
+  in
+  Alcotest.(check int) "one tool_execution_end" 1 (List.length end_events);
+  let is_error =
+    List.nth_opt end_events 0 |> Option.get_exn_or "expected tool_execution_end"
+  in
+  Alcotest.(check bool) "is_error=false" false is_error;
+  (* agent_end was emitted *)
+  let agent_end_events =
+    List.filter
+      (fun e -> match e with Agent_types.AE_agent_end _ -> true | _ -> false)
+      events
+  in
+  Alcotest.(check int)
+    "agent_end emitted (run completed)" 1
+    (List.length agent_end_events)
 
 (** {1 Test 7: tool raising is caught as error result} *)
 
@@ -513,6 +556,9 @@ let () =
           Alcotest.test_case
             "before_tool_call Deny short-circuits with error result" `Quick
             test_before_tool_call_deny_short_circuits_with_error_result;
+          Alcotest.test_case
+            "before_tool_call Allow lets the tool execute normally" `Quick
+            test_before_tool_call_allow_lets_tool_execute;
           Alcotest.test_case "tool raising is caught as error result" `Quick
             test_tool_raising_is_caught_as_error_result;
           Alcotest.test_case "after_tool_call hook invoked per result" `Quick

@@ -5,7 +5,7 @@ let test_for_model_returns_field () =
     Pera_types.Types.
       {
         id = "claude-haiku-4-5-20251001";
-        api = "anthropic";
+        protocol = "anthropic";
         context_window = 200_000;
       }
   in
@@ -17,18 +17,30 @@ let test_for_model_respects_variant () =
   (* Same id family, different variant: M-token window must round-trip. *)
   let model =
     Pera_types.Types.
-      { id = "claude-opus-4-7"; api = "anthropic"; context_window = 1_000_000 }
+      {
+        id = "claude-opus-4-7";
+        protocol = "anthropic";
+        context_window = 1_000_000;
+      }
   in
   Alcotest.(check int) "1M variant" 1_000_000 (Model_window.for_model model)
 
 let test_for_model_openai_compatible () =
   let small_local =
     Pera_types.Types.
-      { id = "llama-3-8b"; api = "openai-completions"; context_window = 8_192 }
+      {
+        id = "llama-3-8b";
+        protocol = "openai-completions";
+        context_window = 8_192;
+      }
   in
   let gpt4o =
     Pera_types.Types.
-      { id = "gpt-4o"; api = "openai-completions"; context_window = 128_000 }
+      {
+        id = "gpt-4o";
+        protocol = "openai-completions";
+        context_window = 128_000;
+      }
   in
   Alcotest.(check int) "8K llama" 8_192 (Model_window.for_model small_local);
   Alcotest.(check int) "128K gpt-4o" 128_000 (Model_window.for_model gpt4o)
@@ -38,7 +50,7 @@ let test_default_trigger_tokens () =
     Pera_types.Types.
       {
         id = "claude-haiku-4-5-20251001";
-        api = "anthropic";
+        protocol = "anthropic";
         context_window = 200_000;
       }
   in
@@ -49,7 +61,7 @@ let test_default_trigger_tokens () =
 let test_default_trigger_tokens_custom_ratio () =
   let model =
     Pera_types.Types.
-      { id = "tiny"; api = "openai-completions"; context_window = 8_192 }
+      { id = "tiny"; protocol = "openai-completions"; context_window = 8_192 }
   in
   Alcotest.(check int)
     "50% ratio" 4_096

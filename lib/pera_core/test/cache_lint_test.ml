@@ -110,7 +110,7 @@ let test_clean_input_produces_no_warning () =
   Alcotest.(check int) "no warnings" 0 (warning_count logs)
 
 let make_dummy_tool description =
-  let schema = Pera_provider.Json_schema.string () in
+  let schema = Pera_connector.Json_schema.string () in
   Pera_core.Agent_types.Tool.create ~name:"dummy" ~description ~schema
     ~parallel_safe:true ~execute:(fun ~ctx:_ ~args:_ ~sw:_ ~cancel:_ ->
       Ok (Pera_core.Agent_types.Tool_text "ok"))

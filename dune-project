@@ -28,9 +28,9 @@
    (>= 1.6))))
 
 (package
- (name pera-provider)
- (synopsis "Provider layer for Pera")
- (description "Streaming completion provider layer for the Pera AI agent framework")
+ (name pera-connector)
+ (synopsis "Connector layer for Pera")
+ (description "Streaming completion connector layer for the Pera AI agent framework")
  (depends
   (ocaml
    (>= 5.4))
@@ -81,7 +81,7 @@
     (>= 5.4))
    (pera-types
     (= :version))
-   (pera-provider
+   (pera-connector
     (= :version))
    (containers
     (>= 3.0))
@@ -145,7 +145,7 @@
    (>= 5.4))
   (pera-types
    (= :version))
-  (pera-provider
+  (pera-connector
    (= :version))
   (containers
    (>= 3.0))
@@ -174,7 +174,7 @@
     (>= 5.4))
    (pera-types
     (= :version))
-   (pera-provider
+   (pera-connector
     (= :version))
    (pera-core
     (= :version))
@@ -205,7 +205,7 @@
    (= :version))
   (pera-core
    (= :version))
-  (pera-provider
+  (pera-connector
    (= :version))
   (containers
    (>= 3.0))
@@ -238,7 +238,7 @@
    (= :version))
   (pera-core
    (= :version))
-  (pera-provider
+  (pera-connector
    (= :version))
   (pera-harness
    (= :version))
@@ -260,11 +260,39 @@
     :with-test))))
 
 (package
- (name pera_drivers)
- (synopsis "Driver executables for Pera")
+ (name pera-cli)
+ (synopsis "Reusable CLI wiring for Pera")
+ (description "CLI argument parsing, config loading, and session management for the Pera AI agent framework")
+ (depends
+  (ocaml (>= 5.4))
+  (pera-types (= :version))
+  (pera-connector (= :version))
+  (pera-core (= :version))
+  (pera-env (= :version))
+  (pera-harness (= :version))
+  (pera-tools (= :version))
+  (pera-agent (= :version))
+  (containers (>= 3.0))
+  (sexplib (>= 0.17))
+  (ppx_sexp_conv (>= 0.17))
+  (xdg (>= 3.0))
+  (cmdliner (>= 1.2))
+  (uuidm (>= 0.9))
+  (yojson (>= 2.0))
+  (fpath (>= 0.7))
+  (re (>= 1.0))
+  (cstruct (>= 6.0))
+  (eio (>= 1.0))
+  (eio_main (>= 1.0))
+  (eio_linux (>= 1.0))
+  (alcotest (and (>= 1.7) :with-test))))
+
+(package
+ (name pera_live_tests)
+ (synopsis "Live integration test executables for Pera")
  (allow_empty)
  (description
-   "Driver executables for Pera - examples of how to use the Pera AI agent framework")
+   "Live integration test executables for Pera - exercise the full stack against real APIs")
  (depends 
   (cmarkit (>= 0.4.0))
   (logs

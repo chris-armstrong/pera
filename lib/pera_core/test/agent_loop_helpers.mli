@@ -35,14 +35,14 @@ val make_user_agent_message : string -> Pera_core.Agent_types.agent_message
 
 val default_convert_to_llm :
   Pera_core.Agent_types.agent_message list ->
-  Pera_provider.Provider.message list
+  Pera_connector.Connector.message list
 (** [default_convert_to_llm msgs] unwraps [Real] messages and drops [Synthetic]
     ones. Used as the default [convert_to_llm] in test configs. *)
 
 val test_model : Pera_types.Types.model
 (** A model value for loop calls. *)
 
-val test_options : Pera_provider.Provider.simple_stream_options
+val test_options : Pera_connector.Connector.simple_stream_options
 (** Simple stream options for loop calls. *)
 
 (** {1 Script builders} *)
@@ -59,10 +59,10 @@ val make_tool_use_turn_script :
 
 (** {1 Schema values} *)
 
-val empty_schema : Pera_provider.Json_schema.t
+val empty_schema : Pera_connector.Json_schema.t
 (** A tool schema with no properties and no required fields. *)
 
-val int_field_schema : Pera_provider.Json_schema.t
+val int_field_schema : Pera_connector.Json_schema.t
 (** A tool schema requiring a field named ["x"] of type integer. *)
 
 (** {1 Event stream helpers} *)
@@ -70,11 +70,11 @@ val int_field_schema : Pera_provider.Json_schema.t
 val collect_agent_events :
   ( Pera_core.Agent_types.agent_event,
     Pera_core.Agent_types.agent_message list )
-  Pera_provider.Event_stream.t ->
+  Pera_connector.Event_stream.t ->
   Pera_core.Agent_types.agent_event list
   * ( Pera_core.Agent_types.agent_message list,
       string * Pera_types.Types.stop_error )
-      result
+    result
 (** [collect_agent_events stream] drains an [Event_stream] of [agent_event]
     values into a list and returns [(events, result)] where [result] is the
     final stream result returned by [Event_stream.iter]. *)

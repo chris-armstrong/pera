@@ -4,7 +4,7 @@
     resolves to a scripted final {!Pera_types.Types.assistant_message} without
     any network or filesystem IO.
 
-    This module satisfies {!Pera_provider.Provider.S} (via {!as_provider}) and
+    This module satisfies {!Pera_connector.Connector.S} (via {!as_provider}) and
     also exposes a {!Agent_types.stream_fn} adapter (via
     {!stream_fn_of_scripts}) which is the form the agent loop consumes directly.
 
@@ -45,8 +45,8 @@ val stream_fn_of_scripts :
     The optional [pause] callback is invoked between events, allowing tests to
     inject cancellation mid-stream. *)
 
-val recorded_contexts : unit -> Pera_provider.Provider.context list
-(** Returns all {!Pera_provider.Provider.context} values recorded so far, in
+val recorded_contexts : unit -> Pera_connector.Connector.context list
+(** Returns all {!Pera_connector.Connector.context} values recorded so far, in
     call order (oldest first).
 
     The list is module-level state; call {!reset_recorded} between tests to
@@ -55,12 +55,22 @@ val recorded_contexts : unit -> Pera_provider.Provider.context list
 val reset_recorded : unit -> unit
 (** Clears the recorded context list. Call between test cases. *)
 
-val as_provider : script list -> (module Pera_provider.Provider.S)
+val recorded_api_keys : unit -> string list
+(** Returns the API keys passed to each [create] call, in call order (oldest
+    first). Used to verify [Connector_adapter] routes a per-connector key to the
+    right provider rather than fanning a single key out to all connectors.
+
+    Module-level state; call {!reset_recorded_api_keys} between tests. *)
+
+val reset_recorded_api_keys : unit -> unit
+(** Clears the recorded API-key list. Call between test cases. *)
+
+val as_provider : script list -> (module Pera_connector.Connector.S)
 (** [as_provider scripts] wraps [scripts] in a first-class module satisfying
-    {!Pera_provider.Provider.S}.
+    {!Pera_connector.Connector.S}.
 
     The module has [type t = unit] (stateless). [create] ignores [~env] and
     [~sw] and returns [()]. [stream_simple] ignores the [unit] instance and
     delegates to {!stream_fn_of_scripts}. This function exists to prove that
-    [Faux_provider] is a valid [Provider.S] and that the adapter is trivial; the
-    loop itself always uses the {!Agent_types.stream_fn} form directly. *)
+    [Faux_provider] is a valid [Connector.S] and that the adapter is trivial;
+    the loop itself always uses the {!Agent_types.stream_fn} form directly. *)

@@ -1,0 +1,52 @@
+{
+  "providers": {
+    "anthropic": {
+      "thinking_models": {
+        "claude-sonnet-4-6": { "budget_medium": 8000, "budget_high": 32000 },
+        "claude-haiku-4-5": { "budget_medium": 8000, "budget_high": 32000 },
+        "claude-haiku-4-5-20251001": {
+          "budget_medium": 8000,
+          "budget_high": 32000
+        },
+        "claude-opus-4-8": { "budget_medium": 8000, "budget_high": 32000 }
+      }
+    },
+    "openai": {
+      "compat": {
+        "max_tokens_field": "max_completion_tokens",
+        "require_tool_result_name": false
+      }
+    },
+    "moonshotai": {
+      "compat": {
+        "reasoning_field": "reasoning_content",
+        "max_tokens_field": "max_tokens",
+        "require_tool_result_name": false,
+        "enable_thinking_field": "enable_thinking"
+      },
+      "thinking_models": {
+        "kimi-k2-0905-preview": { "budget_medium": 8000, "budget_high": 32000 }
+      }
+    },
+    "deepseek": {
+      "api": "https://api.deepseek.com/v1",
+      "compat": {
+        "reasoning_field": "reasoning_content"
+      }
+    },
+    "zhipuai": {
+      "compat": {
+        "reasoning_field": "reasoning_content"
+      }
+    },
+    "ollama-cloud": {
+      "compat": {
+        "reasoning_field": "reasoning_content"
+      }
+    },
+    "groq": {},
+    "mistral": {},
+    "togetherai": {},
+    "openrouter": {}
+  }
+}

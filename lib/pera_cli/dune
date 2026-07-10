@@ -1,0 +1,29 @@
+(library
+ (name pera_cli)
+ (public_name pera-cli)
+ (libraries
+  pera_types
+  pera_connector
+  pera_core
+  pera_env
+  pera_harness
+  pera_tools
+  pera_agent
+  containers
+  sexplib
+  ppx_sexp_conv
+  xdg
+  cmdliner
+  fmt
+  uuidm
+  yojson
+  fpath
+  re
+  cstruct
+  decimal
+  eio
+  eio_main
+  eio_linux
+  logs)
+ (preprocess
+  (pps ppx_sexp_conv ppx_deriving.show ppx_deriving.eq)))
