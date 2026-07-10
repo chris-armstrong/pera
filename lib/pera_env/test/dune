@@ -1,6 +1,14 @@
 (tests
- (names local_env_fs_test local_env_sh_test)
- (modules local_env_fs_test local_env_sh_test)
+ (names
+  local_env_fs_test
+  local_env_sh_test
+  persistent_shell_test
+  persistent_shell_integration_test)
+ (modules
+  local_env_fs_test
+  local_env_sh_test
+  persistent_shell_test
+  persistent_shell_integration_test)
  (libraries
   pera_harness_test_util
   pera_env

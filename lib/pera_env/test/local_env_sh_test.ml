@@ -34,6 +34,7 @@ let exec_cmd ~sw ~command ?timeout (module E : Execution_env.S) =
           Execution_env.stdout = Buffer.contents out_buf;
           stderr = Buffer.contents err_buf;
           exit_code = result.exit_code;
+          chunks = [];
         })
 
 (** Verify that executing a simple command captures stdout. *)

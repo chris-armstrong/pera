@@ -280,8 +280,8 @@ val create :
   env:string array ->  (* env vars for the shell process itself *)
   cwd:string ->        (* initial working directory *)
   t
-(** Spawns [/bin/bash] (falling back to [/bin/sh] if absent), wired to three
-    pipes (stdout, stderr, a private state channel on fd 3). Blocks briefly on
+(** Spawns [/bin/bash] (falling back to [/bin/sh] if absent), wired to four
+    OS pipes (stdin, stdout, stderr, and a private state channel on fd 3). Blocks briefly on
     a startup sentinel to confirm the shell is ready before returning. The
     shell process's lifetime is tied to [sw]: register [close] via
     [Eio.Switch.on_release sw] (or an equivalent finally/cleanup) so the shell
@@ -322,9 +322,9 @@ Per `exec` call:
 1. Generate a unique sentinel: `SENTINEL = "PERA_DONE_" ^ uuidv4_hex ()`.
 2. Write to the shell's stdin:
    ```
-   ( <user_command> )
-   printf '\n' 1>&1; printf '\n' 1>&2
-   echo "$? $SENTINEL" 1>&1
+   <user_command>
+   EXIT_CODE=$?
+   echo "$EXIT_CODE $SENTINEL" 1>&1
    echo "$SENTINEL" 1>&2
    ```
 3. Read stdout and stderr **concurrently** (`Eio.Fiber.all`, one fiber per fd), each
@@ -335,11 +335,18 @@ Per `exec` call:
    is fully drained. No merge is needed to know completion.
 4. Each line is timestamped independently (`Eio.Time.now clock`) as it's read.
 5. Strip the sentinel lines; return `exec_result` with flattened `stdout`/`stderr` (for
-   compatibility) plus the ordered `chunks` list.
+   compatibility) plus `chunks` sorted by read-time timestamp for wall-clock
+   interleaving reconstruction.
 
-Wrapping in `( ... )` makes the subshell's exit code reflect `<user_command>` specifically
-(not the trailing `echo`s). The UUID sentinel makes collisions with command output
-astronomically unlikely on either stream.
+The command is intentionally {i not} wrapped in a subshell. Wrapping in `( ... )` would
+prevent state-changing commands (`cd`, `export`, etc.) from affecting the persistent
+shell, which is the whole point of Stage 0. Exit code is captured via bash's `$?` after
+the command finishes.
+
+**Known limitation:** commands that produce stdout or stderr output not ending with a
+newline may concatenate with the sentinel line and confuse the line-based sentinel
+parser. In practice most shell commands emit trailing newlines; a future improvement can
+add a `printf '\\n'` flush before the sentinel or switch to sentinel-substring parsing.
 
 **Known limitation (accepted, documented, not new):** many programs fully block-buffer
 stdio when fd 1/2 is a pipe rather than a tty, so a captured timestamp means "when the
