@@ -74,6 +74,5 @@ module type S = sig
   val cwd : string
 
   module Fs : FILESYSTEM
-
   module Sh : SHELL
 end

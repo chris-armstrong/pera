@@ -34,19 +34,14 @@ let add_openrouter_fields ~options body =
   | `Assoc fields ->
       let with_reasoning =
         match options.Connector.thinking_budget_tokens with
-        | Some n ->
-            ( "reasoning",
-              `Assoc [ ("max_tokens", `Int n) ] )
-            :: fields
+        | Some n -> ("reasoning", `Assoc [ ("max_tokens", `Int n) ]) :: fields
         | None -> fields
       in
       let with_cache =
         match options.Connector.cache_policy with
         | Pera_types.Types.No_cache -> with_reasoning
-        | Pera_types.Types.Conversation
-        | Pera_types.Types.SystemAndToolsOnly ->
-            ( "cache_control",
-              `Assoc [ ("type", `String "ephemeral") ] )
+        | Pera_types.Types.Conversation | Pera_types.Types.SystemAndToolsOnly ->
+            ("cache_control", `Assoc [ ("type", `String "ephemeral") ])
             :: with_reasoning
       in
       `Assoc with_cache
@@ -107,29 +102,25 @@ let is_openrouter_error first_chunk =
     (not (String.is_empty trimmed))
     && Char.equal (String.get trimmed 0) '{'
     && String.mem ~sub:"\"error\"" trimmed
-  then (
+  then
     match Yojson.Safe.from_string trimmed with
     | `Assoc fields -> (
         match List.assoc_opt ~eq:String.equal "error" fields with
         | Some (`Assoc err_fields) ->
             let msg =
-              match
-                List.assoc_opt ~eq:String.equal "message" err_fields
-              with
+              match List.assoc_opt ~eq:String.equal "message" err_fields with
               | Some (`String m) -> m
               | _ -> "unknown OpenRouter error"
             in
             let code =
-              match
-                List.assoc_opt ~eq:String.equal "code" err_fields
-              with
+              match List.assoc_opt ~eq:String.equal "code" err_fields with
               | Some (`Int c) -> Some c
               | _ -> None
             in
             Some (msg, code)
         | _ -> None)
     | _ -> None
-    | exception _ -> None)
+    | exception _ -> None
   else None
 
 (* ── HTTP request ─────────────────────────────────────────────────────── *)
@@ -155,15 +146,13 @@ let do_request ~provider ~model ~context ~options ~sw:_ stream =
   let request_body =
     build_request_body ~model ~context ~options ~compat:provider.compat
   in
-  let request_body =
-    add_openrouter_fields ~options request_body
-  in
+  let request_body = add_openrouter_fields ~options request_body in
   let request_body_str = Yojson.Safe.to_string request_body in
   let full_url = provider.compat.base_url ^ "/v1/chat/completions" in
   Log.info (fun m -> m "POST %s  model=%s" full_url model.Types.id);
   let headers =
-    build_headers ~api_key:provider.api_key
-      ~http_referer:provider.http_referer ~x_title:provider.x_title
+    build_headers ~api_key:provider.api_key ~http_referer:provider.http_referer
+      ~x_title:provider.x_title
   in
   let on_chunk, finalise = process_chunks stream ~compat:provider.compat in
   (* Wrap [on_chunk] to detect OpenRouter errors on the first chunk. *)
@@ -227,8 +216,8 @@ let create ~api_key ~base_url ~env ~sw =
   { client; api_key; compat; http_referer; x_title }
 
 let create_from_env ~base_url ~env ~sw =
-  Connector.create_from_env_var ~var_name:"OPENROUTER_API_KEY" ~create
-    ~base_url ~env ~sw
+  Connector.create_from_env_var ~var_name:"OPENROUTER_API_KEY" ~create ~base_url
+    ~env ~sw
 
 let stream_simple provider ~model ~context ~options ~sw =
   let stream :

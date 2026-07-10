@@ -7,9 +7,9 @@ type active_block =
       (** A text block accumulating delta fragments. *)
   | ActiveThinking of { buf : string; signature : string }
       (** A thinking block accumulating thinking-text and signature fragments.
-          [signature] is the concatenated [signature_delta] payloads;
-          [Some] iff non-empty once the block is finalised. Anthropic requires
-          this signature when replaying thinking blocks on later turns. *)
+          [signature] is the concatenated [signature_delta] payloads; [Some] iff
+          non-empty once the block is finalised. Anthropic requires this
+          signature when replaying thinking blocks on later turns. *)
   | ActiveToolUse of {
       index : int;
       id : string;
@@ -62,8 +62,7 @@ let initial_state =
     provenance = default_provenance;
   }
 
-let signature_of_buf buf =
-  if String.is_empty buf then None else Some buf
+let signature_of_buf buf = if String.is_empty buf then None else Some buf
 
 (** Build the [assistant_content list] from the current state, including any
     active block that is being streamed. This is used for partial snapshots. *)
@@ -80,7 +79,8 @@ let build_content_list state =
     | None -> []
     | Some (ActiveText { buf }) -> [ Types.AText buf ]
     | Some (ActiveThinking { buf; signature }) ->
-        [ Types.AThinking { text = buf; signature = signature_of_buf signature }
+        [
+          Types.AThinking { text = buf; signature = signature_of_buf signature };
         ]
     | Some (ActiveToolUse { id; name; _ }) ->
         (* The tool call is in-progress; expose placeholder with empty arguments *)
@@ -106,7 +106,8 @@ let parse_stop_reason s =
   | "stop_sequence" -> Types.StopSequence
   (* Forward-compat: Anthropic can add stop reasons; treat unknown as a
      provider error rather than silently claiming normal completion. *)
-  | other -> Types.Error (Types.Provider { message = "unknown stop_reason: " ^ other })
+  | other ->
+      Types.Error (Types.Provider { message = "unknown stop_reason: " ^ other })
 
 (** Extract an integer field from a JSON object, returning 0 if absent or not an
     integer. *)
@@ -199,7 +200,10 @@ let dispatch_block_start state index block_type block_fields =
       Some (new_state, [ Types.AME_text_start { partial } ])
   | "thinking" ->
       let new_state =
-        { state with active_block = Some (ActiveThinking { buf = ""; signature = "" }) }
+        {
+          state with
+          active_block = Some (ActiveThinking { buf = ""; signature = "" });
+        }
       in
       let partial = snapshot new_state in
       Some (new_state, [ Types.AME_thinking_start { partial } ])
@@ -266,8 +270,10 @@ let apply_thinking_delta state delta_fields =
   | Some (ActiveThinking { buf; signature }) ->
       let new_buf = buf ^ text in
       let new_state =
-        { state with
-          active_block = Some (ActiveThinking { buf = new_buf; signature }) }
+        {
+          state with
+          active_block = Some (ActiveThinking { buf = new_buf; signature });
+        }
       in
       let partial = snapshot new_state in
       Some (new_state, [ Types.AME_thinking_delta { text; partial } ])
@@ -275,8 +281,8 @@ let apply_thinking_delta state delta_fields =
 
 (** Apply a signature delta to the active thinking block. Anthropic streams the
     cryptographic signature required to replay a thinking block as a series of
-    [signature_delta] events; we accumulate them here and emit the signature with
-    the [AThinking] block once finalised. *)
+    [signature_delta] events; we accumulate them here and emit the signature
+    with the [AThinking] block once finalised. *)
 let apply_signature_delta state delta_fields =
   let sig_fragment =
     json_string_field_opt delta_fields "signature" |> Option.value ~default:""
@@ -284,9 +290,10 @@ let apply_signature_delta state delta_fields =
   match state.active_block with
   | Some (ActiveThinking { buf; signature }) ->
       let new_state =
-        { state with
+        {
+          state with
           active_block =
-            Some (ActiveThinking { buf; signature = signature ^ sig_fragment })
+            Some (ActiveThinking { buf; signature = signature ^ sig_fragment });
         }
       in
       (* No partial event is emitted for signature deltas: the signature is an
@@ -366,7 +373,9 @@ let handle_content_block_stop state =
           active_block = None;
           completed_blocks =
             state.completed_blocks
-            @ [ CompletedThinking { text = buf; signature = signature_of_buf signature }
+            @ [
+                CompletedThinking
+                  { text = buf; signature = signature_of_buf signature };
               ];
         }
       in

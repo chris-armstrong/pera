@@ -1,4 +1,5 @@
-(** Connector registry — maps model.protocol strings to (module Connector.S) values.
+(** Connector registry — maps model.protocol strings to (module Connector.S)
+    values.
 
     An immutable, pure-functional registry built explicitly at startup. No
     global state. Provides lookup by model.protocol and helpers to register and

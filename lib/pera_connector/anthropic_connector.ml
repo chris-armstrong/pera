@@ -103,8 +103,8 @@ let create ~api_key ~base_url ~env ~sw =
   { client; api_key }
 
 let create_from_env ~base_url ~env ~sw =
-  Connector.create_from_env_var ~var_name:"ANTHROPIC_API_KEY" ~create
-    ~base_url ~env ~sw
+  Connector.create_from_env_var ~var_name:"ANTHROPIC_API_KEY" ~create ~base_url
+    ~env ~sw
 
 let stream_simple provider ~model ~context ~options ~sw =
   let stream :

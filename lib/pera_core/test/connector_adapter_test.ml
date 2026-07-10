@@ -61,8 +61,7 @@ let test_stream_fn_resolves_registered_provider () =
   let adapter =
     Connector_adapter.create ~registry
       ~api_keys:[ ("faux", "test-key") ]
-      ~base_url:"http://localhost"
-      ~env ~sw
+      ~base_url:"http://localhost" ~env ~sw
   in
   let stream_fn = Connector_adapter.stream_fn adapter in
   let context =
@@ -110,7 +109,10 @@ let test_stream_fn_unknown_api_returns_error_stream () =
   Faux_provider.reset_recorded ();
   (* Create adapter with an empty registry *)
   let registry = Pera_connector.Connector_registry.empty in
-  let adapter = Connector_adapter.create ~registry ~api_keys:[] ~base_url:"http://localhost" ~env ~sw in
+  let adapter =
+    Connector_adapter.create ~registry ~api_keys:[] ~base_url:"http://localhost"
+      ~env ~sw
+  in
   let stream_fn = Connector_adapter.stream_fn adapter in
   let context =
     make_provider_context ~system:"test"
@@ -161,8 +163,7 @@ let test_stream_fn_preserves_provider_semantics () =
   let adapter =
     Connector_adapter.create ~registry
       ~api_keys:[ ("faux", "test-key") ]
-      ~base_url:"http://localhost"
-      ~env ~sw
+      ~base_url:"http://localhost" ~env ~sw
   in
   let stream_fn = Connector_adapter.stream_fn adapter in
   (* Build a loop config using the adapter's stream_fn.
@@ -270,7 +271,10 @@ let test_create_routes_api_keys_per_connector () =
     Pera_connector.Connector_registry.register r ~name:"faux-b" provider_b
   in
   let api_keys = [ ("faux-a", "key-a"); ("faux-b", "key-b") ] in
-  let _adapter = Connector_adapter.create ~registry ~api_keys ~base_url:"http://localhost" ~env ~sw in
+  let _adapter =
+    Connector_adapter.create ~registry ~api_keys ~base_url:"http://localhost"
+      ~env ~sw
+  in
   (* [create] is called eagerly in registry order; the registry stores
      most-recently-registered first, so order is [faux-b; faux-a]. *)
   let received = Faux_provider.recorded_api_keys () in

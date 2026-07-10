@@ -110,8 +110,8 @@ let string_testable = Alcotest.testable Format.pp_print_string String.equal
 
 (* ── canonicalisation tests ─────────────────────────────────────────────── *)
 
-(** Canonical serialisation: object properties appear in alphabetical key
-    order regardless of declaration order. *)
+(** Canonical serialisation: object properties appear in alphabetical key order
+    regardless of declaration order. *)
 let test_to_json_sorts_object_properties_alphabetically () =
   let schema =
     Json_schema.object_
@@ -180,21 +180,22 @@ let test_to_json_sorts_nested_keys () =
     Json_schema.object_
       ~properties:
         [
-          ("user",
-           Json_schema.object_
-             ~properties:
-               [
-                 ("name", Json_schema.string ());
-                 ("id", Json_schema.integer ());
-               ]
-             ~required:[ "name"; "id" ] ());
+          ( "user",
+            Json_schema.object_
+              ~properties:
+                [
+                  ("name", Json_schema.string ()); ("id", Json_schema.integer ());
+                ]
+              ~required:[ "name"; "id" ] () );
         ]
       ~required:[] ()
   in
   let json_str = Yojson.Safe.to_string (Json_schema.to_json schema) in
   Alcotest.(check bool)
     "nested properties emitted in alphabetical order" true
-    (String.find ~sub:{|"id":{"type":"integer"},"name":{"type":"string"}|} json_str >= 0)
+    (String.find ~sub:{|"id":{"type":"integer"},"name":{"type":"string"}|}
+       json_str
+    >= 0)
 
 (** Canonical serialisation: anyOf branches are sorted too. *)
 let test_to_json_sorts_anyof_branch_object_keys () =
@@ -210,7 +211,8 @@ let test_to_json_sorts_anyof_branch_object_keys () =
   let json_str = Yojson.Safe.to_string (Json_schema.to_json schema) in
   Alcotest.(check bool)
     "anyOf branch properties sorted" true
-    (String.find ~sub:{|"a":{"type":"integer"},"z":{"type":"string"}|} json_str >= 0)
+    (String.find ~sub:{|"a":{"type":"integer"},"z":{"type":"string"}|} json_str
+    >= 0)
 
 (* ── test_validate_required_field_missing ───────────────────────────────── *)
 
@@ -327,11 +329,17 @@ let test_integer_bounds_accept_boundary () =
     (Json_schema.validate schema (`Int 5))
 
 let test_to_json_emits_minimum_maximum () =
-  let schema = Json_schema.integer ~description:"count" ~minimum:0 ~maximum:100 () in
+  let schema =
+    Json_schema.integer ~description:"count" ~minimum:0 ~maximum:100 ()
+  in
   let json = Json_schema.to_json schema in
   let s = Yojson.Safe.to_string json in
-  Alcotest.(check bool) "emits minimum" true (String.find ~sub:"\"minimum\":0" s >= 0);
-  Alcotest.(check bool) "emits maximum" true (String.find ~sub:"\"maximum\":100" s >= 0)
+  Alcotest.(check bool)
+    "emits minimum" true
+    (String.find ~sub:"\"minimum\":0" s >= 0);
+  Alcotest.(check bool)
+    "emits maximum" true
+    (String.find ~sub:"\"maximum\":100" s >= 0)
 
 (* ── test suite ─────────────────────────────────────────────────────────── *)
 

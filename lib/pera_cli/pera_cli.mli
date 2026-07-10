@@ -10,9 +10,9 @@
 
     [create], [tools], and [has_shell] describe the environment in which the
     agent's tools execute. This may be a local process, a sandbox, a container,
-    or a remote system accessed over an API. The CLI must never use any of
-    these to perform its own work — doing so couples pera-cli's bootstrap to
-    whatever sandbox the agent is running in.
+    or a remote system accessed over an API. The CLI must never use any of these
+    to perform its own work — doing so couples pera-cli's bootstrap to whatever
+    sandbox the agent is running in.
 
     Concretely: do not call [(val ctx).Sh.exec] for API key commands, config
     file lookup, or any other CLI-level operation. Use [Eio.Stdenv] / [Unix] /
@@ -27,16 +27,17 @@
     environment.
 
     Implementors must bind these to host-process primitives:
-    [getenv_opt = Sys.getenv_opt], [home] from [HOME] or [passwd], etc. A
-    custom [Env] that proxies [getenv_opt] to a sandboxed env-var source is
-    incorrect and will cause config resolution to fail silently. *)
+    [getenv_opt = Sys.getenv_opt], [home] from [HOME] or [passwd], etc. A custom
+    [Env] that proxies [getenv_opt] to a sandboxed env-var source is incorrect
+    and will cause config resolution to fail silently. *)
 module type Env = sig
   type ctx = (module Pera_env.Execution_env.S)
 
   (** {2 Agent execution context — may be sandboxed or remote} *)
 
   val create : env:Eio_unix.Stdenv.base -> sw:Eio.Switch.t -> cwd:string -> ctx
-  (** Create the agent tool execution context for the given working directory. *)
+  (** Create the agent tool execution context for the given working directory.
+  *)
 
   val tools :
     ctx -> (module Pera_env.Execution_env.S) Pera_core.Agent_types.tool list
@@ -45,7 +46,8 @@ module type Env = sig
   val has_shell : bool
   (** [true] if this environment supports shell-backed tools. *)
 
-  (** {2 Host process accessors — always the real host, injected for testability} *)
+  (** {2 Host process accessors — always the real host, injected for
+      testability} *)
 
   val getenv_opt : string -> string option
   (** Read an environment variable from the {i host process}. Must be

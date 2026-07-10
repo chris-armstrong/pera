@@ -28,8 +28,8 @@ val create_from_env :
   sw:Eio.Switch.t ->
   (t, string) result
 (** [create_from_env ~base_url ~env ~sw] reads [OPENAI_API_KEY] from the
-    environment and calls {!create}. Returns [Error] if the variable is not
-    set. *)
+    environment and calls {!create}. Returns [Error] if the variable is not set.
+*)
 
 val stream_simple :
   t ->

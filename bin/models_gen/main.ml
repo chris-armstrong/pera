@@ -1,9 +1,9 @@
 open Containers
 open Pera_cli
 
-(** Maps models.dev npm package name to the pera connector protocol string.
-    Only entries in this table are emitted; providers using other npm packages
-    are skipped. *)
+(** Maps models.dev npm package name to the pera connector protocol string. Only
+    entries in this table are emitted; providers using other npm packages are
+    skipped. *)
 let npm_to_protocol =
   [
     ("@ai-sdk/anthropic", "anthropic");
@@ -30,9 +30,7 @@ let assoc_opt key = function
   | _ -> None
 
 let string_opt key json =
-  match assoc_opt key json with
-  | Some (`String s) -> Some s
-  | _ -> None
+  match assoc_opt key json with Some (`String s) -> Some s | _ -> None
 
 let strings key json =
   match assoc_opt key json with
@@ -46,9 +44,7 @@ let int_of_json = function
   | _ -> None
 
 let int_opt key json =
-  match assoc_opt key json with
-  | Some j -> int_of_json j
-  | None -> None
+  match assoc_opt key json with Some j -> int_of_json j | None -> None
 
 let number_to_decimal_string = function
   | `Int n -> Some (string_of_int n)
@@ -76,9 +72,7 @@ let parse_compat aug_provider =
   | Some c ->
       let s k = string_opt k c in
       let b k =
-        match assoc_opt k c with
-        | Some (`Bool v) -> Some v
-        | _ -> None
+        match assoc_opt k c with Some (`Bool v) -> Some v | _ -> None
       in
       Some
         Models_config.
@@ -93,10 +87,10 @@ let parse_thinking model_name aug_provider =
   match assoc_opt "thinking_models" aug_provider with
   | Some (`Assoc tm) -> (
       match List.assoc_opt ~eq:String.equal model_name tm with
-      | Some budget_json ->
+      | Some budget_json -> (
           let bm = int_opt "budget_medium" budget_json in
           let bh = int_opt "budget_high" budget_json in
-          (match bm, bh with
+          match (bm, bh) with
           | Some budget_medium, Some budget_high ->
               Some Models_config.{ budget_medium; budget_high }
           | _ -> None)
@@ -105,7 +99,7 @@ let parse_thinking model_name aug_provider =
 
 let parse_cost model_json =
   match assoc_opt "cost" model_json with
-  | Some (`Assoc fields) ->
+  | Some (`Assoc fields) -> (
       let get k =
         match List.assoc_opt ~eq:String.equal k fields with
         | Some j -> (
@@ -114,7 +108,7 @@ let parse_cost model_json =
             | None -> None)
         | None -> None
       in
-      (match get "input", get "output" with
+      match (get "input", get "output") with
       | Some input_per_mtok, Some output_per_mtok ->
           Some
             Models_config.
@@ -213,15 +207,9 @@ let () =
     | _ -> usage ()
   in
   let api_json = load_json input_file in
-  let aug =
-    match aug_file with
-    | Some p -> load_json p
-    | None -> `Null
-  in
+  let aug = match aug_file with Some p -> load_json p | None -> `Null in
   let aug_providers =
-    match assoc_opt "providers" aug with
-    | Some (`Assoc ps) -> ps
-    | _ -> []
+    match assoc_opt "providers" aug with Some (`Assoc ps) -> ps | _ -> []
   in
   let providers_raw =
     match api_json with
@@ -234,5 +222,6 @@ let () =
       providers_raw
   in
   let mf = Models_config.{ providers } in
-  print_string (Sexplib.Sexp.to_string_hum (Models_config.sexp_of_models_file mf));
+  print_string
+    (Sexplib.Sexp.to_string_hum (Models_config.sexp_of_models_file mf));
   print_newline ()

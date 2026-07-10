@@ -57,7 +57,8 @@ let default_convert_to_llm msgs = List.map Agent_types.to_provider_message msgs
 
 (** A model value for loop calls. *)
 let test_model =
-  Pera_types.Types.{ id = "test-model"; protocol = "faux"; context_window = 200_000 }
+  Pera_types.Types.
+    { id = "test-model"; protocol = "faux"; context_window = 200_000 }
 
 (** Simple stream options for loop calls. *)
 let test_options =

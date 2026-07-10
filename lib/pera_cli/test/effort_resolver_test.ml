@@ -2,13 +2,7 @@ open Containers
 
 let make_model ~name ?thinking () =
   Pera_cli.Models_config.
-    {
-      name;
-      context_window = 200000;
-      max_tokens = 16000;
-      thinking;
-      cost = None;
-    }
+    { name; context_window = 200000; max_tokens = 16000; thinking; cost = None }
 
 let make_thinking ~medium ~high =
   Pera_cli.Models_config.{ budget_medium = medium; budget_high = high }

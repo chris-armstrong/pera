@@ -53,9 +53,10 @@ let read_and_parse ~path =
 
 let load ~packaged_path ~user_path =
   let open Result.Syntax in
-  match packaged_path, user_path with
+  match (packaged_path, user_path) with
   | None, None ->
-      Error "no models.sexp found — place one at $XDG_CONFIG_HOME/pera/models.sexp"
+      Error
+        "no models.sexp found — place one at $XDG_CONFIG_HOME/pera/models.sexp"
   | Some pp, None -> read_and_parse ~path:pp
   | None, Some up -> read_and_parse ~path:up
   | Some pp, Some up ->

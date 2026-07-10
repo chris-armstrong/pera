@@ -88,9 +88,7 @@ let count_passed scenarios =
        scenarios)
 
 let int_field key json =
-  match Yojson.Safe.Util.member key json with
-  | `Int n -> n
-  | _ -> 0
+  match Yojson.Safe.Util.member key json with `Int n -> n | _ -> 0
 
 (** Extract the [usage] object from an assistant-message JSONL entry, or [None]
     if the entry is not an assistant message or has no usage object. *)
@@ -99,8 +97,8 @@ let usage_of_entry entry =
   else
     let msg = Yojson.Safe.Util.member "message" entry in
     match get_string_opt "role" msg with
-    | Some "assistant" ->
-        (match Yojson.Safe.Util.member "usage" msg with
+    | Some "assistant" -> (
+        match Yojson.Safe.Util.member "usage" msg with
         | `Assoc _ as usage -> Some usage
         | _ -> None)
     | _ -> None
@@ -111,10 +109,8 @@ let collect_cumulative_usage entries =
        (fun acc usage ->
          Pera_types.Types.
            {
-             input_tokens =
-               acc.input_tokens + int_field "input_tokens" usage;
-             output_tokens =
-               acc.output_tokens + int_field "output_tokens" usage;
+             input_tokens = acc.input_tokens + int_field "input_tokens" usage;
+             output_tokens = acc.output_tokens + int_field "output_tokens" usage;
              cache_read_tokens =
                acc.cache_read_tokens + int_field "cache_read_tokens" usage;
              cache_write_tokens =

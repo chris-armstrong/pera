@@ -71,22 +71,23 @@ let check_transport_error ?(expect_kind = None) label result =
   | Ok () -> Alcotest.fail "expected an Error for an unroutable address"
   | Error (Http_client.Http_error _) ->
       Alcotest.fail
-        (Printf.sprintf
-           "%s: expected Transport_error, got Http_error" label)
-  | Error (Http_client.Transport_error te) ->
+        (Printf.sprintf "%s: expected Transport_error, got Http_error" label)
+  | Error (Http_client.Transport_error te) -> (
       Alcotest.(check bool)
-        (label ^ ": message non-empty") true
+        (label ^ ": message non-empty")
+        true
         (not (String.is_empty te.message));
-      (match expect_kind with
-       | Some k ->
-           let actual = Http_client.request_error_to_string
-             (Http_client.Transport_error te)
-           in
-           let expected = Http_client.request_error_to_string
-             (Http_client.Transport_error { te with kind = k })
-           in
-           Alcotest.(check string) (label ^ ": kind") expected actual
-       | None -> ())
+      match expect_kind with
+      | Some k ->
+          let actual =
+            Http_client.request_error_to_string (Http_client.Transport_error te)
+          in
+          let expected =
+            Http_client.request_error_to_string
+              (Http_client.Transport_error { te with kind = k })
+          in
+          Alcotest.(check string) (label ^ ": kind") expected actual
+      | None -> ())
 
 (** Drive [Http_client.post_stream] against an address that cannot be connected
     to (port 1 on localhost is unroutable in practice) and assert that the
@@ -108,8 +109,8 @@ let test_transport_failure_is_transport_error () =
   check_transport_error ~expect_kind:(Some Http_client.Connect)
     "post_stream unroutable" result
 
-(** [Http_client.create] against an invalid URL returns a [Transport_error]
-    with a non-empty message. *)
+(** [Http_client.create] against an invalid URL returns a [Transport_error] with
+    a non-empty message. *)
 let test_create_error_gives_transport_error () =
   Eio_main.run @@ fun env ->
   Eio.Switch.run @@ fun sw ->
@@ -117,7 +118,7 @@ let test_create_error_gives_transport_error () =
   Eio.Time.with_timeout_exn clock 5.0 @@ fun () ->
   let result = Http_client.create ~env ~sw "http://127.0.0.1:1/" in
   match result with
-  | Ok client -> (
+  | Ok client ->
       (* create may succeed (connection is lazy); in that case drive post_stream
          to force the failure. *)
       let post_result =
@@ -126,7 +127,7 @@ let test_create_error_gives_transport_error () =
           "/"
       in
       check_transport_error ~expect_kind:(Some Http_client.Connect)
-        "post_stream unroutable" post_result)
+        "post_stream unroutable" post_result
   | Error e -> check_transport_error "create unroutable" (Error e)
 
 let () =

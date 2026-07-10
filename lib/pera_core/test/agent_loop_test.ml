@@ -452,7 +452,8 @@ let test_thinking_blocks_flow_through_loop () =
     List.exists
       (function
         | Agent_types.AE_message_end
-            { message = Real (Pera_connector.Connector.AssistantMessage am); _ } ->
+            { message = Real (Pera_connector.Connector.AssistantMessage am); _ }
+          ->
             List.exists
               (function Pera_types.Types.AThinking _ -> true | _ -> false)
               am.content
@@ -479,8 +480,7 @@ let () =
             test_single_text_turn_emits_lifecycle_and_final_messages;
           Alcotest.test_case "error stop_reason terminates the run" `Quick
             test_error_stop_reason_terminates_run;
-          Alcotest.test_case
-            "thinking blocks flow through the loop" `Quick
+          Alcotest.test_case "thinking blocks flow through the loop" `Quick
             test_thinking_blocks_flow_through_loop;
         ] );
       ( "hooks",

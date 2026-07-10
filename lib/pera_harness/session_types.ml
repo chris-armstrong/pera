@@ -138,8 +138,8 @@ let message_to_json = function
           ("provenance", provenance_to_json am.provenance);
           ("usage", usage_to_json am.usage);
         ]
-  | Pera_connector.Connector.ToolResultMessage { tool_call_id; content; is_error }
-    ->
+  | Pera_connector.Connector.ToolResultMessage
+      { tool_call_id; content; is_error } ->
       `Assoc
         [
           ("role", `String "tool_result");

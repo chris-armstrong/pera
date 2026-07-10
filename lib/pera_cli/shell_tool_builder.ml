@@ -19,7 +19,8 @@ let arg_schema (arg : Pera_config.shell_arg) =
   match arg.arg_type with
   | String { description } -> Pera_connector.Json_schema.string ~description ()
   | Int { description; min; max } ->
-      Pera_connector.Json_schema.integer ~description ?minimum:min ?maximum:max ()
+      Pera_connector.Json_schema.integer ~description ?minimum:min ?maximum:max
+        ()
 
 let build_schema (def : Pera_config.shell_tool_def) =
   let properties =
@@ -55,7 +56,8 @@ let extract_arg (arg : Pera_config.shell_arg) (args : Yojson.Safe.t) =
                           (Printf.sprintf "expected integer for arg %S, got %S"
                              arg.name s))
                 | _ ->
-                    Error (Printf.sprintf "expected integer for arg %S" arg.name)
+                    Error
+                      (Printf.sprintf "expected integer for arg %S" arg.name)
               in
               match parse_int v with
               | Error _ as e -> e
@@ -70,8 +72,7 @@ let extract_arg (arg : Pera_config.shell_arg) (args : Yojson.Safe.t) =
                       (Printf.sprintf "arg %S value %d out of range [%s, %s]"
                          arg.name i
                          (Option.map_or ~default:"-∞" Int.to_string min)
-                         (Option.map_or ~default:"+∞" Int.to_string max)))
-          )
+                         (Option.map_or ~default:"+∞" Int.to_string max))))
       | None -> Error (Printf.sprintf "missing required arg %S" arg.name))
   | _ -> Error "expected JSON object for tool args"
 

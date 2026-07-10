@@ -6,10 +6,10 @@ type entry = { api_name : string; fn : Agent_types.stream_fn }
 type t = entry list
 (** The adapter is an immutable list of entries, built eagerly at create. *)
 
-(** Build one adapter entry from a registry pair. The API key is resolved
-    per connector from [api_keys] so each provider receives its own
-    credential (e.g. the OpenAI connector gets the OpenAI key, not the
-    Anthropic one). A connector with no key in [api_keys] is skipped. *)
+(** Build one adapter entry from a registry pair. The API key is resolved per
+    connector from [api_keys] so each provider receives its own credential (e.g.
+    the OpenAI connector gets the OpenAI key, not the Anthropic one). A
+    connector with no key in [api_keys] is skipped. *)
 let build_entry ~api_keys ~base_url ~env ~sw
     (api_name, (module P : Pera_connector.Connector.S)) =
   match List.assoc_opt ~eq:String.equal api_name api_keys with

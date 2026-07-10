@@ -1,9 +1,6 @@
 (executables
  (names provider_driver)
- (modules
-  provider_driver
-  driver_log
-  markdown_renderer)
+ (modules provider_driver driver_log markdown_renderer)
  (libraries
   usage_status
   pera_core

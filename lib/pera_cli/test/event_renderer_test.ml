@@ -1,7 +1,6 @@
 open Containers
 
-let default_output =
-  Pera_cli.Pera_config.{ show_thinking = None; quiet = None }
+let default_output = Pera_cli.Pera_config.{ show_thinking = None; quiet = None }
 
 let make_text_delta text =
   Pera_core.Agent_types.AE_message_update
@@ -142,13 +141,12 @@ let test_thinking_suppressed () =
   let lines =
     Pera_cli.Event_renderer.render r (make_thinking_delta "thinking...")
   in
-  Alcotest.(check (list string)) "thinking suppressed"
-    [ "\n[thinking...]\n" ] lines
+  Alcotest.(check (list string))
+    "thinking suppressed" [ "\n[thinking...]\n" ] lines
 
 let test_thinking_shown () =
   let output =
-    Pera_cli.Pera_config.
-      { show_thinking = Some true; quiet = None }
+    Pera_cli.Pera_config.{ show_thinking = Some true; quiet = None }
   in
   let r = Pera_cli.Event_renderer.create ~output ~json:false in
   let lines =
@@ -158,8 +156,7 @@ let test_thinking_shown () =
 
 let test_tool_start_quiet () =
   let output =
-    Pera_cli.Pera_config.
-      { show_thinking = None; quiet = Some true }
+    Pera_cli.Pera_config.{ show_thinking = None; quiet = Some true }
   in
   let r = Pera_cli.Event_renderer.create ~output ~json:false in
   let event =
@@ -176,8 +173,10 @@ let test_tool_start_visible () =
       { tool_call_id = "1"; tool_name = "bash"; args = `Null }
   in
   let lines = Pera_cli.Event_renderer.render r event in
-  Alcotest.(check (list string)) "tool start visible"
-    [ "\n[tool: bash — running...]" ] lines
+  Alcotest.(check (list string))
+    "tool start visible"
+    [ "\n[tool: bash — running...]" ]
+    lines
 
 let test_json_mode () =
   let r = Pera_cli.Event_renderer.create ~output:default_output ~json:true in

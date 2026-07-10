@@ -46,8 +46,8 @@ let make_args ?(model = None) ?(api_key = None) ?(api_key_file = None)
     ?(cache_policy = None) ?(cache_ttl = None) ?(session = None)
     ?(session_dir = None) ?(cwd = None) ?(system = None) ?(system_file = None)
     ?(no_compact = false) ?(compact_threshold = None) ?(compact_tail = None)
-    ?(show_thinking = false) ?(quiet = false) ?(json = false)
-    ?(input = None) ?(input_file = None) ?(list_models = false) () =
+    ?(show_thinking = false) ?(quiet = false) ?(json = false) ?(input = None)
+    ?(input_file = None) ?(list_models = false) () =
   Pera_cli.Cli_args.
     {
       model;

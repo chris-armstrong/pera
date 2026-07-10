@@ -17,8 +17,8 @@ val create :
   env:Eio_unix.Stdenv.base ->
   sw:Eio.Switch.t ->
   t
-(** [create ~registry ~api_keys ~base_url ~env ~sw] iterates the registry. For each
-    [(api_name, (module P : Connector.S))] it looks up [api_name] in
+(** [create ~registry ~api_keys ~base_url ~env ~sw] iterates the registry. For
+    each [(api_name, (module P : Connector.S))] it looks up [api_name] in
     [api_keys] (an association list of connector name -> API key); connectors
     with no key in [api_keys] are skipped. For the rest:
     - [let inst = P.create ~api_key ~base_url ~env ~sw]
@@ -26,8 +26,8 @@ val create :
        ~context ~options ~sw]
     - [(api_name, fn)] is added to the list.
 
-    [base_url] is forwarded to every connector's [create]. Connectors that
-    don't need it (e.g. Anthropic) may ignore it.
+    [base_url] is forwarded to every connector's [create]. Connectors that don't
+    need it (e.g. Anthropic) may ignore it.
 
     Passing a single key to every connector would fan one provider's credential
     out to all of them (e.g. an OpenAI request authenticated with the Anthropic
@@ -39,5 +39,6 @@ val stream_fn : t -> Agent_types.stream_fn
 (** [stream_fn adapter] returns an {!Agent_types.stream_fn} that dispatches by
     [model.protocol] to the pre-built closure.
 
-    Unknown [model.protocol] values produce an {!Pera_connector.Event_stream.t} that
-    immediately closes with an error message containing the unknown API name. *)
+    Unknown [model.protocol] values produce an {!Pera_connector.Event_stream.t}
+    that immediately closes with an error message containing the unknown API
+    name. *)

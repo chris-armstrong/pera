@@ -1,4 +1,14 @@
 (tests
  (names smoke_test)
- (libraries pera_cli pera_connector pera_core pera_core_test_util pera_env
-   pera_tools pera_agent alcotest eio eio_main containers))
+ (libraries
+  pera_cli
+  pera_connector
+  pera_core
+  pera_core_test_util
+  pera_env
+  pera_tools
+  pera_agent
+  alcotest
+  eio
+  eio_main
+  containers))

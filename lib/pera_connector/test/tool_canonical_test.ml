@@ -69,7 +69,8 @@ let test_openai_request_body_tools_are_canonical () =
   let tool = tool_schema "my_tool" "Does a thing." schema in
   let context = make_context [] ~tools:[ tool ] in
   let model =
-    Types.{ id = "gpt-4"; protocol = "openai-completions"; context_window = 8_192 }
+    Types.
+      { id = "gpt-4"; protocol = "openai-completions"; context_window = 8_192 }
   in
   let body =
     Openai_completions_request.build_request_body ~model ~context
