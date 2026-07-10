@@ -2,6 +2,15 @@
  (name pera_env)
  (public_name pera-env)
  (modules execution_env local_env persistent_shell)
- (libraries pera_types eio eio_main eio_linux eio.unix unix containers fpath uuidm)
+ (libraries
+  pera_types
+  eio
+  eio_main
+  eio_linux
+  eio.unix
+  unix
+  containers
+  fpath
+  uuidm)
  (preprocess
   (pps ppx_deriving.eq ppx_deriving.show)))

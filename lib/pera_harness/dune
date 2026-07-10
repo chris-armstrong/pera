@@ -1,7 +1,13 @@
 (library
  (name pera_harness)
  (public_name pera-harness)
- (modules entry_id session_types session_writer agent_wrapper cache_fingerprint compaction)
+ (modules
+  entry_id
+  session_types
+  session_writer
+  agent_wrapper
+  cache_fingerprint
+  compaction)
  (libraries
   pera_types
   pera_connector
