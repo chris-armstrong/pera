@@ -4,6 +4,7 @@ synopsis: "Test utilities for pera-core"
 description: "Test doubles and Alcotest testables for pera-core consumers"
 maintainer: ["oss@chrisarmstrong.dev"]
 authors: ["Chris Armstrong"]
+license: "GPL-3.0-only"
 homepage: "https://github.com/chris-armstrong/pera"
 bug-reports: "https://github.com/chris-armstrong/pera/issues"
 depends: [

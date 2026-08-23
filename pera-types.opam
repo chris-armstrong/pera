@@ -4,6 +4,7 @@ synopsis: "Core data model types for Pera"
 description: "Pure type definitions for the Pera AI agent framework"
 maintainer: ["oss@chrisarmstrong.dev"]
 authors: ["Chris Armstrong"]
+license: "GPL-3.0-only"
 homepage: "https://github.com/chris-armstrong/pera"
 bug-reports: "https://github.com/chris-armstrong/pera/issues"
 depends: [

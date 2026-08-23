@@ -5,6 +5,7 @@ description:
   "Driver executables for Pera - examples of how to use the Pera AI agent framework"
 maintainer: ["oss@chrisarmstrong.dev"]
 authors: ["Chris Armstrong"]
+license: "GPL-3.0-only"
 homepage: "https://github.com/chris-armstrong/pera"
 bug-reports: "https://github.com/chris-armstrong/pera/issues"
 depends: [

@@ -11,6 +11,8 @@
 
 (maintainers "oss@chrisarmstrong.dev")
 
+(license "GPL-3.0-only")
+
 (package
  (name pera-types)
  (synopsis "Core data model types for Pera")
