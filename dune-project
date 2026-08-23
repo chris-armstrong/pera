@@ -9,7 +9,7 @@
 
 (authors "Chris Armstrong")
 
-(maintainers "carmstrong@fastmail.com.au")
+(maintainers "oss@chrisarmstrong.dev")
 
 (package
  (name pera-types)

@@ -3,7 +3,7 @@ opam-version: "2.0"
 synopsis: "Execution environment for Pera"
 description:
   "Execution environment abstraction and OS-backed implementation for the Pera AI agent framework"
-maintainer: ["carmstrong@fastmail.com.au"]
+maintainer: ["oss@chrisarmstrong.dev"]
 authors: ["Chris Armstrong"]
 homepage: "https://github.com/chris-armstrong/pera"
 bug-reports: "https://github.com/chris-armstrong/pera/issues"

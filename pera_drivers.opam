@@ -3,7 +3,7 @@ opam-version: "2.0"
 synopsis: "Driver executables for Pera"
 description:
   "Driver executables for Pera - examples of how to use the Pera AI agent framework"
-maintainer: ["carmstrong@fastmail.com.au"]
+maintainer: ["oss@chrisarmstrong.dev"]
 authors: ["Chris Armstrong"]
 homepage: "https://github.com/chris-armstrong/pera"
 bug-reports: "https://github.com/chris-armstrong/pera/issues"

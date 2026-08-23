@@ -3,7 +3,7 @@ opam-version: "2.0"
 synopsis: "Tool implementations for Pera"
 description:
   "Tool implementations (read, write, bash, grep) for the Pera AI agent framework"
-maintainer: ["carmstrong@fastmail.com.au"]
+maintainer: ["oss@chrisarmstrong.dev"]
 authors: ["Chris Armstrong"]
 homepage: "https://github.com/chris-armstrong/pera"
 bug-reports: "https://github.com/chris-armstrong/pera/issues"
