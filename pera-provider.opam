@@ -14,9 +14,9 @@ depends: [
   "pera-types" {= version}
   "containers" {>= "3.0"}
   "yojson" {>= "2.0"}
-  "eio" {>= "1.0"}
-  "eio_main" {>= "1.0"}
-  "eio_linux" {>= "1.0"}
+  "eio" {>= "1.4"}
+  "eio_main" {>= "1.4"}
+  "eio_linux" {>= "1.4"}
   "cohttp-eio" {>= "6.0.0"}
   "tls-eio" {>= "2.0"}
   "ca-certs" {>= "1.0"}

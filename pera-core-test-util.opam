@@ -15,8 +15,8 @@ depends: [
   "pera-core" {= version}
   "containers" {>= "3.0"}
   "yojson" {>= "2.0"}
-  "eio" {>= "1.0"}
-  "eio_main" {>= "1.0"}
+  "eio" {>= "1.4"}
+  "eio_main" {>= "1.4"}
   "alcotest" {>= "1.7"}
   "ppx_deriving" {>= "1.6"}
   "odoc" {with-doc}

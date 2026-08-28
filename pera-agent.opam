@@ -19,9 +19,9 @@ depends: [
   "pera-tools" {= version}
   "containers" {>= "3.0"}
   "yojson" {>= "2.0"}
-  "eio" {>= "1.0"}
-  "eio_main" {>= "1.0"}
-  "eio_linux" {>= "1.0"}
+  "eio" {>= "1.4"}
+  "eio_main" {>= "1.4"}
+  "eio_linux" {>= "1.4"}
   "alcotest" {>= "1.7" & with-test}
   "odoc" {with-doc}
 ]
