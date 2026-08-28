@@ -3,8 +3,9 @@ opam-version: "2.0"
 synopsis: "Assembled agent harness for Pera"
 description:
   "Top-level assembly combining session writer, agent wrapper, and tool execution for the Pera AI agent framework"
-maintainer: ["carmstrong@fastmail.com.au"]
+maintainer: ["oss@chrisarmstrong.dev"]
 authors: ["Chris Armstrong"]
+license: "GPL-3.0-only"
 homepage: "https://github.com/chris-armstrong/pera"
 bug-reports: "https://github.com/chris-armstrong/pera/issues"
 depends: [
@@ -18,9 +19,9 @@ depends: [
   "pera-tools" {= version}
   "containers" {>= "3.0"}
   "yojson" {>= "2.0"}
-  "eio" {>= "1.0"}
-  "eio_main" {>= "1.0"}
-  "eio_linux" {>= "1.0"}
+  "eio" {>= "1.4"}
+  "eio_main" {>= "1.4"}
+  "eio_linux" {>= "1.4"}
   "alcotest" {>= "1.7" & with-test}
   "odoc" {with-doc}
 ]

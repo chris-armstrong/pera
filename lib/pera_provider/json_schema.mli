@@ -6,7 +6,11 @@
       LLMs.
     - {!validate}: validates a JSON value against the schema, applying the same
       type coercions that Anthropic/Pi use so that string-wrapped primitives
-      (e.g. ["42"] for an integer field) pass validation. *)
+      (e.g. ["42"] for an integer field) pass validation.
+
+    [validate]'s coercion rules are a close translation of pi's
+    [coercePrimitiveByType]/[coerceWithJsonSchema] ([packages/ai/src/utils/validation.ts],
+    [github.com/earendil-works/pi], MIT). *)
 
 (** A JSON schema node. *)
 type t =

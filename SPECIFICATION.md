@@ -1,10 +1,10 @@
-# OCaml Port of pi-agent-core — Architectural Specification
+# Pera — Architectural Specification
 
-> Source: `github.com/earendil-works/pi` (MIT).
+> Inspired by: `github.com/earendil-works/pi` (MIT).
 > Target: OCaml 5 + Eio.
-> Status: design draft v0.4. M6 (autonomous compaction, Level 3) is implemented.
+> Status: experimental.
 
-This document specifies the architecture of an OCaml port of the pi coding agent. Each section opens with what the component is and why it exists, then specifies the design and the load-bearing decisions. Implementation sequencing appears only where a checkpoint admits a property that earlier states cannot have.
+This document specifies pera's architecture — a headless coding agent in OCaml inspired by the design of the pi coding agent. Each section opens with what the component is and why it exists, then specifies the design and the load-bearing decisions. Implementation sequencing appears only where a checkpoint admits a property that earlier states cannot have.
 
 ---
 
@@ -14,7 +14,7 @@ A coding agent is a loop that calls an LLM, looks at the response, runs any tool
 
 The pi codebase factors this machinery into layers with deliberate seams. The agent loop itself is small and pure: it knows nothing about HTTP, filesystems, or providers. Around it sits the provider layer (talks to LLMs), the execution environment (talks to the OS), the session log (records what happened), and the compaction subsystem (keeps long conversations alive). Each layer has one job; each seam between layers is narrow.
 
-This port preserves that shape. The OCaml version is functor-heavy where pi is interface-typed (most prominently the execution environment), value-based where pi is class-based (the agent wrapper, the event stream), and immutable where pi is mutable for snapshots (partial messages during streaming). These are the only deliberate divergences. Otherwise the architecture mirrors pi closely enough that test ports translate directly.
+Pera preserves that shape. It is functor-heavy where pi is interface-typed (most prominently the execution environment), value-based where pi is class-based (the agent wrapper, the event stream), and immutable where pi is mutable for snapshots (partial messages during streaming). These are the only deliberate divergences. Otherwise the architecture mirrors pi closely enough that many of its tests translate directly.
 
 ---
 
@@ -221,7 +221,7 @@ OpenAI's chat completions send something flatter: `data: {"choices":[{"delta":{"
 
 ### SSE parsing — two layers
 
-The port separates chunk parsing (provider-agnostic) from event interpretation (provider-specific).
+Pera separates chunk parsing (provider-agnostic) from event interpretation (provider-specific).
 
 **Chunk parser.** Consumes byte chunks, emits framed events `{event_type, data, id}`. Handles `\n\n` delimiters, multi-line `data:` continuations, and incomplete events buffered across chunk boundaries. One implementation, shared.
 
@@ -231,7 +231,7 @@ This is the only place where provider differences appear above the wire format. 
 
 ### Partial messages — the snapshot decision
 
-The pi TS code mutates one shared `partial: AssistantMessage` reference across events; every event's `partial` field is the same object observed at successive points in time. The OCaml port diverges: each event carries an immutable `assistant_message` snapshot.
+The pi TS code mutates one shared `partial: AssistantMessage` reference across events; every event's `partial` field is the same object observed at successive points in time. Pera diverges: each event carries an immutable `assistant_message` snapshot.
 
 You could design the event stream three ways:
 
@@ -241,7 +241,7 @@ You could design the event stream three ways:
 
 Pi does (3) but with a twist: the snapshot is a *reference* to one mutable object that the parser keeps mutating. A subscriber that wants to record state at event time must clone, because subsequent events mutate the same object. The TS code handles this in one place (the agent loop shallow-clones before re-emission upward) but the trap exists for any other consumer.
 
-The OCaml port does (3) too, but with an immutable snapshot. The interpreter holds in-progress state internally — a builder with a `Buffer.t` per active text block, the partial list of completed blocks, accumulated usage — and constructs a fresh `assistant_message` value at each emission. Consumers can store any `event.partial` value safely; it will not change. The cost is more allocation; the saving is removing a class of bug. Text deltas still accumulate efficiently in a `Buffer.t` (mutable internally); the snapshot is constructed from it without quadratic concatenation.
+Pera does (3) too, but with an immutable snapshot. The interpreter holds in-progress state internally — a builder with a `Buffer.t` per active text block, the partial list of completed blocks, accumulated usage — and constructs a fresh `assistant_message` value at each emission. Consumers can store any `event.partial` value safely; it will not change. The cost is more allocation; the saving is removing a class of bug. Text deltas still accumulate efficiently in a `Buffer.t` (mutable internally); the snapshot is constructed from it without quadratic concatenation.
 
 ### Auth resolution
 
@@ -315,7 +315,7 @@ Hooks are how the loop stays generic while still being customisable. At each mea
 
 The harness populates several. Compaction triggers as a side effect of `should_stop_after_turn`: when the context exceeds threshold, compact synchronously, update the context, and return `false` (don't stop — continue with the compressed context). Session writes happen through `after_tool_call` and through every event delivered to the harness's subscriber. Permission gating lives in `before_tool_call`: an interactive CLI prompts a human, a CI agent allows everything, a sandbox refuses `bash` outright.
 
-`prepare_next_turn` and `should_stop_after_turn` together cover all between-turn behaviour. The first is for mutating state; the second is for terminating. They could be merged into one hook returning `[\`Continue of snapshot | \`Stop]`. Pi keeps them separate; the OCaml port follows for test-port parity. A v2 refactor could merge them.
+`prepare_next_turn` and `should_stop_after_turn` together cover all between-turn behaviour. The first is for mutating state; the second is for terminating. They could be merged into one hook returning `[\`Continue of snapshot | \`Stop]`. Pi keeps them separate; pera follows for test parity. A v2 refactor could merge them.
 
 Hooks may not raise. Doing so propagates out of `run`, which is treated as a programmer error.
 
@@ -351,7 +351,7 @@ The agent wrapper fills those gaps. It is a thin layer over the loop providing t
 
 **Subscription.** Multiple consumers can listen to events. The loop emits to a single sink; the wrapper fans out. Subscribers can be added and removed at any time. The harness's session writer is one subscriber; the CLI's renderer is another; future UI layers are additional subscribers. Without the wrapper, the harness either subscribes to the loop and forwards (coupling) or implements its own subscription internally (duplication).
 
-**Serialised sends.** Runs are processed one at a time. The wrapper is an actor: `create` forks a long-lived fibre that owns the loop, and `send` enqueues a run onto a capacity-1 mailbox and awaits its completion. A second `send` issued while one is running does not raise and does not interleave — it blocks until the actor takes it, then runs after the first completes. This guarantees events from distinct runs never interleave into the same subscribers (which no consumer is designed to handle) while letting callers queue work without coordinating themselves. (Pi raises on a concurrent `send`; the OCaml port serialises instead, because the actor mailbox makes queueing the natural and safer default. The reply promise is always resolved — via `Fun.protect` and `Eio.Cancel.protect` — so a caller never blocks forever, even if the run raises or is cancelled.)
+**Serialised sends.** Runs are processed one at a time. The wrapper is an actor: `create` forks a long-lived fibre that owns the loop, and `send` enqueues a run onto a capacity-1 mailbox and awaits its completion. A second `send` issued while one is running does not raise and does not interleave — it blocks until the actor takes it, then runs after the first completes. This guarantees events from distinct runs never interleave into the same subscribers (which no consumer is designed to handle) while letting callers queue work without coordinating themselves. (Pi raises on a concurrent `send`; pera serialises instead, because the actor mailbox makes queueing the natural and safer default. The reply promise is always resolved — via `Fun.protect` and `Eio.Cancel.protect` — so a caller never blocks forever, even if the run raises or is cancelled.)
 
 **Observable state.** `is_streaming`, `pending_tool_calls`, `context` — accessors that UI code can poll without subscribing to every event. Useful for status lines, progress indicators, and "what tools is the agent currently running" displays.
 
@@ -399,7 +399,7 @@ Tools and harness internals take an `(module Execution_env.S)` first-class modul
 
 The design avoids hiding this issue (e.g., by making `Sh.exec` always observe `Fs` state via some sync mechanism) because hiding it would be misleading in environments where consistency is impossible (a sandbox running on a remote machine). Better to surface the obligation than to provide a leaky abstraction.
 
-**Why one seam instead of two.** Pi's coding tools have their own per-tool ops interfaces (`ReadOperations`, `BashOperations`, etc.) in addition to the harness's `ExecutionEnv`. The two seams don't share — tools use one, the harness uses the other. This is awkward; you can swap one without the other and get inconsistencies. The OCaml port collapses to a single seam. Every tool takes the same `ExecutionEnv` module value the harness uses, so swapping the env swaps reality for tools and harness together.
+**Why one seam instead of two.** Pi's coding tools have their own per-tool ops interfaces (`ReadOperations`, `BashOperations`, etc.) in addition to the harness's `ExecutionEnv`. The two seams don't share — tools use one, the harness uses the other. This is awkward; you can swap one without the other and get inconsistencies. Pera collapses to a single seam. Every tool takes the same `ExecutionEnv` module value the harness uses, so swapping the env swaps reality for tools and harness together.
 
 ### Session storage
 
@@ -476,7 +476,7 @@ The summarisation prompt instructs the model to preserve file paths the agent ha
 
 The naive thing would be to delete the old messages and insert a synthetic *assistant* message containing the summary. That doesn't work in practice — the model is trained to expect the conversation to be a coherent dialogue, and a wall-of-text summary masquerading as an assistant message confuses it.
 
-Instead, pi (and this port) renders the summary as a synthetic *user* message with text like `"Context from earlier conversation:\n\n" ^ summary`. That framing reads to the model as "the user is telling me what we discussed before", which it handles cleanly.
+Instead, pi (and pera) renders the summary as a synthetic *user* message with text like `"Context from earlier conversation:\n\n" ^ summary`. That framing reads to the model as "the user is telling me what we discussed before", which it handles cleanly.
 
 Integration with the agent context after a successful compaction:
 
@@ -750,7 +750,7 @@ A change that breaks a driver should rarely break unit tests (the unit-level sur
 
 These are design-level. Each affects the architecture's shape and should be settled before commitments harden.
 
-1. **The `prepare_next_turn` / `should_stop_after_turn` split.** Pi separates these; the port follows for parity. They could be merged into one hook returning `[\`Continue of snapshot option | \`Stop]`. The merged form is more honest about what `should_stop_after_turn` does (its closure can have side effects), but the split form makes the side-effect-free predicate obvious. Recommend: keep the split; document the side-effect-via-closure pattern.
+1. **The `prepare_next_turn` / `should_stop_after_turn` split.** Pi separates these; pera follows for parity. They could be merged into one hook returning `[\`Continue of snapshot option | \`Stop]`. The merged form is more honest about what `should_stop_after_turn` does (its closure can have side effects), but the split form makes the side-effect-free predicate obvious. Recommend: keep the split; document the side-effect-via-closure pattern.
 
 2. **The Agent wrapper's status.** Spec includes it; the alternative is to fold subscription into the harness directly. The wrapper makes future UI layers cleaner and gives single-flight enforcement. Folding into the harness means one fewer abstraction but couples future UI to the harness. Recommend: keep the wrapper.
 

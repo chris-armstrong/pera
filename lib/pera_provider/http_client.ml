@@ -48,10 +48,7 @@ let classify_transport exn =
     | Tls_eio.Tls_alert _ | Tls_eio.Tls_failure _ -> Tls
     | Eio.Time.Timeout -> Connect
     | Failure m when contains_ci ~sub:"DNS lookup failed" m -> Dns
-    | Eio.Exn.Io
-        ( Eio.Net.E (Eio.Net.Connection_failure Eio.Net.No_matching_addresses),
-          _ ) ->
-        Dns
+    | Eio.Exn.Io (Eio.Net.E (Eio.Net.Address_lookup_failed _), _) -> Dns
     | Eio.Exn.Io (Eio.Net.E (Eio.Net.Connection_failure _), _) -> Connect
     | Eio.Exn.Io (Eio.Net.E (Eio.Net.Connection_reset _), _) -> Network
     | Eio.Exn.Io (_, _) when contains_ci ~sub:"tls" message -> Tls

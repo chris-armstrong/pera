@@ -8,8 +8,8 @@
 
 ## What this project is
 
-Pera is an OCaml port of the **pi coding agent** (`github.com/earendil-works/pi`, MIT).  
-It is a headless coding agent: a loop that calls an LLM, runs tools the model requests (read, write, bash, grep), feeds the results back, and repeats until done.  
+Pera is a headless coding agent in OCaml, inspired by the architecture and design of the **pi coding agent** (`github.com/earendil-works/pi`, MIT).  
+It is a loop that calls an LLM, runs tools the model requests (read, write, bash, grep), feeds the results back, and repeats until done.  
 The architecture is layered — provider layer, agent core, harness, tools, and a thin CLI — with the goal of keeping the core loop pure and portable while the harness binds it to a real OS.
 
 Target runtime: **OCaml 5.4+** with **Eio** (structured concurrency).

@@ -3,8 +3,9 @@ opam-version: "2.0"
 synopsis: "Execution environment for Pera"
 description:
   "Execution environment abstraction and OS-backed implementation for the Pera AI agent framework"
-maintainer: ["carmstrong@fastmail.com.au"]
+maintainer: ["oss@chrisarmstrong.dev"]
 authors: ["Chris Armstrong"]
+license: "GPL-3.0-only"
 homepage: "https://github.com/chris-armstrong/pera"
 bug-reports: "https://github.com/chris-armstrong/pera/issues"
 depends: [
@@ -12,9 +13,9 @@ depends: [
   "ocaml" {>= "5.4"}
   "pera-types" {= version}
   "containers" {>= "3.0"}
-  "eio" {>= "1.0"}
-  "eio_main" {>= "1.0"}
-  "eio_linux" {>= "1.0"}
+  "eio" {>= "1.4"}
+  "eio_main" {>= "1.4"}
+  "eio_linux" {>= "1.4"}
   "fpath" {>= "0.7"}
   "ppx_deriving" {>= "1.6"}
   "alcotest" {>= "1.7" & with-test}

@@ -3,8 +3,9 @@ opam-version: "2.0"
 synopsis: "Provider layer for Pera"
 description:
   "Streaming completion provider layer for the Pera AI agent framework"
-maintainer: ["carmstrong@fastmail.com.au"]
+maintainer: ["oss@chrisarmstrong.dev"]
 authors: ["Chris Armstrong"]
+license: "GPL-3.0-only"
 homepage: "https://github.com/chris-armstrong/pera"
 bug-reports: "https://github.com/chris-armstrong/pera/issues"
 depends: [
@@ -13,9 +14,9 @@ depends: [
   "pera-types" {= version}
   "containers" {>= "3.0"}
   "yojson" {>= "2.0"}
-  "eio" {>= "1.0"}
-  "eio_main" {>= "1.0"}
-  "eio_linux" {>= "1.0"}
+  "eio" {>= "1.4"}
+  "eio_main" {>= "1.4"}
+  "eio_linux" {>= "1.4"}
   "cohttp-eio" {>= "6.0.0"}
   "tls-eio" {>= "2.0"}
   "ca-certs" {>= "1.0"}

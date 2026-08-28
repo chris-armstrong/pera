@@ -9,7 +9,9 @@
 
 (authors "Chris Armstrong")
 
-(maintainers "carmstrong@fastmail.com.au")
+(maintainers "oss@chrisarmstrong.dev")
+
+(license "GPL-3.0-only")
 
 (package
  (name pera-types)
@@ -41,11 +43,11 @@
   (yojson
    (>= 2.0))
   (eio
-   (>= 1.0))
+   (>= 1.4))
   (eio_main
-   (>= 1.0))
+   (>= 1.4))
   (eio_linux
-   (>= 1.0))
+   (>= 1.4))
   (cohttp-eio
    (>= 6.0.0))
   (tls-eio
@@ -88,11 +90,11 @@
    (yojson
     (>= 2.0))
    (eio
-    (>= 1.0))
+    (>= 1.4))
    (eio_main
-    (>= 1.0))
+    (>= 1.4))
    (eio_linux
-    (>= 1.0))
+    (>= 1.4))
    (logs
     (>= 0.7))
    (re
@@ -121,11 +123,11 @@
   (containers
    (>= 3.0))
   (eio
-   (>= 1.0))
+   (>= 1.4))
   (eio_main
-   (>= 1.0))
+   (>= 1.4))
   (eio_linux
-   (>= 1.0))
+   (>= 1.4))
   (fpath
    (>= 0.7))
   (ppx_deriving
@@ -183,9 +185,9 @@
    (yojson
     (>= 2.0))
    (eio
-    (>= 1.0))
+    (>= 1.4))
    (eio_main
-    (>= 1.0))
+    (>= 1.4))
    (alcotest
     (>= 1.7))
    (ppx_deriving
@@ -212,11 +214,11 @@
   (yojson
    (>= 2.0))
   (eio
-   (>= 1.0))
+   (>= 1.4))
   (eio_main
-   (>= 1.0))
+   (>= 1.4))
   (eio_linux
-   (>= 1.0))
+   (>= 1.4))
    (ppx_deriving
     (>= 1.6))
    (alcotest
@@ -249,11 +251,11 @@
   (yojson
    (>= 2.0))
   (eio
-   (>= 1.0))
+   (>= 1.4))
   (eio_main
-   (>= 1.0))
+   (>= 1.4))
   (eio_linux
-   (>= 1.0))
+   (>= 1.4))
   (alcotest
    (and
     (>= 1.7)

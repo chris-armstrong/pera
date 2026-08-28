@@ -3,8 +3,9 @@ opam-version: "2.0"
 synopsis: "Tool implementations for Pera"
 description:
   "Tool implementations (read, write, bash, grep) for the Pera AI agent framework"
-maintainer: ["carmstrong@fastmail.com.au"]
+maintainer: ["oss@chrisarmstrong.dev"]
 authors: ["Chris Armstrong"]
+license: "GPL-3.0-only"
 homepage: "https://github.com/chris-armstrong/pera"
 bug-reports: "https://github.com/chris-armstrong/pera/issues"
 depends: [
@@ -16,9 +17,9 @@ depends: [
   "pera-provider" {= version}
   "containers" {>= "3.0"}
   "yojson" {>= "2.0"}
-  "eio" {>= "1.0"}
-  "eio_main" {>= "1.0"}
-  "eio_linux" {>= "1.0"}
+  "eio" {>= "1.4"}
+  "eio_main" {>= "1.4"}
+  "eio_linux" {>= "1.4"}
   "ppx_deriving" {>= "1.6"}
   "alcotest" {>= "1.7" & with-test}
   "odoc" {with-doc}
