@@ -12,7 +12,11 @@
       {!Pera_types.Types.AME_error} rather than raising.
     - Each emitted event carries an immutable snapshot of the in-progress
       [assistant_message] that is structurally distinct from every other
-      snapshot. *)
+      snapshot.
+
+    The event-handling state machine in {!feed} is a close translation of
+    pi's Anthropic SSE handling ([packages/ai/src/providers/anthropic.ts],
+    [github.com/earendil-works/pi], MIT). *)
 
 open Pera_types
 

@@ -6,7 +6,11 @@
       JSON specification
 
     This module repairs such strings and provides a streaming-safe parser that
-    falls back to repair before giving up. *)
+    falls back to repair before giving up.
+
+    [repair] and [parse_streaming] are a close translation of pi's
+    [repairJson]/[parseStreamingJson] ([packages/ai/src/utils/json-parse.ts],
+    [github.com/earendil-works/pi], MIT). *)
 
 val repair : string -> string
 (** [repair s] scans [s] and fixes two classes of malformed JSON string content:
