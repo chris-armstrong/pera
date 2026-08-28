@@ -1,10 +1,10 @@
 # Pera
 
-Pera is an OCaml port of the [pi coding agent](https://github.com/earendil-works/pi) (MIT) — a headless coding agent: a loop that calls an LLM, runs tools the model requests (read, write, bash, grep), feeds the results back, and repeats until done. The architecture is layered — provider layer, agent core, harness, tools, and a thin CLI — keeping the core loop pure and portable while a harness binds it to a real OS.
+Pera is a headless coding agent in OCaml, inspired by the architecture and design of the [pi coding agent](https://github.com/earendil-works/pi) (MIT): a loop that calls an LLM, runs tools the model requests (read, write, bash, grep), feeds the results back, and repeats until done. The architecture is layered — provider layer, agent core, harness, tools, and a thin CLI — keeping the core loop pure and portable while a harness binds it to a real OS.
 
 Target runtime: OCaml 5.4+ with [Eio](https://github.com/ocaml-multicore/eio) (structured concurrency).
 
-**Status:** design draft v0.4 — M6 (autonomous compaction, Level 3) is implemented. See [`SPECIFICATION.md`](./SPECIFICATION.md) for the full architecture and milestone history.
+**Status:** experimental — under active development, interfaces and behaviour may change without notice.
 
 ## Build & test
 
@@ -27,7 +27,7 @@ semgrep --config .semgrep/ocaml-guidelines.yml lib/ bin/          # lint rules
 
 ## Provenance
 
-Pera's architecture and much of its test suite are ported from [`earendil-works/pi`](https://github.com/earendil-works/pi) (MIT License, © 2025 Mario Zechner) — the design, hook shape, and control flow follow pi closely, rewritten from scratch in idiomatic OCaml.
+Pera's architecture is inspired by [`earendil-works/pi`](https://github.com/earendil-works/pi) (MIT License, © 2025 Mario Zechner). Most of the code is a from-scratch OCaml implementation of that design; a handful of specific algorithms and their tests are translated more directly from pi's source.
 
 ## License
 
